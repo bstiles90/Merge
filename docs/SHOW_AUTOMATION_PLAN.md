@@ -61,8 +61,30 @@ these to cues with **rules set once**, not per week:
 - **Option B (MIDI macros):** ProPresenter macros send MIDI out. A small reusable set ("Merge:
   Speech", "Merge: Band", "Merge: Baptism") overrides the rules for one-offs. MIDI
   program change N fires cue N; notes/CCs map to actions.
-- *To verify when building:* the exact ProPresenter API endpoints and status-update
-  mechanism, and the MIDI message types macros can send.
+- **Slide notes as tags:** a slide's notes can carry `merge: Speech` (or any cue name) to
+  force a cue on that slide. Optional, for one-offs, using a field ProPresenter already has.
+
+**ProPresenter API facts (checked against the official OpenAPI spec, openapi.propresenter.com):**
+- ProPresenter 7's built-in HTTP API on the local network. Enabled in ProPresenter's
+  Network preferences, which set the port (the spec's default is 50001). Merge just needs
+  that computer's IP address and port. ProPresenter can be on the same Mac or another
+  computer on the network.
+- **Live updates without polling:** `POST /v1/status/updates` with a JSON array of endpoint
+  names opens one long-lived chunked stream. Each update is a JSON object `{url, data}`,
+  and updates are separated by a blank line (CRLF CRLF). We subscribe to:
+  - `presentation/current`: the active presentation, its **groups** (name, colour) and each
+    group's slides (text, notes, label, enabled)
+  - `presentation/slide_index`: the current slide index + presentation id, from which Merge
+    finds the slide's **group** (Verse/Chorus/Bridge…) and its notes
+  - `playlist/active`: active playlist + item name (catches "Sermon", "Announcements")
+  - `status/layers`: which layers are live (media / video input / audio / slide), for
+    playback scenes
+  - `transport/presentation/current`: the media item playing
+- `GET /v1/macros` lists ProPresenter's macros (names), and `GET /v1/macro/{id}/trigger`
+  fires one. That lets Merge show macro names in its rules, and could later let Merge
+  *advance* ProPresenter (not needed for following).
+- *Still to verify:* which MIDI message types ProPresenter macros can send (option B).
+  Option A doesn't need MIDI at all.
 
 ## 3. Cues (the building block)
 
@@ -179,21 +201,21 @@ structure is right, the same template works week after week.
 5. **Mics are opened and closed by cues, never by the AI.** Auto-balance and the AI only
    trim inside bounds around the rehearsed scene (±6 dB default), slowly, on opted-in
    channels.
-6. **Always on in automatic modes:** a true-peak limiter on the main output and a loudness cap
-   for the stream.
+6. **Always on in automatic modes:** true-peak and loudness watch on the main (the limiter
+   itself is your master-bus plugin), with a warning if the stream goes over spec.
 7. **Everything logged** for reviewing after the service.
 
 ## 8. Build order
 
 | Step | What | Depends on |
 |---|---|---|
-| 0 | Foundations: native recorder/playback, undo, built-in EQ/dynamics on buses and main | (in progress) |
+| 0 | Foundations: undo (needed); native recorder/playback (needed for step 5, not for 1–2) | (in progress) |
 | 1 | **Cues + timed fades + cue list (NOW/NEXT, GO, log)**; MIDI → cues (program change, notes/CCs) | 0 |
 | 2 | **ProPresenter option A** (state + rules) and option B (macros via MIDI); de-duplication | 1 |
 | 3 | Planning Center: plan import + LIVE follow (backup trigger) | 1 |
 | 4 | Learn the balance at rehearsal, hold it live; automixer + level-rider | 0 |
 | 5 | Auto rehearsal: templates, listening in on FOH's line check, FOH gain-change compensation, audience-mic handling, streaming loudness target | 4 |
-| 6 | AI layer on top (see AI plan): judgement trims, reference matching, learning your taste | 4–5 |
+| 6 | AI layer on top (see AI plan): judgement trims, reference matching, learning your taste | 2, 4–5 |
 
 Each step is useful on its own. Steps 1–2 alone remove the need for an operator to hit
 service cues.
