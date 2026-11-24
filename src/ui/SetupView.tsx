@@ -2,16 +2,10 @@ import { useState } from 'react';
 import { describeAction } from '../core/actions';
 import { LAYER_SLOTS, newId } from '../core/defaults';
 import { useConsole } from '../core/store';
-import type { Layer, StripRef } from '../core/types';
+import type { Layer } from '../core/types';
+import { StripRefSelect } from './Pages';
 import { KeyEditor } from './UserKeys';
 
-const refToValue = (r: StripRef | null) => (!r ? '' : r.kind === 'main' ? 'main' : `${r.kind}:${r.id}`);
-const valueToRef = (v: string): StripRef | null => {
-  if (!v) return null;
-  if (v === 'main') return { kind: 'main' };
-  const [kind, id] = v.split(':');
-  return { kind: kind as 'channel' | 'bus' | 'dca', id };
-};
 
 function LayerEditor() {
   const s = useConsole();
@@ -22,7 +16,7 @@ function LayerEditor() {
 
   return (
     <div className="panel">
-      <div className="panel-title">Custom layers / pages</div>
+      <div className="panel-title">Fader pages</div>
       <p className="hint">Any channel, bus, DCA or the main can go in any fader slot, in any order, on as many layers as you like.</p>
       <div className="row wrap">
         {s.layers.map((l) => (
@@ -68,34 +62,7 @@ function LayerEditor() {
             {layer.slots.map((r, i) => (
               <label key={i} className="slot">
                 <span className="hint">Fader {i + 1}</span>
-                <select
-                  value={refToValue(r)}
-                  onChange={(e) => upLayer({ slots: layer.slots.map((x, j) => (j === i ? valueToRef(e.target.value) : x)) })}
-                >
-                  <option value="">— empty —</option>
-                  <optgroup label="Inputs">
-                    {s.channels.map((c) => (
-                      <option key={c.id} value={`channel:${c.id}`}>
-                        {c.id.replace('ch', '')} {c.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Buses">
-                    {s.buses.map((b) => (
-                      <option key={b.id} value={`bus:${b.id}`}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="DCAs">
-                    {s.dcas.map((d) => (
-                      <option key={d.id} value={`dca:${d.id}`}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <option value="main">Main LR</option>
-                </select>
+                <StripRefSelect value={r} onChange={(ref) => upLayer({ slots: layer.slots.map((x, j) => (j === i ? ref : x)) })} />
               </label>
             ))}
           </div>

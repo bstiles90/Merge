@@ -131,6 +131,7 @@ export type StripRef =
 export interface Layer {
   id: string;
   name: string;
+  color?: string;
   slots: (StripRef | null)[];
 }
 

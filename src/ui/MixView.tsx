@@ -5,30 +5,9 @@ import { getEngine } from '../audio/engine';
 import { Detail } from './Detail';
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
-import { Strip } from './Strip';
+import { FaderBank, PageKeys } from './Pages';
 import { KeyEditor, UserKeyGrid } from './UserKeys';
 
-export function LayerBar() {
-  const s = useConsole();
-  return (
-    <div className="layer-bar">
-      {s.layers.map((l, i) => (
-        <button key={l.id} className={'layer-btn' + (s.currentLayer === l.id ? ' on' : '')} onClick={() => s.dispatch({ type: 'layer.select', args: { id: l.id } })}>
-          <span className="hint">{i + 1}</span> {l.name}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function FaderBank() {
-  const layer = useConsole((s) => s.layers.find((l) => l.id === s.currentLayer) ?? s.layers[0]);
-  return (
-    <div className="bank">
-      {layer?.slots.map((ref, i) => <Strip key={i} refr={ref} index={i} />)}
-    </div>
-  );
-}
 
 function MuteGroupMasters() {
   const s = useConsole();
@@ -140,11 +119,14 @@ function Monitor() {
 
 export function MixView() {
   const [editKey, setEditKey] = useState<string | null>(null);
+  const [editPages, setEditPages] = useState(false);
   return (
     <div className="mix">
       <div className="mix-left">
-        <LayerBar />
-        <FaderBank />
+        <div className="bank-row">
+          <PageKeys editing={editPages} setEditing={setEditPages} />
+          <FaderBank editing={editPages} />
+        </div>
         <div className="surface">
           <MuteGroupMasters />
           <div className="panel">

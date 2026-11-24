@@ -26,7 +26,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     const groupMuted = mr.muted && !mr.self;
     return (
       <div className={'strip' + (selected ? ' selected' : '')}>
-        <div className="strip-head" style={{ background: ch.color }} onClick={select}>
+        <div className="strip-head" draggable title="Drag to move this strip" style={{ background: ch.color }} onClick={select}>
           <span className="strip-num">{ch.id.replace('ch', '')}</span>
           <span className="strip-name">{ch.name}</span>
         </div>
@@ -85,7 +85,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     const mr = busMuteReason(s, b);
     return (
       <div className={'strip bus' + (selected ? ' selected' : '')}>
-        <div className="strip-head" style={{ background: b.color }} onClick={select}>
+        <div className="strip-head" draggable title="Drag to move this strip" style={{ background: b.color }} onClick={select}>
           <span className="strip-num">{b.type === 'mixminus' ? 'N-1' : 'MIX'}</span>
           <span className="strip-name">{b.name}</span>
         </div>
@@ -122,7 +122,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     const members = s.channels.filter((c) => c.dcas.includes(d.id));
     return (
       <div className={'strip dca' + (selected ? ' selected' : '')}>
-        <div className="strip-head" style={{ background: d.color }} onClick={select}>
+        <div className="strip-head" draggable title="Drag to move this strip" style={{ background: d.color }} onClick={select}>
           <span className="strip-num">DCA</span>
           <span className="strip-name">{d.name}</span>
         </div>
@@ -149,7 +149,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
   // main
   return (
     <div className={'strip main' + (selected ? ' selected' : '')}>
-      <div className="strip-head" style={{ background: '#c9ccd1', color: '#111' }} onClick={select}>
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: '#c9ccd1', color: '#111' }} onClick={select}>
         <span className="strip-num">PGM</span>
         <span className="strip-name">Main LR</span>
       </div>

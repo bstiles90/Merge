@@ -43,6 +43,12 @@ const sceneStep = (s: ConsoleState, dir: 1 | -1): ConsoleState => {
   return applyScene(s, s.scenes[nextIdx]);
 };
 
+const layerStep = (s: ConsoleState, dir: 1 | -1): ConsoleState => {
+  const idx = s.layers.findIndex((l) => l.id === s.currentLayer);
+  const next = s.layers[(idx + dir + s.layers.length) % s.layers.length];
+  return next ? { ...s, currentLayer: next.id } : s;
+};
+
 const defs: ActionDef[] = [
   {
     type: 'channel.mute.toggle',
@@ -184,11 +190,25 @@ const defs: ActionDef[] = [
   },
   {
     type: 'layer.select',
-    label: 'Select layer',
+    label: 'Select page',
     category: 'Layer',
     args: [{ name: 'id', label: 'Layer', kind: 'layer' }],
     run: (s, a) => ({ ...s, currentLayer: a.id }),
     isOn: (s, a) => s.currentLayer === a.id,
+  },
+  {
+    type: 'layer.next',
+    label: 'Next page',
+    category: 'Layer',
+    args: [],
+    run: (s) => layerStep(s, 1),
+  },
+  {
+    type: 'layer.prev',
+    label: 'Previous page',
+    category: 'Layer',
+    args: [],
+    run: (s) => layerStep(s, -1),
   },
   {
     type: 'talkback.toggle',

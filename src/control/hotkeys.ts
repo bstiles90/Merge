@@ -48,6 +48,14 @@ export function installHotkeys() {
       if (!e.repeat) s.pressKey(key.id);
       return;
     }
+    if (/^[1-9]$/.test(hk)) {
+      const layer = s.layers[Number(hk) - 1];
+      if (layer) {
+        e.preventDefault();
+        s.dispatch({ type: 'layer.select', args: { id: layer.id } });
+      }
+      return;
+    }
     if (hk === 'Space') {
       e.preventDefault();
       s.dispatch({ type: 'transport.toggle', args: {} });

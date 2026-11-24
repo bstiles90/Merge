@@ -10,6 +10,7 @@ import {
   faderPosToDb,
 } from './mix';
 import { applyScene, takeSnapshot } from './scenes';
+import { addToPage, moveSlot } from './layers';
 import { parseShow, serializeShow } from './store';
 
 describe('fader taper', () => {
@@ -63,6 +64,31 @@ describe('keys', () => {
     expect(keyIsOn(s, key.actions)).toBe(false);
     s = runAction(s, { type: 'muteGroup.set', args: { id: 'mg1', on: true } });
     expect(keyIsOn(s, key.actions)).toBe(true);
+  });
+});
+
+describe('pages', () => {
+  const ch = (n: number) => ({ kind: 'channel' as const, id: `ch${n}` });
+  it('drag onto occupied slot inserts and shifts', () => {
+    const slots = [ch(1), ch(2), ch(3), ch(4), null];
+    expect(moveSlot(slots, 3, 0)).toEqual([ch(4), ch(1), ch(2), ch(3), null]);
+    expect(moveSlot(slots, 0, 2)).toEqual([ch(2), ch(3), ch(1), ch(4), null]);
+  });
+  it('drag onto empty slot just moves', () => {
+    expect(moveSlot([ch(1), ch(2), null], 0, 2)).toEqual([null, ch(2), ch(1)]);
+  });
+  it('drop on page key adds to first free slot once', () => {
+    const slots = [ch(1), null, null];
+    expect(addToPage(slots, ch(5))).toEqual([ch(1), ch(5), null]);
+    expect(addToPage(slots, ch(1))).toBe(slots);
+  });
+
+  it('next/prev wrap around', () => {
+    let s = defaultState();
+    s = runAction(s, { type: 'layer.prev', args: {} });
+    expect(s.currentLayer).toBe(s.layers[s.layers.length - 1].id);
+    s = runAction(s, { type: 'layer.next', args: {} });
+    expect(s.currentLayer).toBe(s.layers[0].id);
   });
 });
 

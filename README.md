@@ -30,7 +30,7 @@ Use **I/O · Patch** to patch real interface inputs.
 | Main / program | inserts, lip-sync delay, **EBU R128 / ATSC A/85 loudness** (M/S/I, gated integrated) |
 | Mute groups (8) | multi-membership; never touch a channel's own mute; group-muted strips show hatched |
 | DCAs (8) | dB offset + mute over members |
-| Layers / pages | unlimited user layers; any channel/bus/DCA/main in any of 16 slots |
+| Fader pages | page-key column beside the faders (dLive/LV1-style) with a colour preview of each page; keys 1–9, ▲/▼ and Page Next/Prev user keys; build and edit pages on the surface (Edit → assign per fader); **drag strips by their name to reorder**; drop a strip on a page key to add it to that page |
 | User keys (16) | any action or a **macro** of several; latch or momentary (cough, talkback); LEDs follow real state; hotkey + MIDI learn |
 | Scenes | store/update/recall, Go Next / Prev, recall scope, per-strip recall safe |
 | Monitor | source select, auto-PFL/AFL cue, dim, talkback (dims monitor) to selected buses |

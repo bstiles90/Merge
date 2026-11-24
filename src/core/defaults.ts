@@ -100,11 +100,11 @@ function pad(slots: (StripRef | null)[]): (StripRef | null)[] {
 export function defaultLayers(): Layer[] {
   const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
   return [
-    { id: 'L1', name: 'Show', slots: pad([ch(1), ch(2), ch(3), ch(4), null, ch(5), ch(6), ch(7), null, dca(1), dca(2), dca(3), null, bus(7), bus(1), { kind: 'main' }]) },
-    { id: 'L2', name: 'Inputs 1-16', slots: pad(range(1, 16).map(ch)) },
-    { id: 'L3', name: 'Inputs 17-32', slots: pad(range(17, 32).map(ch)) },
-    { id: 'L4', name: 'Buses', slots: pad([...range(1, 8).map(bus), null, null, null, null, null, null, null, { kind: 'main' }]) },
-    { id: 'L5', name: 'DCAs', slots: pad([...range(1, 8).map(dca), null, null, null, null, null, null, null, { kind: 'main' }]) },
+    { id: 'L1', name: 'Show', color: PALETTE[6], slots: pad([ch(1), ch(2), ch(3), ch(4), null, ch(5), ch(6), ch(7), null, dca(1), dca(2), dca(3), null, bus(7), bus(1), { kind: 'main' }]) },
+    { id: 'L2', name: 'Inputs 1-16', color: PALETTE[8], slots: pad(range(1, 16).map(ch)) },
+    { id: 'L3', name: 'Inputs 17-32', color: PALETTE[8], slots: pad(range(17, 32).map(ch)) },
+    { id: 'L4', name: 'Buses', color: PALETTE[5], slots: pad([...range(1, 8).map(bus), null, null, null, null, null, null, null, { kind: 'main' }]) },
+    { id: 'L5', name: 'DCAs', color: PALETTE[7], slots: pad([...range(1, 8).map(dca), null, null, null, null, null, null, null, { kind: 'main' }]) },
   ];
 }
 
@@ -126,8 +126,8 @@ export function defaultUserKeys(): UserKey[] {
     key(10, 'Play /\nStop', PALETTE[3], [{ type: 'transport.toggle', args: {} }], { hotkey: 'F10' }),
     key(11, 'Marker', PALETTE[2], [{ type: 'marker.add', args: {} }], { hotkey: 'F11' }),
     key(12, 'Dim\nMonitor', PALETTE[5], [{ type: 'monitor.dim', args: {} }], { hotkey: 'F12' }),
-    key(13, 'Layer\nShow', PALETTE[6], [{ type: 'layer.select', args: { id: 'L1' } }]),
-    key(14, 'Layer\n1-16', PALETTE[6], [{ type: 'layer.select', args: { id: 'L2' } }]),
+    key(13, 'Page\nPrev', PALETTE[6], [{ type: 'layer.prev', args: {} }]),
+    key(14, 'Page\nNext', PALETTE[6], [{ type: 'layer.next', args: {} }]),
     key(15, 'All Mics\nOff', PALETTE[0], [
       { type: 'muteGroup.set', args: { id: 'mg1', on: true } },
       { type: 'muteGroup.set', args: { id: 'mg2', on: true } },
