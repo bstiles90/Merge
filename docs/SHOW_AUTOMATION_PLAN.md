@@ -136,10 +136,13 @@ structure is right, the same template works week after week.
 3. **Scenes are saved** for every scene type, ready for ProPresenter to trigger on Sunday.
 
 **Broadcast-specific jobs** (the things a broadcast mix needs that FOH doesn't):
-- **Following FOH gain changes.** The split shares FOH's preamps. When FOH turns up a gain
-  mid-service, the broadcast level jumps. Merge detects the step change on the input and
-  **compensates with its own digital trim**, so the stream stays steady. This matters
-  more than anything else for an operator-free broadcast mix.
+- **Safety net for FOH gain changes.** Standard practice is that gain structure is set
+  correctly at line check and **not touched once the show is live**. Merge assumes that.
+  But because the split shares FOH's preamps, an accidental change (a bumped knob, a
+  recalled FOH scene with different gains) would jump the stream level. Merge watches for
+  a sudden step on an input that doesn't match the music, **compensates with its own
+  digital trim**, and **logs/flags it** ("Ch 12 input +6 dB at 10:42 — compensated") so
+  it can be raised with FOH afterwards. It's off-by-exception: normally it does nothing.
 - **Room and audience mics.** Close mics sound dry and small on a stream, so the congregation
   matters. Audience mics come up when the room is singing (worship sets, responses) and
   sit lower during speech. Scene targets plus auto-balance handle this.
@@ -154,8 +157,8 @@ structure is right, the same template works week after week.
 
 **Realistic expectations:**
 - A consistent, good broadcast baseline every week, not a top engineer's taste.
-- **Merge doesn't own the preamps:** FOH does, so Merge works with digital trim only and
-  follows FOH's changes rather than fighting them.
+- **Merge doesn't own the preamps:** FOH does. Gains are locked after line check; Merge
+  uses digital trim only, and the gain-change safety net only steps in by exception.
 - **Bleed** is the main analysis challenge (not feedback).
 
 ## 7. Safety rules (no operator means these matter more)
