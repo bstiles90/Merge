@@ -70,8 +70,8 @@ raw audio):
 
 ### Layer 2: Deterministic solvers (TypeScript/C++)
 - **Match EQ:** compute the difference between the current and target spectra, smooth it,
-  then fit it onto the console's real EQ (4 parametric bands, or a main-bus insert) by
-  least squares. Moves are limited to ±6 dB by default.
+  then fit it onto the EQ plugin already loaded in that strip's rack, by least squares.
+  Moves are limited to ±6 dB by default.
 - **Loudness/dynamics targeting:** bus compression and limiter settings to reach a target
   LUFS and density.
 - **Gain staging:** input gains to sensible levels.
@@ -80,8 +80,32 @@ raw audio):
 
 These are also useful **without AI**: "Match to reference" becomes a button.
 
+### Plugins: the AI uses what's in your rack (no stock processing)
+Merge has no built-in channel EQ or dynamics; the AI adjusts the third-party plugins you
+loaded (FabFilter, Waves, etc.), the same way you would.
+- **Learning a plugin:** the engine already reads every plugin's parameters and their
+  display text ("Band 2 Gain: -3.0 dB"). Merge probes each parameter once (set a value,
+  read the text back) to learn its real units and range, so "cut 3 dB at 250 Hz" becomes
+  exact parameter values. Works for most plugins with no setup.
+- **Hand-made maps for the plugins we use most** (e.g. the church's go-to EQ, compressor,
+  de-esser and master limiter): band layout, which switch enables a band, sensible
+  limits. Best results come from a small set of well-known plugins.
+- **Check with the ears:** after every change, the analyzer measures what the change
+  actually did. If a plugin didn't respond as expected, the change is undone and flagged.
+- **Rules:** the AI only adjusts plugins that are already loaded. Adding, removing or
+  reordering plugins is a proposal you approve. Plugin state is snapshotted, so undo
+  restores the plugin exactly. If a strip has nothing suitable loaded, the AI says so
+  ("Ch 12 has no EQ in its rack: add one?") instead of inventing processing.
+- A plugin that hides its controls or exposes only generic names can be used for
+  bypass and level only.
+
 ### Layer 3: AI planner (Claude)
 - Model: **Claude Opus 5.5** (`claude-opus-5-5`), with adaptive thinking.
+- **Why Claude, and why the "ears" aren't an AI:** analysis is measurement (maths in the
+  engine), not a language model, so it's fast, offline and exact. The planner only needs
+  to reason over numbers and call tools, which is Claude's strength; Claude doesn't take
+  audio input, and doesn't need to. The planner sits behind one interface in Merge, so
+  another provider could be tried later without touching the rest.
 - Claude gets: the user's command, console state (channel names, groups, current
   settings), analysis features, any chosen reference profile, and a short rulebook
   (safety limits, live rules).
@@ -154,7 +178,7 @@ copyright). Merge only analyses files the user provides, and the AI only reads
 **Phase 0: Foundations** (finish the basics first)
 - Native recorder/playback (multitrack + virtual soundcheck on the engine)
 - Undo/redo history for all console changes
-- Built-in native EQ/dynamics on buses and main (needed by the match EQ)
+- Plugin control layer (below): the AI works through the plugins loaded in the rack
 
 **Phase 1: Ears (no AI yet)**
 - Engine analysis features plus an **Analyzer** page: spectrum vs reference overlay,
