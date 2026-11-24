@@ -42,25 +42,27 @@ leaders don't have to learn anything new.
 
 ## 2. Option A: rules on what ProPresenter is showing (primary)
 
-ProPresenter 7 has a network API that reports the active presentation and slide, including
-the slide's **group name** (Verse, Chorus, Bridge…), which songs already carry. Merge maps
-these to cues with **rules set once**, not per week:
+ProPresenter 7 has a network API that reports the active presentation, the live slide (and
+so its **group**: Verse, Chorus, Bridge…), the playlist item and whether media is playing.
+Merge turns that into a **moment** with rules set once, not per week (defaults shown; all
+editable on the Show page, checked top to bottom, first match wins):
 
-| When ProPresenter shows… | Merge fires |
+| When ProPresenter shows… | Moment |
 |---|---|
-| Any song presentation | **Band** scene |
-| Slide group **Chorus** | Choir/BV mics up, bigger vocal reverb |
-| Slide group **Bridge** / **Tag** | Bridge reverb / band-down-for-tag cue |
-| Presentation or playlist header **Sermon** / **Message** | **Speech** scene (pastor mic up, band muted, music bed off) |
-| **Prayer** | **Speech + pad** |
-| Video / media cue | **Playback** scene |
-| Announcements | **Host** scene |
+| Playlist item contains **Sermon** / **Message** | Sermon / Speech |
+| Playlist item contains **Prayer** | Prayer |
+| Playlist item contains **Announcement** / **Welcome** | Announcements / Host |
+| Playlist item contains **Video**, or matches **Walk\*** | Video / Walk-in |
+| *(off by default)* Media is playing | Video / Playback (motion backgrounds would trigger it) |
+| *(off by default)* Slide group **Chorus** / **Bridge** / **Tag** | Chorus / Bridge-Tag |
+| Any song presentation (has Verse/Chorus/Bridge… groups) | Song |
+| Nothing matches (countdown, blank) | no change |
 
-- Rules match on presentation name, playlist header, slide group, or media type, with
-  wildcards ("Sermon*").
-- **Option B (MIDI macros):** ProPresenter macros send MIDI out. A small reusable set ("Merge:
-  Speech", "Merge: Band", "Merge: Baptism") overrides the rules for one-offs. MIDI
-  program change N fires cue N; notes/CCs map to actions.
+- Matching: contains (case doesn't matter), or a pattern with `*` wildcards. Rule fields:
+  playlist item, presentation name, slide group, "any song", "media playing".
+- A **rule tester** on the Show page tries the rules without ProPresenter.
+- **Option B (MIDI macros):** later. ProPresenter macros send MIDI out, which Merge maps to
+  moments, for teams that prefer it.
 - **Slide notes as tags:** a slide's notes can carry `merge: Speech` (or any cue name) to
   force a cue on that slide. Optional, for one-offs, using a field ProPresenter already has.
 
@@ -86,21 +88,51 @@ these to cues with **rules set once**, not per week:
 - *Still to verify:* which MIDI message types ProPresenter macros can send (option B).
   Option A doesn't need MIDI at all.
 
-## 3. Cues (the building block)
+## 3. Moments, not scenes (the building block)
 
-A **cue** = a scene recall + an action list + a **fade time**:
-- Scenes and recall scope / recall-safe: **exist today**.
-- Action lists: **exist today**. It's the same action registry that user keys and macros use.
-- **New:** timed fades, so cues crossfade (e.g. 2 s band-down into the sermon) instead of
-  snapping. Fades run in the engine, smoothly.
-- **New:** a **cue list** with NOW / NEXT on the console, a GO key for manual stepping,
-  and a log of what fired and why.
+Nobody has to build scenes. Merge works from **what each channel is** and **what moment the
+service is in**, and learns the levels.
 
-**De-duplication across the chain:** when Ableton fires a cue, ProPresenter and then
-Planning Center report the same moment a little later. Rule: **the earliest source wins
-and later reports of the same moment are ignored**, in trust order Ableton → ProPresenter
-→ Planning Center. If a higher source is silent (no Ableton during the sermon), the next
-one down takes over automatically.
+**Channel roles (the only setup, about 5 minutes):** Speaker/Pastor, Host, Lead vocal,
+BVs/Choir, Band, Keys/Pad, Playback/Video, Audience mics. "Suggest from names" fills them in
+from the channel names ("Pastor HH", "Kick", "BV 2", "Tracks L"); you check them. Channels
+without a role are left alone.
+
+**Built-in moments** (defined by role, so the same set works every week, for every worship
+leader):
+
+| Moment | Opens | Closes |
+|---|---|---|
+| Song | Lead vocal, BVs, band, keys, audience | Speaker, host, playback |
+| Chorus / Bridge-Tag *(off by default)* | as Song; starts from Song's levels + a trim (e.g. BVs +2 dB) | as Song |
+| Sermon / Speech | Speaker | everything else |
+| Prayer | Speaker, keys | the rest |
+| Video / Playback | Playback | everything else |
+| Announcements / Host | Host | everything else |
+| Walk-in / Walk-out | Playback | everything else |
+
+Each role in a moment can be set to **open**, **close** or **leave alone**, and each moment
+has its own fade time. Moments can be switched off.
+
+**Learned levels:** when a moment ends, Merge remembers the fader level of every open channel
+(including any rides made by hand) and opens those channels at that level next time. The first
+time, it uses the current faders. A section moment (Chorus) without its own levels yet starts
+from Song's plus its trim. "Reset" forgets a moment's levels. Real scenes still exist for
+special services (baptism, Christmas).
+
+**Timed fades** run in the engine: a moment's level changes follow a smooth S-curve over its
+fade time (e.g. 2 s band-down into the sermon). Touching a fader during a fade takes over at
+once.
+
+**Firing moments:** moment buttons on the Show page and the Mix view, a **GO** button when
+ProPresenter calls for a different moment than the current one, user keys / Stream Deck
+(`Show moment`, `Undo last moment` and `Show automation armed` actions, with LEDs), and
+ProPresenter rules (below). A **show log** lists what fired, when and why.
+
+**De-duplication across the chain:** a moment fires only when the moment the service calls for
+*changes*. Repeated reports of the same moment (every slide of a song) do nothing, and a
+moment fired by hand stays until the service moves on. When Ableton and Planning Center are
+added: the earliest source wins, in trust order Ableton → ProPresenter → Planning Center.
 
 ## 4. Planning Center Services integration
 
@@ -192,9 +224,12 @@ structure is right, the same template works week after week.
 
 ## 7. Safety rules (no operator means these matter more)
 
-1. **Armed / disarmed:** automatic cues only run when armed.
-2. **Manual always wins:** touching a fader or mute holds that channel against the next
-   cue. Recall-safe is respected.
+1. **Armed / disarmed:** ProPresenter only fires moments when armed (buttons, keys and GO
+   always work). Arming doesn't fire anything by itself; it applies from the next change, or
+   press GO.
+2. **Manual always wins:** a channel whose mute was changed by hand since the last moment is
+   held (left alone) for the next moment; its fader rides are learned. Recall-safe channels
+   are never touched. One-button **Undo** puts back exactly what the last moment changed.
 3. **Optional standby countdown** ("Speech cue in 3 s", with a hold button).
 4. **If a trigger connection drops, nothing changes:** the mix stays put, a warning shows,
    and the GO key steps through the cue list manually.
@@ -210,8 +245,8 @@ structure is right, the same template works week after week.
 | Step | What | Depends on |
 |---|---|---|
 | 0 | Foundations: undo (needed); native recorder/playback (needed for step 5, not for 1–2) | (in progress) |
-| 1 | **Cues + timed fades + cue list (NOW/NEXT, GO, log)**; MIDI → cues (program change, notes/CCs) | 0 |
-| 2 | **ProPresenter option A** (state + rules) and option B (macros via MIDI); de-duplication | 1 |
+| 1 | **Roles + built-in moments + learned levels + timed fades + NOW / GO / undo / log** (built) ; MIDI → moments (to do) | 0 |
+| 2 | **ProPresenter option A** (state + rules + slide-note tags) (built; to verify on a real ProPresenter); option B via MIDI (to do) | 1 |
 | 3 | Planning Center: plan import + LIVE follow (backup trigger) | 1 |
 | 4 | Learn the balance at rehearsal, hold it live; automixer + level-rider | 0 |
 | 5 | Auto rehearsal: templates, listening in on FOH's line check, FOH gain-change compensation, audience-mic handling, streaming loudness target | 4 |

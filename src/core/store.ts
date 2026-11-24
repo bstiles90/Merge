@@ -1,3 +1,4 @@
+import { mergeAutomation } from './moments';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
 import { runActions } from './actions';
@@ -97,7 +98,7 @@ export function parseShow(text: string): ConsoleState {
   if (obj?.format !== 'merge-show') throw new Error('Not a Merge show file');
   const d = defaultState();
   // fill in fields added since the show was saved
-  return { ...d, ...obj.show, main: { ...d.main, ...obj.show.main }, keyStates: {} };
+  return { ...d, ...obj.show, main: { ...d.main, ...obj.show.main }, automation: mergeAutomation(obj.show.automation), keyStates: {} };
 }
 
 const AUTOSAVE_KEY = 'merge.autosave.v1';

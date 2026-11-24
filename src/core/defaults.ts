@@ -1,3 +1,4 @@
+import { defaultAutomation } from './moments';
 import type {
   Bus,
   Channel,
@@ -216,6 +217,7 @@ export function defaultState(): ConsoleState {
     markers: [],
     transport: { playing: false, recording: false, position: 0, recordProgram: true },
     loudnessTarget: -11,
+    automation: defaultAutomation(),
     truePeakCeiling: -1,
   };
 }

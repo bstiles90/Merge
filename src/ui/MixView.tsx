@@ -8,6 +8,7 @@ import { registerLoudness } from './meterLoop';
 import { FaderBank, PageKeys } from './Pages';
 import { Dock } from './Dock';
 import { UserKeyGrid } from './UserKeys';
+import { MomentBar } from './ShowView';
 
 
 function MuteGroupMasters() {
@@ -152,6 +153,10 @@ export function MixView() {
         <Dock editKey={editKey} closeKey={() => setEditKey(null)} />
       </div>
       <div className="mix-side">
+        <div className="panel">
+          <div className="panel-title">Show</div>
+          <MomentBar compact />
+        </div>
         <Loudness />
         <Monitor />
         <MuteGroupMasters />

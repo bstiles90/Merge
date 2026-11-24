@@ -67,6 +67,8 @@ interface NativeState {
   docked?: { slotId: string; name: string; width: number; height: number } | null;
   /** the engine can't dock plugin GUIs (e.g. Linux): show parameters instead */
   dockUnavailable?: boolean;
+  /** ProPresenter connection (followed by the engine) and its latest data per endpoint */
+  pp: { state: 'off' | 'connecting' | 'connected' | 'polling' | 'error'; message: string; raw: Record<string, any> };
 }
 
 export const useNative = create<NativeState>(() => ({
@@ -76,6 +78,7 @@ export const useNative = create<NativeState>(() => ({
   blacklisted: [],
   pdc: 0,
   inserts: {},
+  pp: { state: 'off', message: 'Not connected', raw: {} },
 }));
 
 let ws: WebSocket | null = null;
@@ -105,7 +108,18 @@ export function uiLog(text: string) {
   if (EMBEDDED) sendNative({ type: 'ui.log', text: text.slice(0, 500) });
 }
 
+let lastPpConfig = '';
+/** The engine follows ProPresenter; tell it where (only when the setting changes). */
+function sendPpConfig() {
+  const c = useConsole.getState().automation.propresenter;
+  const json = JSON.stringify(c);
+  if (json === lastPpConfig) return;
+  lastPpConfig = json;
+  sendNative({ type: 'pp.config', enabled: c.enabled, host: c.host, port: c.port });
+}
+
 function schedulePlan() {
+  sendPpConfig();
   if (planTimer) return;
   planTimer = setTimeout(() => {
     planTimer = null;
@@ -220,6 +234,12 @@ function onMessage(m: any) {
         autosaveReady = true;
       }
       break;
+    case 'pp.status':
+      useNative.setState((st) => ({ pp: { ...st.pp, state: m.state, message: m.message, raw: m.state === 'off' ? {} : st.pp.raw } }));
+      break;
+    case 'pp.update':
+      useNative.setState((st) => ({ pp: { ...st.pp, raw: { ...st.pp.raw, [m.url]: m.data } } }));
+      break;
     case 'insert.docked':
       if (m.error) uiLog(`dock unavailable: ${m.error}`);
       useNative.setState({ docked: m.slotId ? { slotId: m.slotId, name: m.name, width: m.width, height: m.height } : null, ...(m.error ? { dockUnavailable: true } : {}) });
@@ -295,6 +315,8 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
       useNative.setState({ status: 'connected' });
       if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
       lastPlanJson = '';
+      lastPpConfig = '';
+      sendPpConfig();
       schedulePlan();
       unsubscribe = useConsole.subscribe(schedulePlan);
       resolve();

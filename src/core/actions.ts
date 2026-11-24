@@ -4,12 +4,13 @@
 // console state, so a key lights correctly no matter where the change came from.
 
 import { applyScene, takeSnapshot } from './scenes';
+import { fireMoment, undoMoment } from './moments';
 import { newId } from './defaults';
 import { focusedLayerId, setFocusedLayer } from './layers';
 import { services } from './services';
 import type { ActionCall, Bus, Channel, ConsoleState } from './types';
 
-export type ArgKind = 'channel' | 'bus' | 'dca' | 'muteGroup' | 'scene' | 'layer' | 'number' | 'boolean';
+export type ArgKind = 'channel' | 'bus' | 'dca' | 'muteGroup' | 'scene' | 'layer' | 'moment' | 'number' | 'boolean';
 
 export interface ArgSpec {
   name: string;
@@ -21,7 +22,7 @@ export interface ArgSpec {
 export interface ActionDef {
   type: string;
   label: string;
-  category: 'Mute' | 'Solo' | 'Fader' | 'Scene' | 'Layer' | 'Monitor' | 'Transport' | 'Plugin';
+  category: 'Mute' | 'Solo' | 'Fader' | 'Scene' | 'Show' | 'Layer' | 'Monitor' | 'Transport' | 'Plugin';
   args: ArgSpec[];
   run: (s: ConsoleState, a: Record<string, any>) => ConsoleState;
   isOn?: (s: ConsoleState, a: Record<string, any>) => boolean;
@@ -51,6 +52,44 @@ const layerStep = (s: ConsoleState, dir: 1 | -1): ConsoleState => {
 };
 
 const defs: ActionDef[] = [
+  {
+    type: 'moment.fire',
+    label: 'Show moment',
+    category: 'Show',
+    args: [{ name: 'moment', label: 'Moment', kind: 'moment', default: 'song' }],
+    run: (s, a) => {
+      const r = fireMoment(s, String(a.moment));
+      const name = s.automation.moments.find((m) => m.id === a.moment)?.name ?? String(a.moment);
+      return {
+        ...r.state,
+        automation: {
+          ...r.state.automation,
+          lastEvent: { at: Date.now(), moment: String(a.moment), text: `${name}: opened ${r.opened.length}, closed ${r.closed.length}`
+            + (r.held.length ? `, held ${r.held.length} changed by hand` : '') + (a.source ? ` (${a.source})` : ' (button)') },
+        },
+      };
+    },
+    isOn: (s, a) => s.automation.current === a.moment,
+  },
+  {
+    type: 'moment.undo',
+    label: 'Undo last moment',
+    category: 'Show',
+    args: [],
+    run: (s) => {
+      if (!s.automation.undo) return s;
+      const u = undoMoment(s);
+      return { ...u, automation: { ...u.automation, lastEvent: { at: Date.now(), moment: '', text: 'Undid the last moment' } } };
+    },
+  },
+  {
+    type: 'automation.arm',
+    label: 'Show automation armed (toggle)',
+    category: 'Show',
+    args: [],
+    run: (s) => ({ ...s, automation: { ...s.automation, armed: !s.automation.armed } }),
+    isOn: (s) => s.automation.armed,
+  },
   {
     type: 'channel.mute.toggle',
     label: 'Channel mute (toggle)',
@@ -351,6 +390,8 @@ export function describeAction(s: ConsoleState, call: ActionCall): string {
         return s.scenes.find((c) => c.id === v)?.name ?? String(v);
       case 'layer':
         return s.layers.find((c) => c.id === v)?.name ?? String(v);
+      case 'moment':
+        return s.automation.moments.find((c) => c.id === v)?.name ?? String(v);
       default:
         return `${a.label}: ${v}`;
     }

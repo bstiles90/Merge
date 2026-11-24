@@ -2,6 +2,8 @@
 // deliberately independent of the audio engine so it can be shared with a native
 // engine later.
 
+import type { Automation, Role } from './moments';
+
 export type ChannelId = string;
 export type BusId = string;
 export type DcaId = string;
@@ -57,6 +59,8 @@ export interface Channel {
   /** live = source, playback = recorded track (virtual soundcheck) */
   inputMode: 'live' | 'playback';
   recallSafe: boolean;
+  /** what this channel is (speaker, lead vocal, band…): show moments act on roles */
+  role?: Role;
 }
 
 export type BusType = 'aux' | 'mixminus';
@@ -253,4 +257,6 @@ export interface ConsoleState {
   loudnessTarget: number;
   /** delivery spec for the program true peak (dBTP); the TP meter warns above it */
   truePeakCeiling: number;
+  /** show automation: channel-role moments, learned levels, ProPresenter rules */
+  automation: Automation;
 }

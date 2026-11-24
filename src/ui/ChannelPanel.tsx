@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useConsole } from '../core/store';
 import { linkInfo } from '../core/links';
 import type { Channel } from '../core/types';
+import { ROLES, type Role } from '../core/moments';
 import { fmtDb, fmtMs, Knob, Toggle } from './controls';
 import { ColorPicker, Inserts, LinkSection, SourcePicker } from './Detail';
 
@@ -32,8 +33,15 @@ function InTab({ ch }: { ch: Channel }) {
           {ch.inputMode === 'live' ? 'LIVE INPUT' : 'PLAYBACK'}
         </Toggle>
         <Toggle kind="rec" on={ch.recArm} onClick={() => up({ recArm: !ch.recArm })} small>REC ARM</Toggle>
-        <Toggle kind="safe" on={ch.recallSafe} onClick={() => up({ recallSafe: !ch.recallSafe })} small title="Scenes won't change this channel">RECALL SAFE</Toggle>
+        <Toggle kind="safe" on={ch.recallSafe} onClick={() => up({ recallSafe: !ch.recallSafe })} small title="Scenes and show moments won't change this channel">RECALL SAFE</Toggle>
       </div>
+      <label className="row">
+        <span className="hint">Role</span>
+        <select value={ch.role ?? ''} onChange={(e) => up({ role: (e.target.value || undefined) as Role | undefined })} title="Show moments (Song, Sermon…) open and close channels by role">
+          <option value="">— no role —</option>
+          {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        </select>
+      </label>
       <LinkSection ch={ch} />
     </div>
   );

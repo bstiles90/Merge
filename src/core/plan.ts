@@ -15,8 +15,13 @@ export interface PlanInsert {
 const inserts = (list: InsertSlot[]): PlanInsert[] => list.map((i) => ({ id: i.id, pluginId: i.pluginId, bypass: i.bypass }));
 const r = (x: number) => Math.round(x * 1e6) / 1e6; // keep the JSON small and stable
 
-export function buildMixPlan(s: ConsoleState) {
+/** How long after a moment its fade is still sent with the plan (the engine starts it once). */
+const FADE_WINDOW_MS = 3000;
+
+export function buildMixPlan(s: ConsoleState, now = Date.now()) {
   const solo = anySolo(s);
+  const f = s.automation?.fade;
+  const fade = f && now - f.at < f.ms + FADE_WINDOW_MS ? f : null;
   const pfl = s.monitor.soloMode === 'pfl';
   return {
     channels: s.channels.map((ch) => {
@@ -36,6 +41,7 @@ export function buildMixPlan(s: ConsoleState) {
           .map(([bus, v]) => ({ bus, gain: r(v.gain), pre: v.pre })),
         cue: r(g.cue),
         cuePre: g.cuePre,
+        ...(fade && fade.channels.includes(ch.id) ? { fadeId: fade.id, fadeMs: fade.ms } : {}),
       };
     }),
     buses: s.buses.map((b) => {
