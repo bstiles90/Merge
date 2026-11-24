@@ -233,11 +233,43 @@ void testPluginHosting (const juce::String& pluginPath)
     const int gi = ins1 ? ins1->findParam (gainId) : -1;
     check (gi >= 0 && near (ins1->plugin().getParameters()[gi]->getValue(), 0.625, 0.001), "plugin state save / restore round-trips");
 
+    // docking the plugin GUI into the app window's dock layer
+    {
+        juce::Component holder;
+        holder.setSize (800, 400);
+        check (! e.host().dock ("slot1"), "docking refused without an app window (headless)");
+        e.host().getDockHolder = [&holder] { return &holder; };
+        sent.clear();
+        const bool docked = e.host().dock ("slot1");
+        juce::var dmsg;
+        for (auto& v : sent) if (v["type"] == "insert.docked") dmsg = v;
+        check (docked && holder.getNumChildComponents() == 1 && (int) dmsg["width"] > 0 && dmsg["slotId"] == "slot1",
+               "plugin GUI docks into the window and reports its size", dmsg["width"].toString() + "x" + dmsg["height"].toString());
+        e.host().undock();
+        check (holder.getNumChildComponents() == 0, "undock removes the plugin GUI");
+        e.host().dock ("slot1");
+        e.host().getDockHolder = nullptr;
+        e.host().undock();
+    }
+
     // bypass keeps latency so alignment holds
     const juce::String insBypassed = "[{\"id\":\"slot1\",\"pluginId\":\"" + pluginId + "\",\"bypass\":true}]";
     e.handleMessage (0, planMsg (tonePlan (2, insBypassed)));
     p = render (e.mixer(), 150);
     check (near (p[0], 2 * kToneCentre, 0.006), "bypassed plugin stays time-aligned", juce::String (p[0], 4));
+
+    // removing a docked insert closes its docked GUI before the plugin goes away
+    {
+        juce::Component holder;
+        e.host().getDockHolder = [&holder] { return &holder; };
+        e.host().dock ("slot1");
+        const auto noInserts = tonePlan (2);
+        e.handleMessage (0, planMsg (noInserts));
+        check (holder.getNumChildComponents() == 0, "removing a docked plugin closes its docked GUI first");
+        e.host().getDockHolder = nullptr;
+        e.handleMessage (0, planMsg (tonePlan (2, insBypassed)));
+        for (int i = 0; i < 200 && e.host().numLoading() > 0; ++i) pump (10);
+    }
 
     // removing the insert frees the instance once the audio thread has moved on
     std::weak_ptr<HostedInsert> weak = e.host().find ("slot1");

@@ -18,6 +18,9 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 | `insert.param` | `slotId, id, value` | Set a plugin parameter (normalised 0–1). `id` comes from `insert.ready`. |
 | `insert.setState` | `slotId, state` | Restore plugin state (base64), e.g. after loading a show. |
 | `insert.editor` | `slotId, open` | Open/close the plugin's own editor window (always-on-top). |
+| `insert.dock` | `slotId` | Dock that plugin's GUI inside the app window (one at a time). |
+| `insert.undock` | | Remove the docked GUI. |
+| `dock.bounds` | `x, y, w, h, visible` | Where the console's dock area is (window coordinates); the engine places the GUI there. |
 | `plugins.scan` | `rescan` | Scan default VST3/AU folders. `rescan: true` clears the blacklist and rescans everything. |
 | `plugins.addFile` | `path` | Add one plugin file/bundle. |
 | `plugins.list` | | Ask for the plugin list. |
@@ -63,4 +66,5 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 | `insert.state` | `slotId, state` — base64, sent at most once a second while it changes; store it in the show |
 | `insert.error` | `slotId, pluginId, message` — e.g. plugin not installed on this machine |
 | `insert.editor` | `slotId, open` |
+| `insert.docked` | `slotId, name, width, height` (or `slotId: null`, with `error` if docking isn't available) |
 | `error` | `message` |

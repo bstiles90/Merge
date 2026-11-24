@@ -156,6 +156,17 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "device.set") setDevice (msg);
     else if (type == "loudness.reset") mix.loudness.reset();
     else if (type.startsWith ("show.")) handleShowMessage (clientId, type, msg);
+    else if (type == "insert.dock")
+    {
+        if (! plugins.dock (msg["slotId"]))
+            send (obj ({ { "type", "insert.docked" }, { "slotId", juce::var() }, { "error", "The plugin GUI can only be docked inside the Merge app window" } }), clientId);
+    }
+    else if (type == "insert.undock") plugins.undock();
+    else if (type == "dock.bounds")
+    {
+        if (onDockBounds)
+            onDockBounds ({ (int) msg["x"], (int) msg["y"], (int) msg["w"], (int) msg["h"] }, (bool) msg["visible"]);
+    }
     else if (type == "ping") send (obj ({ { "type", "pong" }, { "t", msg["t"] } }), clientId);
 }
 

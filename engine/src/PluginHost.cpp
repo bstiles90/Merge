@@ -1,4 +1,5 @@
 #include "PluginHost.h"
+#include <iostream>
 
 namespace merge
 {
@@ -196,6 +197,8 @@ PluginHost::PluginHost()
 PluginHost::~PluginHost()
 {
     stopTimer();
+    send = nullptr; // the engine's socket may already be gone at shutdown
+    undock();
     for (auto& [id, s] : slots) s.editor.reset();
     slots.clear();
 }
@@ -318,6 +321,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         auto w = wanted.find (it->first);
         if (w == wanted.end() || w->second->pluginId != it->second.pluginId || w->second->strip != it->second.strip)
         {
+            if (it->first == dockedSlot) undock();
             it->second.editor.reset(); // editor must go before the instance (instance lives on in old plans briefly)
             it = slots.erase (it);
             changed = true;
@@ -437,6 +441,7 @@ void PluginHost::openEditor (const juce::String& slotId)
     auto it = slots.find (slotId);
     if (it == slots.end() || ! it->second.insert) return;
     auto& slot = it->second;
+    if (slotId == dockedSlot) undock(); // pop out: the docked GUI moves to its own window
     if (slot.editor) { slot.editor->toFront (true); return; }
     if (juce::Desktop::getInstance().getDisplays().getPrimaryDisplay() == nullptr)
     {
@@ -449,6 +454,36 @@ void PluginHost::openEditor (const juce::String& slotId)
     if (! ed) ed = new juce::GenericAudioProcessorEditor (p);
     slot.editor = std::make_unique<EditorWindow> (p.getName() + " — " + slot.strip, ed, [this, slotId] { closeEditor (slotId); });
     send (obj ({ { "type", "insert.editor" }, { "slotId", slotId }, { "open", true } }));
+}
+
+bool PluginHost::dock (const juce::String& slotId)
+{
+    auto* holder = getDockHolder ? getDockHolder() : nullptr;
+    auto it = slots.find (slotId);
+    if (holder == nullptr || it == slots.end() || ! it->second.insert) return false;
+    if (dockedSlot == slotId && dockedEditor) return true;
+    undock();
+    it->second.editor.reset(); // close its floating window, if open (frees the active editor)
+    auto& p = it->second.insert->plugin();
+    auto* ed = p.hasEditor() ? p.createEditorIfNeeded() : nullptr;
+    if (! ed) ed = new juce::GenericAudioProcessorEditor (p);
+    dockedEditor.reset (ed);
+    dockedSlot = slotId;
+    holder->addAndMakeVisible (ed);
+    ed->setTopLeftPosition (0, 0);
+    lastDockSize = ed->getLocalBounds();
+    std::cout << "[dock] " << p.getName() << " " << ed->getWidth() << "x" << ed->getHeight() << std::endl;
+    send (obj ({ { "type", "insert.docked" }, { "slotId", slotId }, { "name", p.getName() }, { "width", ed->getWidth() }, { "height", ed->getHeight() } }));
+    return true;
+}
+
+void PluginHost::undock()
+{
+    if (! dockedEditor && dockedSlot.isEmpty()) return;
+    dockedEditor.reset();
+    const auto was = dockedSlot;
+    dockedSlot.clear();
+    if (send) send (obj ({ { "type", "insert.docked" }, { "slotId", juce::var() }, { "was", was } }));
 }
 
 void PluginHost::closeEditor (const juce::String& slotId)
@@ -466,6 +501,13 @@ void PluginHost::closeEditor (const juce::String& slotId)
 
 void PluginHost::timerCallback()
 {
+    // plugins can resize their own GUI: tell the console so the dock fits it
+    if (dockedEditor && dockedEditor->getLocalBounds() != lastDockSize)
+    {
+        lastDockSize = dockedEditor->getLocalBounds();
+        send (obj ({ { "type", "insert.docked" }, { "slotId", dockedSlot }, { "name", dockedEditor->getAudioProcessor()->getName() },
+                     { "width", lastDockSize.getWidth() }, { "height", lastDockSize.getHeight() } }));
+    }
     if (scanActive) scanStep();
     ++ticks;
     for (auto& [id, slot] : slots)

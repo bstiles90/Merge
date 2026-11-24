@@ -121,11 +121,36 @@ ConsoleWindow::ConsoleWindow (Engine& e, const juce::String& devUrl)
     const auto url = devUrl.isNotEmpty() ? devUrl + query : bundled + query;
     juce::Component::SafePointer<juce::WebBrowserComponent> safe (browser.get());
     juce::MessageManager::callAsync ([safe, url] { if (safe) safe->goToURL (url); });
+
+    // Plugin dock: a child native layer attached to this window, so the plugin's own GUI (native
+    // view or JUCE-drawn) sits on top of the console exactly where the console's dock area is.
+    struct DockHolder : juce::Component
+    {
+        void paint (juce::Graphics& g) override { g.fillAll (juce::Colour (0xff0b0d0f)); }
+    };
+   #if ! JUCE_LINUX
+    // (Linux: JUCE's XEmbed web view doesn't tolerate another child window, so plugins open in
+    //  their own window there and the console shows their parameters instead.)
+    dockHolder = std::make_unique<DockHolder>();
+    dockHolder->setOpaque (true);
+    dockHolder->addToDesktop (0, getWindowHandle());
+    dockHolder->setVisible (false);
+    engine.host().getDockHolder = [this] { return dockHolder.get(); };
+   #endif
+    engine.onDockBounds = [this] (juce::Rectangle<int> r, bool visible) {
+        if (! dockHolder) return;
+        dockHolder->setBounds (r);
+        dockHolder->setVisible (visible && ! r.isEmpty());
+    };
     startTimerHz (1);
 }
 
 ConsoleWindow::~ConsoleWindow()
 {
+    engine.host().undock();
+    engine.host().getDockHolder = nullptr;
+    engine.onDockBounds = nullptr;
+    dockHolder.reset();
     settings().setValue ("windowState", getWindowStateAsString());
     settings().saveIfNeeded();
     clearContentComponent();

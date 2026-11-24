@@ -63,21 +63,30 @@ jobs:
         shell: bash
         run: engine/build/MergeEngine_artefacts/Release/Merge.exe --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
 
-      # Launch the real app on macOS: the embedded console must load and connect to the engine
-      - name: App launch check (macOS)
+      # Launch the real app on macOS: the embedded console must load, connect to the engine,
+      # and dock a real VST3's GUI inside the window (test show with the test plugin on ch 1)
+      - name: App launch + plugin dock check (macOS)
         if: runner.os == 'macOS'
         run: |
           APP=engine/build/MergeEngine_artefacts/Release/Merge.app
           test -f "$APP/Contents/Resources/ui/index.html"
           # the signature must cover the whole bundle, or a downloaded copy shows "damaged"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          PLUGIN_ID=$("$APP/Contents/MacOS/Merge" --print-plugin-ids | grep "Merge Test Gain" | cut -f1 | head -1)
+          echo "test plugin id: $PLUGIN_ID"
+          test -n "$PLUGIN_ID"
+          mkdir -p "$HOME/Library/Application Support/Merge"
+          python3 engine/ci/make_dock_test_show.py "$PLUGIN_ID" "$HOME/Library/Application Support/Merge/current-show.merge.json"
           "$APP/Contents/MacOS/Merge" > app.log 2>&1 &
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
+          for i in $(seq 1 20); do grep -q "\[dock\]" app.log && break; sleep 1; done
+          sleep 3
           screencapture -x app-screenshot.png || true
           kill $PID || true
           cat app.log
           grep -q "UI client connected" app.log
+          grep -q "\[dock\] Merge Test Gain" app.log
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS' && always()

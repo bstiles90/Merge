@@ -3,11 +3,11 @@ import { anySolo } from '../core/mix';
 import { useConsole } from '../core/store';
 import { getEngine } from '../audio/engine';
 import { readNativeTruePeak, resetNativeTruePeakHold, sendNative, useNative } from '../native/bridge';
-import { Detail } from './Detail';
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
-import { FaderBank, FaderHeight, PageKeys } from './Pages';
-import { KeyEditor, UserKeyGrid } from './UserKeys';
+import { FaderBank, PageKeys } from './Pages';
+import { Dock } from './Dock';
+import { UserKeyGrid } from './UserKeys';
 
 
 function MuteGroupMasters() {
@@ -137,50 +137,31 @@ function Monitor() {
   );
 }
 
-/** Strip height that isn't fader travel: header, tags, groups, pan, buttons, readout, mute, padding. */
-const STRIP_OVERHEAD = 218;
-
 export function MixView() {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editPages, setEditPages] = useState(false);
   const split = useConsole((s) => s.bankLayout === 'split');
-  // Faders grow to fill the height the window gives the bank row.
-  const rowRef = useRef<HTMLDivElement>(null);
-  const [rowH, setRowH] = useState(440);
-  useEffect(() => {
-    const el = rowRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setRowH(entry.contentRect.height));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const overhead = STRIP_OVERHEAD + (split ? 22 : 0) + (editPages ? 28 : 0);
-  const faderH = Math.round(Math.max(150, Math.min(700, rowH - overhead)));
   return (
     <div className="mix">
-      <div className="mix-left">
-        <div className="bank-row" ref={rowRef}>
-          <FaderHeight.Provider value={faderH}>
-            <PageKeys editing={editPages} setEditing={setEditPages} />
-            <FaderBank editing={editPages} bank="A" />
-            {split && <FaderBank editing={editPages} bank="B" />}
-          </FaderHeight.Provider>
+      <div className="mix-main">
+        <div className="bank-row">
+          <PageKeys editing={editPages} setEditing={setEditPages} />
+          <FaderBank editing={editPages} bank="A" />
+          {split && <FaderBank editing={editPages} bank="B" />}
         </div>
-        <div className="surface">
-          <MuteGroupMasters />
-          <div className="panel">
-            <div className="panel-title row between">
-              <span>User keys</span>
-              <span className="hint">right-click a key to assign</span>
-            </div>
-            <UserKeyGrid onEdit={setEditKey} />
-          </div>
-          <Monitor />
-        </div>
+        <Dock editKey={editKey} closeKey={() => setEditKey(null)} />
       </div>
-      <div className="mix-right">
+      <div className="mix-side">
         <Loudness />
-        {editKey ? <KeyEditor id={editKey} onClose={() => setEditKey(null)} /> : <Detail />}
+        <Monitor />
+        <MuteGroupMasters />
+        <div className="panel">
+          <div className="panel-title row between">
+            <span>User keys</span>
+            <span className="hint">right-click to assign</span>
+          </div>
+          <UserKeyGrid onEdit={setEditKey} />
+        </div>
       </div>
     </div>
   );

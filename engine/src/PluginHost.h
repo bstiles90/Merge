@@ -80,6 +80,12 @@ public:
     void openEditor (const juce::String& slotId);
     void closeEditor (const juce::String& slotId);
 
+    // ---- docked plugin GUI (inside the Merge window, in the console's plugin dock)
+    /** The component the docked editor goes into (owned by the app window); null when headless. */
+    std::function<juce::Component*()> getDockHolder;
+    bool dock (const juce::String& slotId);
+    void undock();
+
     /** Outgoing messages to the UI. */
     std::function<void (const juce::var&)> send;
     /** Called when an asynchronously loading plugin becomes ready (the engine re-applies the plan). */
@@ -121,6 +127,9 @@ private:
     double sampleRate = 48000;
     int maxBlock = 512;
     std::map<juce::String, Slot> slots;
+    juce::String dockedSlot;
+    std::unique_ptr<juce::AudioProcessorEditor> dockedEditor; // destroyed before its plugin instance
+    juce::Rectangle<int> lastDockSize;
     int ticks = 0;
 };
 

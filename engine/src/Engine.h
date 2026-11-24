@@ -44,6 +44,8 @@ public:
     /** Entry point for UI messages (also used by the self-test without a socket). */
     void handleMessage (int clientId, const juce::String& text);
     std::function<void (const juce::var&)> extraSink; // tests can observe outgoing messages
+    /** Set by the app window: where (window coordinates) the console's plugin dock is, and whether it's shown. */
+    std::function<void (juce::Rectangle<int>, bool)> onDockBounds;
 
 private:
     void audioDeviceIOCallbackWithContext (const float* const* in, int numIn, float* const* out, int numOut, int n,

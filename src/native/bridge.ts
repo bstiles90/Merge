@@ -63,6 +63,10 @@ interface NativeState {
   showPath?: string;
   /** short status line, e.g. "Saved" */
   notice?: string;
+  /** plugin GUI currently docked in the Merge window */
+  docked?: { slotId: string; name: string; width: number; height: number } | null;
+  /** the engine can't dock plugin GUIs (e.g. Linux): show parameters instead */
+  dockUnavailable?: boolean;
 }
 
 export const useNative = create<NativeState>(() => ({
@@ -209,6 +213,9 @@ function onMessage(m: any) {
         autosaveReady = true;
       }
       break;
+    case 'insert.docked':
+      useNative.setState({ docked: m.slotId ? { slotId: m.slotId, name: m.name, width: m.width, height: m.height } : null, ...(m.error ? { dockUnavailable: true } : {}) });
+      break;
     case 'show.saved':
       useNative.setState({ showPath: m.ok ? m.path : useNative.getState().showPath, notice: m.ok ? `Saved ${String(m.path).split(/[\\/]/).pop()}` : 'Save failed' });
       break;
@@ -224,6 +231,23 @@ function onMessage(m: any) {
       useNative.setState({ error: m.message });
       break;
   }
+}
+
+// ---- docked plugin GUI (embedded app) --------------------------------------
+export function dockInsert(slotId: string) {
+  if (useNative.getState().docked?.slotId !== slotId) sendNative({ type: 'insert.dock', slotId });
+}
+export function undockInsert() {
+  if (useNative.getState().docked) sendNative({ type: 'insert.undock' });
+}
+let lastBounds = '';
+/** Where the console's plugin area is (window coordinates); the engine places the GUI there. */
+export function sendDockBounds(r: { x: number; y: number; w: number; h: number } | null) {
+  const msg = r ? { type: 'dock.bounds', x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h), visible: true } : { type: 'dock.bounds', x: 0, y: 0, w: 0, h: 0, visible: false };
+  const key = JSON.stringify(msg);
+  if (key === lastBounds) return;
+  lastBounds = key;
+  sendNative(msg);
 }
 
 // ---- show persistence in the embedded app --------------------------------

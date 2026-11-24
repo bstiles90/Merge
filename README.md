@@ -48,6 +48,7 @@ Use **I/O · Patch** to patch real interface inputs.
 | Area | Features |
 |---|---|
 | Channel strips | console-style vertical flow on every strip: input/source + gain, 8-slot plugin rack (no built-in processing: load filters/EQ/dynamics as plugins), 8 send bars (drag), rotary pan, groups, SEL/PFL, meter + fader (moves only by its cap), mute |
+| Layout | faders + bottom **dock** (selected strip's settings on the left, its plugins on the right, the plugin's own GUI docked in the window in the Mac/Windows app; resizable, collapsible) and a right-hand master column (loudness, monitor, mute groups, user keys) |
 | Stereo link | link mono channel pairs: fader/mute/solo/sends/groups always follow; gain optional; pan and plugins per side |
 | Channels (32) | source/patch, gain, polarity, delay, 8-slot plugin rack, pan, 8 sends (pre/post), main assign, rec-arm, live/playback input |
 | Buses (8) | aux / IEM, or **mix-minus (N-1)** with auto-feed of main minus a chosen source, delay, inserts |

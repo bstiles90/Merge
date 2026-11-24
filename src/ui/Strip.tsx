@@ -6,6 +6,7 @@ import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, StripRef } from '../core/types';
 import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
+import { openInDock } from './uiState';
 
 export function sameRef(a: StripRef | null, b: StripRef | null) {
   if (!a || !b) return false;
@@ -61,6 +62,10 @@ function InputSection({ ch }: { ch: Channel }) {
 }
 
 function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?: () => void }) {
+  const open = (ins?: InsertSlot) => {
+    onSelect?.();
+    if (ins) openInDock(ins.id);
+  };
   const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
   return (
     <div className="sec sec-rack">
@@ -71,8 +76,8 @@ function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?:
             <div
               key={i}
               className={'rack-slot' + (ins ? ' used' : '') + (ins?.bypass ? ' byp' : '')}
-              title={ins ? `${name}${ins.bypass ? ' (bypassed)' : ''} — open in the channel settings` : 'Empty insert — add in the channel settings'}
-              onClick={onSelect}
+              title={ins ? `${name}${ins.bypass ? ' (bypassed)' : ''} — click to open below` : 'Empty insert — add in the RACK tab'}
+              onClick={() => open(ins)}
             >
               {ins ? name : '·'}
             </div>

@@ -1,6 +1,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Engine.h"
 #include "ConsoleWindow.h"
+#include "PluginHost.h"
 
 namespace merge { int runSelfTest (const juce::StringArray& args); }
 
@@ -14,6 +15,17 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         const auto args = juce::StringArray::fromTokens (commandLine, true);
+        if (args.contains ("--print-plugin-ids"))
+        {
+            // lists the scanned plugins (id <tab> name); used by CI to build a test show
+            merge::PluginHost host;
+            const auto plugins = host.describePlugins(); // keep the var alive while iterating
+            if (auto* list = plugins.getArray())
+                for (auto& d : *list)
+                    std::cout << d["id"].toString() << "\t" << d["name"].toString() << std::endl;
+            std::fflush (stdout);
+            std::_Exit (0);
+        }
         if (args.contains ("--selftest"))
         {
             // run once the message loop is up (plugin hosting needs it)

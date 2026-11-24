@@ -72,6 +72,31 @@ function NativeInsertEditor({ ins }: { ins: InsertSlot }) {
   );
 }
 
+/** Controls for one insert: the native plugin's parameters, or a built-in effect's knobs. */
+export function InsertControls({ ins, onParam }: { ins: InsertSlot; onParam: (id: string, v: number) => void }) {
+  if (!ins.pluginId.startsWith('builtin.')) return <NativeInsertEditor ins={ins} />;
+  const desc = getPlugin(ins.pluginId);
+  if (!desc) return null;
+  return (
+    <div className="plugin-editor">
+      {desc.params.map((p) => (
+        <Knob
+          key={p.id}
+          label={p.name}
+          value={ins.params[p.id] ?? p.default}
+          min={p.min}
+          max={p.max}
+          log={p.scale === 'log'}
+          step={p.step}
+          defaultValue={p.default}
+          format={(v) => `${v >= 100 ? Math.round(v) : v.toFixed(1)}${p.unit ? ' ' + p.unit : ''}`}
+          onChange={(v) => onParam(p.id, v)}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange: (i: InsertSlot[]) => void }) {
   const [open, setOpen] = useState<string | null>(null);
   usePluginsVersion();
@@ -108,26 +133,8 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
               <button className="icon-btn" title="Remove" onClick={() => onChange(inserts.filter((x) => x.id !== ins.id))}>✕</button>
             </div>
             {err && open !== ins.id && <div className="insert-err">{err}</div>}
-            {open === ins.id && isNative && <NativeInsertEditor ins={ins} />}
-            {open === ins.id && !isNative && desc && (
-              <div className="plugin-editor">
-                {desc.params.map((p) => (
-                  <Knob
-                    key={p.id}
-                    label={p.name}
-                    value={ins.params[p.id] ?? p.default}
-                    min={p.min}
-                    max={p.max}
-                    log={p.scale === 'log'}
-                    step={p.step}
-                    defaultValue={p.default}
-                    format={(v) => `${v >= 100 ? Math.round(v) : v.toFixed(1)}${p.unit ? ' ' + p.unit : ''}`}
-                    onChange={(v) =>
-                      onChange(inserts.map((x) => (x.id === ins.id ? { ...x, params: { ...x.params, [p.id]: v } } : x)))
-                    }
-                  />
-                ))}
-              </div>
+            {open === ins.id && (
+              <InsertControls ins={ins} onParam={(id, v) => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, params: { ...x.params, [id]: v } } : x)))} />
             )}
           </div>
         );

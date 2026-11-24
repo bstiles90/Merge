@@ -37,6 +37,8 @@ private:
     juce::File uiDir;
     std::unique_ptr<juce::WebBrowserComponent> browser;
     std::unique_ptr<juce::PropertiesFile> props;
+    /** Native layer over the web view where the docked plugin GUI is placed (at the console's dock area). */
+    std::unique_ptr<juce::Component> dockHolder;
 };
 
 } // namespace merge
