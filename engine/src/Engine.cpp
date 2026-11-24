@@ -46,18 +46,6 @@ Engine::Engine()
         send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION } }), id);
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
-        if (! ppStatus.isVoid()) send (ppStatus, id);
-        send (obj ({ { "type", "pco.status" }, { "linked", planningCenter.hasCredentials() } }), id);
-        for (auto& [url, data] : ppLatest) send (obj ({ { "type", "pp.update" }, { "url", url }, { "data", data } }), id);
-    };
-    propresenter.onStatus = [this] (const juce::String& state, const juce::String& message) {
-        ppStatus = obj ({ { "type", "pp.status" }, { "state", state }, { "message", message } });
-        if (state == "off") ppLatest.clear();
-        send (ppStatus);
-    };
-    propresenter.onUpdate = [this] (const juce::String& url, const juce::var& data) {
-        ppLatest[url] = data;
-        send (obj ({ { "type", "pp.update" }, { "url", url }, { "data", data } }));
     };
     settingsFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/audio-device.xml");
 }
@@ -170,18 +158,7 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "insert.setState") plugins.setState (msg["slotId"], msg["state"]);
     else if (type == "insert.editor") (bool) msg["open"] ? plugins.openEditor (msg["slotId"]) : plugins.closeEditor (msg["slotId"]);
     else if (type == "plugins.scan") plugins.startScan ((bool) msg["rescan"]);
-    else if (type == "plugins.addFile") plugins.scanFileAsync (msg["path"]);
-    else if (type == "plugins.skip") plugins.skipCurrentScan();
-    else if (type == "insert.retry") plugins.retryInsert (msg["slotId"]);
-    else if (type == "log.reveal")
-    {
-       #if JUCE_MAC
-        const auto log = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/Merge/merge.log");
-       #else
-        const auto log = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/Logs/merge.log");
-       #endif
-        if (log.existsAsFile()) log.revealToUser();
-    }
+    else if (type == "plugins.addFile") plugins.scanFile (msg["path"]);
     else if (type == "plugins.list") send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), clientId);
     else if (type == "device.list") send (deviceInfo(), clientId);
     else if (type == "device.set") setDevice (msg);
@@ -193,20 +170,6 @@ void Engine::handleMessage (int clientId, const juce::String& text)
             send (obj ({ { "type", "insert.docked" }, { "slotId", juce::var() }, { "error", "The plugin GUI can only be docked inside the Merge app window" } }), clientId);
     }
     else if (type == "insert.undock") plugins.undock();
-    else if (type == "pco.credentials")
-    {
-        planningCenter.setCredentials (msg["appId"].toString(), msg["secret"].toString());
-        send (obj ({ { "type", "pco.status" }, { "linked", planningCenter.hasCredentials() } }));
-    }
-    else if (type == "pco.get")
-    {
-        const auto reqId = msg["id"];
-        planningCenter.get (msg["path"].toString(), [this, reqId, clientId] (int status, const juce::var& body) {
-            send (obj ({ { "type", "pco.response" }, { "id", reqId }, { "status", status }, { "body", body } }), clientId);
-        });
-    }
-    else if (type == "pp.config")
-        propresenter.configure ((bool) msg["enabled"], msg["host"].toString(), (int) msg["port"]);
     else if (type == "dock.bounds")
     {
         if (onDockBounds)
@@ -338,7 +301,6 @@ void Engine::setDevice (const juce::var& msg)
 
 void Engine::timerCallback()
 {
-    heartbeat.store (juce::Time::getMillisecondCounter());
     mix.collectGarbage();
     if (ws.numClients() == 0 && ! extraSink) return;
     juce::Array<juce::var> chans, buses;

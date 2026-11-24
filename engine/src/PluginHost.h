@@ -1,5 +1,4 @@
 #pragma once
-#include <deque>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Plan.h"
@@ -8,10 +7,6 @@
 
 namespace merge
 {
-
-/** What the app's main thread is busy with (for the watchdog's log line). */
-void setActivity (const juce::String&);
-juce::String getActivity();
 
 /**
  * A plugin instance living in an insert slot. Owned via shared_ptr by the host
@@ -67,17 +62,8 @@ public:
 
     void setAudioConfig (double sampleRate, int maxBlock);
 
-    // ---- scanning: each plugin file is scanned in a helper process (Merge --scan-one), so a
-    //      plugin that hangs or crashes while loading can't freeze the app; it's skipped and listed
+    // ---- scanning (incremental on the message thread; crashing plugins are blacklisted next run)
     void startScan (bool rescanAll);
-    /** Queue one plugin file (drag-drop / "Add"), scanned the same safe way. */
-    void scanFileAsync (const juce::String& path);
-    /** Give up on the plugin being scanned now (it's skipped until a full rescan). */
-    void skipCurrentScan();
-    /** Helper-process side: scan one file and write the descriptions as XML. Returns the count. */
-    static int scanOneToFile (const juce::String& formatName, const juce::String& fileOrId, const juce::File& out);
-    /** How long one plugin file may take to scan (shells like WaveShell take a while). */
-    static int scanTimeoutMs();
     /** Scan only these folders (self-test / custom locations). */
     void startScanIn (const juce::FileSearchPath& folders, bool rescanAll);
     bool scanFile (const juce::String& path); // add one plugin file (tests / drag-drop)
@@ -86,12 +72,7 @@ public:
 
     // ---- insert slots
     /** Create/remove instances so they match the plan; returns true if anything changed. */
-    /** Removes unwanted slots and queues new plugins to load. Never blocks: plugins load one at a
-        time afterwards (some open licence windows or stall while loading), so audio and the console
-        keep running. A plugin Merge got stuck on last time isn't loaded until the user retries it. */
     bool syncInserts (const std::vector<InsertSpec>& specs);
-    /** Clear "got stuck last time" for this slot's plugin and load it again. */
-    void retryInsert (const juce::String& slotId);
     std::shared_ptr<HostedInsert> find (const juce::String& slotId) const;
     bool setParam (const juce::String& slotId, const juce::String& paramId, float normalised);
     bool setState (const juce::String& slotId, const juce::String& base64);
@@ -136,29 +117,13 @@ private:
 
     juce::AudioPluginFormatManager formats;
     juce::KnownPluginList known;
-    // ---- deferred plugin loading
-    std::shared_ptr<int> aliveToken = std::make_shared<int> (0); // deferred callbacks check this
-    std::deque<juce::String> loadQueue;   // slot ids waiting to load, in order
-    bool loadInProgress = false;
-    juce::File loadingMarker, stuckFile;  // "loading now" (survives a hang) / plugins to hold back
-    juce::StringArray stuckPlugins;       // plugin ids Merge got stuck loading in an earlier run
-    void scheduleNextLoad();
-    void loadNext();
-    void saveStuck();
-
-    struct ScanJob { juce::String format, id; };
-    std::vector<ScanJob> scanQueue;
-    size_t scanIndex = 0;
-    std::unique_ptr<juce::ChildProcess> scanChild;
-    juce::File scanOut;
-    juce::uint32 scanStartedMs = 0, scanLastReportMs = 0;
+    std::unique_ptr<juce::PluginDirectoryScanner> scanner;
+    int scanFormatIndex = 0;
+    bool scanRescanAll = false;
     bool scanActive = false;
-    bool scanSkipRequested = false;
     std::optional<juce::FileSearchPath> scanFolders;
-    juce::StringArray scanProblems; // "Foo.vst (timed out)" etc., for the end-of-scan report
-    void finishScanJob (bool timedOut);
-    void startNextScanJob();
-    juce::File dataDir, listFile;
+    juce::String scanFormatName;
+    juce::File dataDir, listFile, deadMansPedal;
     double sampleRate = 48000;
     int maxBlock = 512;
     std::map<juce::String, Slot> slots;

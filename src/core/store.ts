@@ -1,5 +1,3 @@
-import { EMBEDDED } from '../native/embedded';
-import { mergeAutomation } from './moments';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
 import { runActions } from './actions';
@@ -48,8 +46,6 @@ const withStereoLinks =
       get,
       api,
     );
-
-const AUTOSAVE_KEY = 'merge.autosave.v1';
 
 export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => ({
   ...loadAutosave(),
@@ -101,21 +97,12 @@ export function parseShow(text: string): ConsoleState {
   if (obj?.format !== 'merge-show') throw new Error('Not a Merge show file');
   const d = defaultState();
   // fill in fields added since the show was saved
-  const show = obj.show;
-  // shows from before 64 buses: keep their buses (feeds, so they don't suddenly join Main LR), add the rest
-  const saved: any[] = Array.isArray(show.buses) ? show.buses : [];
-  const buses = d.buses.map((def) => {
-    const b = saved.find((x) => x?.id === def.id);
-    return b ? { ...def, ...b, output: b.output ?? 'none' } : def;
-  });
-  const channels = Array.isArray(show.channels) ? show.channels.map((c: any) => ({ ...c, routes: c.routes ?? [] })) : d.channels;
-  return { ...d, ...show, buses, channels, main: { ...d.main, ...show.main }, automation: mergeAutomation(show.automation), keyStates: {} };
+  return { ...d, ...obj.show, main: { ...d.main, ...obj.show.main }, keyStates: {} };
 }
 
+const AUTOSAVE_KEY = 'merge.autosave.v1';
 
 function loadAutosave(): ConsoleState {
-  // inside the Merge app the engine's saved show is the one source of truth (it arrives once connected)
-  if (EMBEDDED) return defaultState();
   try {
     const text = localStorage.getItem(AUTOSAVE_KEY);
     if (text) return parseShow(text);

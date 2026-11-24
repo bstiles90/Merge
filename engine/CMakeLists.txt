@@ -49,12 +49,9 @@ target_sources(MergeEngine PRIVATE
   src/WebSocketServer.cpp
   src/SelfTest.cpp
   src/TruePeak.cpp
-  src/ConsoleWindow.cpp
-  src/ProPresenter.cpp
-  src/PlanningCenter.cpp)
+  src/ConsoleWindow.cpp)
 if(APPLE)
   target_sources(MergeEngine PRIVATE src/MacSupport.mm)
-  target_link_libraries(MergeEngine PRIVATE "-framework AVFoundation")
 endif()
 
 target_compile_definitions(MergeEngine PRIVATE

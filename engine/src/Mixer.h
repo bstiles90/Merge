@@ -63,7 +63,7 @@ public:
     /** Audio thread. */
     void process (const float* const* inputs, int numInputs, float* const* outputs, int numOutputs, int numSamples) noexcept;
 
-    // meters: ch1..ch32 = 0..31, buses 32..95, main 96, monitor 97
+    // meters: ch1..ch32 = 0..31, buses 32..39, main 40, monitor 41
     static constexpr int kMeterMain = kNumChannels + kNumBuses, kMeterMonitor = kMeterMain + 1, kNumMeters = kMeterMonitor + 1;
     std::array<PeakMeter, kNumMeters> meters;
     LoudnessMeter loudness;
@@ -105,22 +105,11 @@ private:
         Delay delay, pdc;
         Smooth post, main, panL, panR, cue;
         std::array<Smooth, kNumBuses> sends;
-        // a timed fade in progress (show moments): `post` follows an S-curve from start to target
-        struct Fade
-        {
-            juce::int64 id = 0;
-            bool active = false;
-            float start = 0, target = 0, sendCoef = 0;
-            int total = 1, pos = 0;
-        } fade;
     };
     struct BusState
     {
         std::array<Delay, 2> delay;
         Smooth out, cuePre, cuePost;
-        // delay compensation through the bus tree: the channel part of the bus input, and the bus
-        // output on its way to Main LR / the next bus
-        std::array<Delay, 2> chanPdc, outPdc;
     };
 
     float sourceSample (ChannelState&, const ChannelPlan&, const float* const* in, int numIn, int i) noexcept;
@@ -136,15 +125,12 @@ private:
     std::array<ChannelState, kNumChannels> ch;
     std::array<BusState, kNumBuses> bus;
     std::array<Delay, 2> mainDelay;
-    std::array<Delay, 2> mainDirectPdc; // channels straight to Main LR, aligned with bus paths
     Smooth mainOut, monGain;
     TruePeakDetector outTp[2];
 
     // scratch (allocated in prepare)
     juce::AudioBuffer<float> chanBuf;   // 1 per channel strip
-    juce::AudioBuffer<float> busBuf;    // 2 per bus: channel sends in, then the bus output
-    juce::AudioBuffer<float> busFeed;   // 2 per bus: what other buses feed into it this block
-    juce::AudioBuffer<float> mainFromBuses; // buses routed to Main LR
+    juce::AudioBuffer<float> busBuf;    // 2 per bus
     juce::AudioBuffer<float> mainBuf, cueBuf, monBuf;
 };
 

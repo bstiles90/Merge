@@ -94,8 +94,6 @@ export interface ChannelGains {
   main: number;
   /** post-fader gain (fader + DCA + mute), before main assign */
   post: number;
-  /** output assignment gains to buses (groups), panned like Main LR */
-  routes: Record<string, number>;
   sends: Record<string, { gain: number; pre: boolean }>;
   /** gain into the cue (solo) bus */
   cue: number;
@@ -126,14 +124,10 @@ export function computeChannelGains(s: ConsoleState, ch: Channel): ChannelGains 
     const sendGain = dbToGain(send.levelDb);
     sends[bus.id] = { gain: send.pre ? sendGain : sendGain * post, pre: send.pre };
   }
-  // output assignments to buses (groups): at the channel's post-fader level, panned like Main LR
-  const routes: Record<string, number> = {};
-  for (const id of ch.routes ?? []) if (s.buses.some((b) => b.id === id && b.type !== 'mixminus')) routes[id] = post;
   const pfl = s.monitor.soloMode === 'pfl';
   return {
     main: ch.mainAssign ? post : 0,
     post,
-    routes,
     sends,
     cue: ch.solo ? (pfl ? 1 : post) : 0,
     cuePre: pfl,

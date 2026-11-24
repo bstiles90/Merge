@@ -11,7 +11,7 @@ const LINKED_FIELDS: Record<LinkOption, (keyof Channel)[]> = {
   mute: ['mute'],
   solo: ['solo'],
   sends: ['sends'],
-  groups: ['dcas', 'muteGroups', 'mainAssign', 'routes'],
+  groups: ['dcas', 'muteGroups', 'mainAssign'],
   input: ['gainDb', 'delayMs'],
 };
 
@@ -42,8 +42,7 @@ export function naturalPartner(id: ChannelId): ChannelId {
 }
 
 function copyLinked(from: Channel, to: Channel, options: StereoLink['options']): Channel {
-  // a stereo pair is one source: it always has one role, so show moments move both sides together
-  let out = from.role !== to.role ? { ...to, role: from.role } : to;
+  let out = to;
   for (const opt of Object.keys(LINKED_FIELDS) as LinkOption[]) {
     if (!options[opt]) continue;
     for (const f of LINKED_FIELDS[opt]) {

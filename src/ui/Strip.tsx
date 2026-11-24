@@ -7,7 +7,6 @@ import type { Bus, Channel, InsertSlot, StripRef } from '../core/types';
 import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
 import { openInDock } from './uiState';
-import { useNative } from '../native/bridge';
 
 export function sameRef(a: StripRef | null, b: StripRef | null) {
   if (!a || !b) return false;
@@ -49,39 +48,13 @@ function sourceLabel(ch: Channel) {
   }
 }
 
-/** The strip's input label is also a menu: pick an interface input (or a test source) right here. */
 function InputSection({ ch }: { ch: Channel }) {
   const s = useConsole();
-  const device = useNative((st) => (st.status === 'connected' ? st.device : undefined));
-  const value = ch.source.kind === 'input' ? `in:${ch.source.deviceChannel ?? 0}` : ch.source.kind;
-  const choose = (v: string) => {
-    if (v.startsWith('in:')) s.updateChannel(ch.id, { source: { ...ch.source, kind: 'input', deviceId: device ? 'native' : ch.source.deviceId, deviceChannel: Number(v.slice(3)) } });
-    else s.updateChannel(ch.id, { source: { ...ch.source, kind: v as Channel['source']['kind'] } });
-  };
-  const inputs = device?.inputs ?? [];
   return (
     <div className="sec sec-input">
-      <div className="sec-src pickable" title={`Input: ${sourceLabel(ch)}. Click to change`} onClick={(e) => e.stopPropagation()}>
+      <div className="sec-src" title="Input source (patch in the channel settings or I/O)">
         {sourceLabel(ch)}
         {ch.phaseInvert && <span className="phase">Ø</span>}
-        <select className="src-select" value={value} onChange={(e) => choose(e.target.value)}>
-          <option value="none">— No source</option>
-          {inputs.length > 0 && (
-            <optgroup label={device?.inputDevice || 'Interface inputs'}>
-              {inputs.map((name, i) => (
-                <option key={i} value={`in:${i}`}>
-                  IN {i + 1}{name && name !== `In ${i + 1}` ? ` · ${name}` : ''}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          {!inputs.length && ch.source.kind === 'input' && <option value={value}>{sourceLabel(ch)}</option>}
-          <optgroup label="Test sources">
-            <option value="tone">Test tone</option>
-            <option value="noise">Pink noise</option>
-            <option value="speech">Speech sim</option>
-          </optgroup>
-        </select>
       </div>
       <Knob size={24} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
     </div>
@@ -150,10 +123,6 @@ function SendsSection({ ch }: { ch?: Channel }) {
     <div className="sec sec-sends">
       {ch &&
         s.buses.map((b: Bus, i) => {
-          const sd = ch.sends[b.id];
-          // 64 buses: the strip shows the sends this channel actually uses (SENDS tab adds more)
-          if (b.type !== 'mixminus' && !(sd?.on || isFinite(sd?.levelDb ?? -Infinity))) return null;
-          if (b.type === 'mixminus' && i >= 8) return null;
           if (b.type === 'mixminus')
             return <MiniBar key={b.id} label={`${i + 1}`} db={0} on={ch.mainAssign && b.mixMinusExclude !== ch.id} auto onChange={() => {}} onToggle={() => {}} />;
           const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };

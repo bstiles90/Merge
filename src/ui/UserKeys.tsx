@@ -65,8 +65,6 @@ function ArgInput({ spec, value, onChange, s }: { spec: ArgSpec; value: any; onC
       return opts(s.scenes);
     case 'layer':
       return opts(s.layers);
-    case 'moment':
-      return opts(s.automation.moments);
     case 'boolean':
       return (
         <label className="row">

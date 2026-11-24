@@ -5,7 +5,6 @@
 #include "Engine.h"
 #include "ConsoleWindow.h"
 #include <iostream>
-#include <cstdlib>
 
 namespace merge
 {
@@ -17,15 +16,6 @@ void check (bool ok, const juce::String& what, const juce::String& detail = {})
 {
     std::cout << (ok ? "  PASS  " : "  FAIL  ") << what << (detail.isNotEmpty() ? "  (" + detail + ")" : juce::String()) << std::endl;
     if (! ok) ++failures;
-}
-
-void setEnv (const char* k, const char* v)
-{
-   #if JUCE_WINDOWS
-    _putenv_s (k, v != nullptr ? v : "");
-   #else
-    if (v != nullptr) setenv (k, v, 1); else unsetenv (k);
-   #endif
 }
 
 bool near (double a, double b, double tol) { return std::abs (a - b) <= tol; }
@@ -143,187 +133,6 @@ void testMixer()
            juce::String (m.loudness.integrated.load(), 2) + " vs " + juce::String (expected, 2));
 }
 
-
-void testFades()
-{
-    std::cout << "Timed fades (show moments)" << std::endl;
-    Mixer m;
-    m.prepare (kSr, kBlock, 0, 4);
-    m.setPlan (parsePlan (tonePlan (1, "[]", "[]", 0.0f), kSr, nullptr, nullptr));
-    render (m, 50);
-    auto plan = tonePlan (1, "[]", "[]", 1.0f);
-    auto* c1 = plan["channels"][0].getDynamicObject();
-    c1->setProperty ("fadeId", 7.0);
-    c1->setProperty ("fadeMs", 1000.0);
-    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
-    const int half = (int) (0.5 * kSr / kBlock);
-    auto p = render (m, half, 1);
-    check (near (p[0], 0.5 * kToneCentre, 0.012), "fade is halfway at half the fade time (S-curve)", juce::String (p[0] / kToneCentre, 3) + " of full");
-    p = render (m, half + 20, 5);
-    check (near (p[0], kToneCentre, 0.003), "fade arrives at the new level", juce::String (p[0] / kToneCentre, 3));
-    // a later plan with the same fade id but another target (a hand move) is not slowed down
-    plan = tonePlan (1, "[]", "[]", 0.0f);
-    plan["channels"][0].getDynamicObject()->setProperty ("fadeId", 7.0);
-    plan["channels"][0].getDynamicObject()->setProperty ("fadeMs", 1000.0);
-    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
-    p = render (m, 20, 5);
-    check (p[0] < 1e-3f, "a hand move after the fade isn't slowed down", juce::String (p[0], 5));
-}
-
-/** A tiny stand-in for ProPresenter's API: streams updates, or (oldMode) refuses the stream
-    so the client must poll. */
-struct FakeProPresenter : juce::Thread
-{
-    juce::StreamingSocket listener;
-    int port = 0;
-    bool oldMode = false;
-    std::atomic<int> requests { 0 };
-    juce::String firstRequest;
-    FakeProPresenter (bool old) : juce::Thread ("FakePP"), oldMode (old)
-    {
-        for (int p = 50801; p < 50899 && ! port; ++p)
-            if (listener.createListener (p, "127.0.0.1")) port = p;
-        startThread();
-    }
-    ~FakeProPresenter() override { listener.close(); stopThread (2000); }
-    static void sendAll (juce::StreamingSocket& s, const juce::String& t) { s.write (t.toRawUTF8(), (int) t.getNumBytesAsUTF8()); }
-    static juce::String chunk (const juce::String& t) { return juce::String::toHexString ((int) t.getNumBytesAsUTF8()) + "\r\n" + t + "\r\n"; }
-    void run() override
-    {
-        while (! threadShouldExit())
-        {
-            std::unique_ptr<juce::StreamingSocket> c (listener.waitForNextConnection());
-            if (! c) break;
-            char buf[4096] {};
-            c->waitUntilReady (true, 2000);
-            juce::Thread::sleep (20); // let the whole request (headers + body) arrive
-            const int n = c->read (buf, sizeof (buf) - 1, false);
-            const juce::String req (buf, (size_t) juce::jmax (0, n));
-            if (requests++ == 0) firstRequest = req;
-            if (req.startsWith ("POST /v1/status/updates"))
-            {
-                if (oldMode) { sendAll (*c, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"); continue; }
-                sendAll (*c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n");
-                const juce::String u1 = R"({"url":"presentation/slide_index","data":{"presentation_index":{"index":2,"presentation_id":{"uuid":"A","name":"Way Maker","index":0}}}})";
-                const juce::String u2 = R"({"url":"playlist/active","data":{"presentation":{"playlist":{"uuid":"P","name":"Sunday","index":0},"item":{"uuid":"I","name":"Sermon","index":4}}}})";
-                const auto all = u1 + "\r\n\r\n";
-                sendAll (*c, chunk (all.substring (0, 40)));  // an update split across two chunks
-                juce::Thread::sleep (30);
-                sendAll (*c, chunk (all.substring (40)));
-                sendAll (*c, chunk (u2 + "\r\n\r\n"));
-                while (! threadShouldExit() && c->isConnected()) juce::Thread::sleep (20); // keep the stream open
-            }
-            else if (req.startsWith ("GET /v1/playlist/active"))
-            {
-                const juce::String body = R"({"presentation":{"playlist":{"uuid":"P","name":"Sunday","index":0},"item":{"uuid":"I","name":"Prayer","index":5}}})";
-                sendAll (*c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (body.getNumBytesAsUTF8()) + "\r\nConnection: close\r\n\r\n" + body);
-            }
-            else sendAll (*c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
-        }
-    }
-};
-
-void testPlanningCenter()
-{
-    std::cout << "Planning Center (read-only)" << std::endl;
-    check (PlanningCenterClient::isAllowedPath ("/services/v2/service_types"), "Services API paths allowed");
-    check (! PlanningCenterClient::isAllowedPath ("/people/v2/people") && ! PlanningCenterClient::isAllowedPath ("/services/v2/../people")
-               && ! PlanningCenterClient::isAllowedPath ("/services/v2/x\r\nHost: evil"),
-           "other Planning Center apps, path tricks and header injection refused");
-    check (PlanningCenterClient::authHeader ("abc", "xyz") == "Authorization: Basic YWJjOnh5eg==", "Personal Access Token sent as HTTP basic auth");
-}
-
-void testProPresenter()
-{
-    std::cout << "ProPresenter follow" << std::endl;
-    {
-        ProPresenterClient::ChunkDecoder d;
-        const char* a = "5\r\nhel"; const char* b = "lo\r\n3\r\n wo\r\n0\r\n\r\n";
-        juce::String got = d.feed (a, std::strlen (a));
-        got += d.feed (b, std::strlen (b));
-        check (got == "hello wo" && d.finished, "chunked transfer decoding (split across reads)", got.quoted());
-        juce::String buf = "{\"url\":\"a\",\"data\":1}\r\n\r\n{\"url\":\"b\",\"data\":2}\r\n\r\n{\"url\":\"c\"";
-        auto ups = ProPresenterClient::takeUpdates (buf);
-        check (ups.size() == 2 && ups[1]["url"] == "b" && buf.startsWith ("{\"url\":\"c\""), "updates split on blank lines; a partial one waits",
-               juce::String (ups.size()) + " / rest " + buf.quoted());
-    }
-    for (bool old : { false, true })
-    {
-        FakeProPresenter fake (old);
-        ProPresenterClient client;
-        std::map<juce::String, juce::var> seen;
-        juce::StringArray states;
-        client.onUpdate = [&] (const juce::String& url, const juce::var& data) { seen[url] = data; };
-        client.onStatus = [&] (const juce::String& st, const juce::String&) { states.addIfNotAlreadyThere (st); };
-        client.configure (true, "127.0.0.1", fake.port);
-        for (int i = 0; i < 300 && ! (seen.count ("playlist/active") && seen.count ("presentation/slide_index")); ++i) pump (10);
-        if (! old)
-        {
-            check (fake.firstRequest.startsWith ("POST /v1/status/updates") && fake.firstRequest.contains ("\"presentation/slide_index\""),
-                   "subscribes with one POST /v1/status/updates stream", fake.firstRequest.substring (0, 60).quoted());
-            check (states.contains ("connected") && ! states.contains ("error"), "reports connected (and stays connected)", states.joinIntoString (","));
-            check ((int) seen["presentation/slide_index"]["presentation_index"]["index"] == 2
-                       && seen["playlist/active"]["presentation"]["item"]["name"] == "Sermon",
-                   "streamed updates arrive (slide index, playlist item)");
-        }
-        else
-        {
-            check (states.contains ("polling"), "falls back to polling when the stream isn't offered", states.joinIntoString (","));
-            check (seen["playlist/active"]["presentation"]["item"]["name"] == "Prayer", "polled update arrives");
-        }
-        client.configure (false, {}, 0);
-        pump (50);
-    }
-    {
-        ProPresenterClient client;
-        juce::StringArray states;
-        client.onStatus = [&] (const juce::String& st, const juce::String&) { states.addIfNotAlreadyThere (st); };
-        client.configure (true, "127.0.0.1", 50999); // nothing listening
-        for (int i = 0; i < 300 && ! states.contains ("error"); ++i) pump (10);
-        check (states.contains ("error"), "unreachable ProPresenter reports an error (and keeps retrying)");
-    }
-}
-
-
-/** tonePlan + ch1 routed to `bus` (output assignment, not Main LR) and extra bus definitions. */
-juce::var routedPlan (int numTones, const juce::String& busesJson)
-{
-    auto plan = tonePlan (numTones);
-    auto* c1 = plan["channels"][0].getDynamicObject();
-    c1->setProperty ("main", 0);
-    c1->setProperty ("sends", juce::JSON::parse (R"([{"bus":"bus9","gain":1,"pre":false,"route":true}])"));
-    if (auto* arr = plan["buses"].getArray())
-        if (auto extra = juce::JSON::parse (busesJson); auto* ex = extra.getArray())
-            for (auto& b : *ex) arr->add (b);
-    return plan;
-}
-
-void testRouting()
-{
-    std::cout << "Routing (64 buses)" << std::endl;
-    Mixer m;
-    m.prepare (kSr, kBlock, 0, 4);
-    m.setPlan (parsePlan (routedPlan (1, R"([{"id":"bus9","out":1,"to":"main","inserts":[]}])"), kSr, nullptr, nullptr));
-    auto p = render (m, 100);
-    check (near (p[0], kToneCentre, 0.003) && near (p[1], kToneCentre, 0.003),
-           "channel -> group bus -> Main LR arrives at the same level as going direct", juce::String (p[0], 4));
-
-    m.setPlan (parsePlan (routedPlan (1, R"([{"id":"bus9","out":1,"to":"bus10","inserts":[]},{"id":"bus10","out":0.5,"to":"main","inserts":[]}])"), kSr, nullptr, nullptr));
-    p = render (m, 100);
-    check (near (p[0], 0.5 * kToneCentre, 0.003), "bus -> bus -> Main LR (Drums -> Band -> Main), each fader applies", juce::String (p[0], 4));
-
-    m.setPlan (parsePlan (routedPlan (1, R"([{"id":"bus9","out":1,"to":"","inserts":[]}])"), kSr, nullptr, nullptr));
-    p = render (m, 100);
-    check (p[0] < 1e-4f, "a channel assigned only to an unrouted bus is not in Main LR", juce::String (p[0], 6));
-
-    // a loop (bus9 -> bus10 -> bus9) is broken instead of hanging or feeding back
-    auto loop = routedPlan (1, R"([{"id":"bus9","out":1,"to":"bus10","inserts":[]},{"id":"bus10","out":1,"to":"bus9","inserts":[]}])");
-    loop.getDynamicObject()->setProperty ("busOrder", juce::JSON::parse (R"(["bus9","bus10"])"));
-    m.setPlan (parsePlan (loop, kSr, nullptr, nullptr));
-    p = render (m, 200);
-    check (std::isfinite (p[0]) && p[0] < 1e-4f, "routing loops are cut (no feedback)", juce::String (p[0], 6));
-}
-
 float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }
 
 void testTruePeak()
@@ -370,38 +179,8 @@ void testPluginHosting (const juce::String& pluginPath)
     e.host().setAudioConfig (kSr, kBlock);
 
     // a folder scan must finish and report the list (it used to hang after the last plugin)
-    {
-        // a plugin that never finishes loading must not freeze the app or stop the scan
-        setEnv ("MERGE_TEST_PLUGIN_HANG", "1");
-        setEnv ("MERGE_SCAN_TIMEOUT_MS", "3000");
-        // a copy without moduleinfo.json, so the scan has to load the plugin (like older plugins)
-        const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("merge-hang-test");
-        dir.deleteRecursively();
-        dir.createDirectory();
-        const auto copy = dir.getChildFile (juce::File (pluginPath).getFileName());
-        juce::File (pluginPath).copyDirectoryTo (copy);
-        for (auto& f : copy.findChildFiles (juce::File::findFiles, true, "moduleinfo.json")) f.deleteFile();
-        const auto t0 = juce::Time::getMillisecondCounter();
-        juce::uint32 longestGap = 0, last = t0;
-        e.host().startScanIn (juce::FileSearchPath (dir.getFullPathName()), true);
-        for (int i = 0; i < 1500 && e.host().isScanning(); ++i)
-        {
-            pump (20);
-            const auto now = juce::Time::getMillisecondCounter();
-            longestGap = juce::jmax (longestGap, now - last);
-            last = now;
-        }
-        setEnv ("MERGE_TEST_PLUGIN_HANG", nullptr);
-        setEnv ("MERGE_SCAN_TIMEOUT_MS", nullptr);
-        const auto secs = (juce::Time::getMillisecondCounter() - t0) / 1000.0;
-        check (! e.host().isScanning() && secs < 15, "scan finishes even when a plugin hangs while loading", juce::String (secs, 1) + " s");
-        check (longestGap < 1000, "the app stays responsive during the scan (plugins load in a helper process)",
-               "longest pause " + juce::String ((int) longestGap) + " ms");
-        check (e.host().getKnownList().getBlacklistedFiles().contains (copy.getFullPathName()), "the hanging plugin is skipped and listed");
-        dir.deleteRecursively();
-    }
     e.host().startScanIn (juce::FileSearchPath (juce::File (pluginPath).getParentDirectory().getFullPathName()), true);
-    for (int i = 0; i < 1500 && e.host().isScanning(); ++i) pump (20); // each file is scanned in a helper process
+    for (int i = 0; i < 300 && e.host().isScanning(); ++i) pump (20);
     bool listed = false;
     for (auto& v : sent) listed = listed || (v["type"] == "plugins" && ! (bool) v["scanning"]);
     check (! e.host().isScanning() && listed, "plugin folder scan finishes and reports the list");
@@ -500,19 +279,6 @@ void testPluginHosting (const juce::String& pluginPath)
     e.mixer().collectGarbage();
     check (weak.expired(), "removed plugin instance is destroyed");
 
-    // a plugin on a bus: a channel through that bus stays in time with a channel going direct
-    {
-        auto plan = routedPlan (2, "[{\"id\":\"bus9\",\"out\":1,\"to\":\"main\",\"inserts\":[{\"id\":\"slotB\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]}]");
-        e.handleMessage (0, planMsg (plan));
-        for (int i = 0; i < 300 && (e.host().numLoading() > 0 || ! e.host().find ("slotB")); ++i) pump (10);
-        auto pb = render (e.mixer(), 150);
-        check (near (pb[0], 2 * kToneCentre, 0.006), "delay compensation covers plugins on buses (channel via bus vs direct stay in phase)",
-               juce::String (pb[0], 4) + " vs " + juce::String (2 * kToneCentre, 4));
-        e.handleMessage (0, planMsg (tonePlan (2)));
-        render (e.mixer(), 4);
-        e.mixer().collectGarbage();
-    }
-
     // missing plugin reports an error instead of failing the plan
     sent.clear();
     e.handleMessage (0, planMsg (tonePlan (1, R"([{"id":"slotX","pluginId":"vst3:not-installed","bypass":false}])")));
@@ -583,10 +349,6 @@ int runSelfTest (const juce::StringArray& args)
     std::cout << "Merge Engine self-test" << std::endl;
     testProtocolBasics();
     testMixer();
-    testFades();
-    testRouting();
-    testProPresenter();
-    testPlanningCenter();
     testTruePeak();
     testPluginHosting (pluginPath);
     testWebSocketRoundTrip();

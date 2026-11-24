@@ -81,12 +81,7 @@ function DockedGui({ ins }: { ins: InsertSlot }) {
   const tooBig = mine && docked && area.current && (docked.width > area.current.clientWidth || docked.height > area.current.clientHeight);
   return (
     <div className="plugin-host" ref={area}>
-      {!ready && (
-        <div className="plugin-msg">
-          {n?.error ?? (n?.loading ? 'Loading — checking licence…' : 'Waiting for the engine…')}
-          {n?.retry && <button onClick={() => sendNative({ type: 'insert.retry', slotId: ins.id })}>Retry</button>}
-        </div>
-      )}
+      {!ready && <div className="plugin-msg">{n?.error ?? (n?.loading ? 'Loading — checking licence…' : 'Waiting for the engine…')}</div>}
       {ready && !mine && <div className="plugin-msg">Opening plugin…</div>}
       <div
         ref={frame}

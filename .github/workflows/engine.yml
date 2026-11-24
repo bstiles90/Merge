@@ -82,16 +82,12 @@ jobs:
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
           osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $PID) to true" || true
           for i in $(seq 1 30); do grep -q "\[dock\] Merge" app.log && break; sleep 1; done
-          for i in $(seq 1 10); do grep -q "meters arriving" app.log && break; sleep 1; done
           sleep 3
           screencapture -x app-screenshot.png || true
           kill $PID || true
           cat app.log
           grep -q "UI client connected" app.log
           grep -q "\[dock\] Merge Test Gain" app.log
-          grep -q "meters arriving" app.log   # the console shows live meters
-          if grep -q "\[stall\]" app.log; then echo "main thread froze"; exit 1; fi   # the app's main thread never froze
-          test -s "$HOME/Library/Logs/Merge/merge.log"   # the log file is written for users
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS' && always()

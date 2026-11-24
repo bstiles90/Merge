@@ -1,107 +1,9 @@
-#include <fstream>
-#include <mutex>
-#if defined (__APPLE__) || defined (__linux__)
- #include <csignal>
- #include <sys/stat.h>
- #include <unistd.h>
-#endif
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Engine.h"
 #include "ConsoleWindow.h"
 #include "PluginHost.h"
 
 namespace merge { int runSelfTest (const juce::StringArray& args); }
-
-
-#if JUCE_MAC
-namespace merge { juce::String macMicrophonePermission(); } // MacSupport.mm
-#endif
-
-namespace
-{
-/** Writes everything logged to the log file, and also to the original console output when that is
-    a terminal or a file. Thread-safe (the engine logs from several threads). */
-struct TeeBuf : std::streambuf
-{
-    TeeBuf (std::streambuf* fileBuf, std::streambuf* consoleBuf) : file (fileBuf), console (consoleBuf) {}
-    int overflow (int c) override
-    {
-        if (c == EOF) return 0;
-        const std::lock_guard<std::mutex> g (lock());
-        file->sputc ((char) c);
-        if (console != nullptr) console->sputc ((char) c);
-        return c; // never fail the stream: logging must not break the app
-    }
-    int sync() override
-    {
-        const std::lock_guard<std::mutex> g (lock());
-        file->pubsync();
-        if (console != nullptr) console->pubsync();
-        return 0;
-    }
-    static std::mutex& lock() { static std::mutex m; return m; }
-    std::streambuf *file, *console;
-};
-
-/** Where the app's console output goes: a terminal / file is safe to write to; when opened from
-    Finder it can be a pipe nobody reads, and writing to it can block the app. */
-juce::String consoleKind (int fd)
-{
-   #if JUCE_MAC || JUCE_LINUX
-    struct stat st {};
-    if (fstat (fd, &st) != 0) return "closed";
-    if (isatty (fd)) return "terminal";
-    if (S_ISREG (st.st_mode)) return "file";
-    if (S_ISFIFO (st.st_mode)) return "pipe";
-    if (S_ISSOCK (st.st_mode)) return "socket";
-    if (S_ISCHR (st.st_mode)) return "device";
-    return "other";
-   #else
-    juce::ignoreUnused (fd);
-    return "none";
-   #endif
-}
-
-juce::File logFolder()
-{
-   #if JUCE_MAC
-    return juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/Merge");
-   #else
-    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/Logs");
-   #endif
-}
-
-void startLogFile()
-{
-    // deliberately never destroyed: std::cout is flushed during exit, after function statics are gone,
-    // and it must still have a valid buffer then (destroying these crashed Merge on quit)
-    static auto& file = *new std::ofstream();
-    static TeeBuf* outTee = nullptr;
-    static TeeBuf* errTee = nullptr;
-    const auto dir = logFolder();
-    dir.createDirectory();
-    const auto log = dir.getChildFile ("merge.log");
-    if (log.existsAsFile()) log.moveFileTo (dir.getChildFile ("merge-previous.log"));
-    file.open (log.getFullPathName().toStdString(), std::ios::out | std::ios::trunc);
-    if (! file.is_open()) return;
-   #if JUCE_MAC || JUCE_LINUX
-    signal (SIGPIPE, SIG_IGN); // a closed console pipe must never kill the app
-   #endif
-    const auto out = consoleKind (1);
-    const bool echo = out == "terminal" || out == "file";
-    outTee = new TeeBuf (file.rdbuf(), echo ? std::cout.rdbuf() : nullptr);
-    errTee = new TeeBuf (file.rdbuf(), echo ? std::cerr.rdbuf() : nullptr);
-    std::cout.rdbuf (outTee);
-    std::cerr.rdbuf (errTee);
-    std::cout << "Merge " << MERGE_ENGINE_VERSION << " started " << juce::Time::getCurrentTime().toString (true, true) << " ("
-              << juce::SystemStats::getOperatingSystemName() << ")" << std::endl;
-    std::cout << "launch: console output is " << out << (echo ? " (logging there too)" : " (log file only)")
-              << ", working folder " << juce::File::getCurrentWorkingDirectory().getFullPathName() << std::endl;
-   #if JUCE_MAC
-    std::cout << "macOS microphone permission for Merge: " << merge::macMicrophonePermission() << std::endl;
-   #endif
-}
-} // namespace
 
 class MergeEngineApp : public juce::JUCEApplication
 {
@@ -113,23 +15,6 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         const auto args = juce::StringArray::fromTokens (commandLine, true);
-        if (const auto params = getCommandLineParameterArray(); params.contains ("--scan-one"))
-        {
-            // plugin-scan helper: load one plugin file, write what it contains, exit. Runs in its own
-            // process so a plugin that hangs or crashes can't take the app down with it.
-            const int i = params.indexOf ("--scan-one");
-           #if JUCE_MAC
-            juce::Process::setDockIconVisible (false);
-           #endif
-            const auto format = params[i + 1], id = params[i + 2];
-            const juce::File out (params[i + 3]);
-            juce::MessageManager::callAsync ([format, id, out] {
-                const int n = merge::PluginHost::scanOneToFile (format, id, out);
-                std::fflush (stdout);
-                std::_Exit (n > 0 ? 0 : 2);
-            });
-            return;
-        }
         if (args.contains ("--print-plugin-ids"))
         {
             // lists the scanned plugins (id <tab> name); used by CI to build a test show
@@ -153,7 +38,6 @@ public:
             });
             return;
         }
-        startLogFile(); // the app itself (not the scan helper / tests)
         merge::Engine::Options opt;
         if (const int i = args.indexOf ("--port"); i >= 0) opt.port = args[i + 1].getIntValue();
         opt.virtualDevice = args.contains ("--virtual");

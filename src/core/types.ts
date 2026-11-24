@@ -2,8 +2,6 @@
 // deliberately independent of the audio engine so it can be shared with a native
 // engine later.
 
-import type { Automation, Role } from './moments';
-
 export type ChannelId = string;
 export type BusId = string;
 export type DcaId = string;
@@ -52,8 +50,6 @@ export interface Channel {
   mute: boolean;
   solo: boolean;
   mainAssign: boolean;
-  /** output assignment to buses (groups): follows the fader and pan, no send level */
-  routes?: BusId[];
   sends: Record<BusId, Send>;
   dcas: DcaId[];
   muteGroups: MuteGroupId[];
@@ -61,10 +57,6 @@ export interface Channel {
   /** live = source, playback = recorded track (virtual soundcheck) */
   inputMode: 'live' | 'playback';
   recallSafe: boolean;
-  /** what this channel is (speaker, lead vocal, band…): show moments act on roles */
-  role?: Role;
-  /** the mic's own name while the strip is labelled with this week's person ("HH1 · Sarah") */
-  baseName?: string;
 }
 
 export type BusType = 'aux' | 'mixminus';
@@ -82,8 +74,6 @@ export interface Bus {
   inserts: InsertSlot[];
   muteGroups: MuteGroupId[];
   recallSafe: boolean;
-  /** where the bus goes after its fader: Main LR, another bus, or nowhere (physical outputs only) */
-  output?: 'main' | 'none' | BusId;
 }
 
 export interface Main {
@@ -263,6 +253,4 @@ export interface ConsoleState {
   loudnessTarget: number;
   /** delivery spec for the program true peak (dBTP); the TP meter warns above it */
   truePeakCeiling: number;
-  /** show automation: channel-role moments, learned levels, ProPresenter rules */
-  automation: Automation;
 }

@@ -4,11 +4,6 @@
 namespace merge
 {
 
-static juce::CriticalSection activityLock;
-static juce::String activity;
-void setActivity (const juce::String& a) { const juce::ScopedLock sl (activityLock); activity = a; }
-juce::String getActivity() { const juce::ScopedLock sl (activityLock); return activity; }
-
 // ======================================================================= HostedInsert
 HostedInsert::HostedInsert (std::unique_ptr<juce::AudioPluginInstance> inst, int stripCh, double sr, int block)
     : instance (std::move (inst)), stripChannels (stripCh)
@@ -194,27 +189,14 @@ PluginHost::PluginHost()
     dataDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge");
     dataDir.createDirectory();
     listFile = dataDir.getChildFile ("plugins.xml");
+    deadMansPedal = dataDir.getChildFile ("scan-in-progress.txt");
     if (auto xml = juce::parseXML (listFile)) known.recreateFromXml (*xml);
-    loadingMarker = dataDir.getChildFile ("loading-plugin.txt");
-    stuckFile = dataDir.getChildFile ("plugins-held-back.txt");
-    stuckPlugins.addLines (stuckFile.loadFileAsString());
-    stuckPlugins.removeEmptyStrings();
-    // the last run never finished loading this plugin (it hung or crashed Merge): hold it back
-    if (loadingMarker.existsAsFile())
-    {
-        const auto id = loadingMarker.loadFileAsString().upToFirstOccurrenceOf ("\n", false, false).trim();
-        if (id.isNotEmpty()) stuckPlugins.addIfNotAlreadyThere (id);
-        loadingMarker.deleteFile();
-        saveStuck();
-        std::cout << "[insert] last run got stuck loading " << id << ": held back until you retry it" << std::endl;
-    }
     startTimerHz (20);
 }
 
 PluginHost::~PluginHost()
 {
     stopTimer();
-    if (scanChild) scanChild->kill(); // don't leave a scan helper running after quitting
     send = nullptr; // the engine's socket may already be gone at shutdown
     undock();
     for (auto& [id, s] : slots) s.editor.reset();
@@ -245,153 +227,47 @@ std::optional<juce::PluginDescription> PluginHost::findDescription (const juce::
 
 void PluginHost::startScanIn (const juce::FileSearchPath& folders, bool rescanAll)
 {
-    scanFolders = folders;
     startScan (rescanAll);
+    scanFolders = folders; // applies from the first format created below
 }
 
 void PluginHost::startScan (bool rescanAll)
 {
-    if (scanActive) return;
-    if (rescanAll) known.clearBlacklistedFiles();
-    scanQueue.clear();
-    scanIndex = 0;
-    scanProblems.clear();
-    // list the plugin files of every format (fast: nothing is loaded here)
-    for (auto* f : formats.getFormats())
-    {
-        if (! f->canScanForPlugins()) continue;
-        // scanning chosen folders: skip formats that aren't folder-based (Audio Units are
-        // system-registered components, so a folder means nothing to them)
-        if (scanFolders && f->getDefaultLocationsToSearch().getNumPaths() == 0) continue;
-        const auto paths = scanFolders ? *scanFolders : f->getDefaultLocationsToSearch();
-        for (auto& id : f->searchPathsForPlugins (paths, true, true))
-        {
-            if (known.getBlacklistedFiles().contains (id)) continue;
-            if (! rescanAll && known.isListingUpToDate (id, *f)) continue;
-            scanQueue.push_back ({ f->getName(), id });
-        }
-    }
     scanFolders.reset();
     scanActive = true;
-    std::cout << "[scan] " << scanQueue.size() << " plugin file(s) to scan" << std::endl;
-    startNextScanJob();
-}
-
-void PluginHost::scanFileAsync (const juce::String& path)
-{
-    for (auto* f : formats.getFormats())
-        if (f->fileMightContainThisPluginType (path))
-        {
-            scanQueue.push_back ({ f->getName(), path });
-            if (! scanActive) { scanActive = true; scanProblems.clear(); startNextScanJob(); }
-            return;
-        }
-    send (obj ({ { "type", "error" }, { "message", "Not a plugin file Merge can load: " + path } }));
-}
-
-void PluginHost::skipCurrentScan()
-{
-    if (scanChild) scanSkipRequested = true;
-}
-
-void PluginHost::startNextScanJob()
-{
-    if (scanIndex >= scanQueue.size())
-    {
-        scanActive = false;
-        scanQueue.clear();
-        scanIndex = 0;
-        saveList();
-        std::cout << "[scan] finished: " << known.getNumTypes() << " plugin(s) known"
-                  << (scanProblems.isEmpty() ? juce::String() : ", skipped: " + scanProblems.joinIntoString (", ")) << std::endl;
-        sendPluginList();
-        return;
-    }
-    const auto& job = scanQueue[scanIndex];
-    scanOut = juce::File::createTempFile (".xml");
-    juce::StringArray args { juce::File::getSpecialLocation (juce::File::currentExecutableFile).getFullPathName(),
-                             "--scan-one", job.format, job.id, scanOut.getFullPathName() };
-    scanChild = std::make_unique<juce::ChildProcess>();
-    scanStartedMs = scanLastReportMs = juce::Time::getMillisecondCounter();
-    scanSkipRequested = false;
-    std::cout << "[scan] " << job.format << ": " << job.id << std::endl;
-    if (! scanChild->start (args, 0))
-    {
-        std::cout << "[scan] couldn't start the scanner helper" << std::endl;
-        scanChild.reset();
-        finishScanJob (false);
-        return;
-    }
-    send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) },
-                 { "file", job.id }, { "format", job.format }, { "seconds", 0 } }));
-}
-
-/** Called when the helper exits (or is stopped): collect what it found and move on. */
-void PluginHost::finishScanJob (bool timedOut)
-{
-    const auto job = scanQueue[scanIndex];
-    const auto name = juce::File::createFileWithoutCheckingPath (job.id).getFileName().isNotEmpty()
-                          ? juce::File::createFileWithoutCheckingPath (job.id).getFileName() : job.id;
-    int found = 0;
-    const int exitCode = scanChild && ! timedOut ? (int) scanChild->getExitCode() : -1;
-    if (! timedOut)
-        if (auto xml = juce::parseXML (scanOut))
-            for (auto* e : xml->getChildIterator())
-            {
-                juce::PluginDescription d;
-                if (d.loadFromXml (*e)) { known.addType (d); ++found; }
-            }
-    scanOut.deleteFile();
-    scanChild.reset();
-    if (timedOut || (found == 0 && exitCode != 0 && exitCode != 2))
-    {
-        const auto why = scanSkipRequested ? "skipped" : timedOut ? "didn't finish loading" : "crashed while loading";
-        known.addToBlacklist (job.id);
-        scanProblems.add (name + " (" + why + ")");
-        std::cout << "[scan] " << name << ": " << why << ", skipped" << std::endl;
-    }
-    ++scanIndex;
-    startNextScanJob();
+    scanFormatIndex = 0;
+    scanRescanAll = rescanAll;
+    scanner.reset();
+    if (rescanAll) known.clearBlacklistedFiles();
+    scanStep();
 }
 
 void PluginHost::scanStep()
 {
-    if (! scanActive || ! scanChild) return;
-    const auto now = juce::Time::getMillisecondCounter();
-    if (! scanChild->isRunning()) { finishScanJob (false); return; }
-    if (scanSkipRequested || now - scanStartedMs > (juce::uint32) scanTimeoutMs())
+    // Called by the timer while a scan is active: scan one file per tick so the engine stays
+    // responsive. Moves on through each plugin format, then finishes (saves + reports the list).
+    if (! scanActive) return;
+    while (! scanner && scanFormatIndex < formats.getNumFormats())
     {
-        scanChild->kill();
-        finishScanJob (true);
+        auto* f = formats.getFormat (scanFormatIndex++);
+        if (! f->canScanForPlugins()) continue;
+        scanner = std::make_unique<juce::PluginDirectoryScanner> (known, *f, scanFolders ? *scanFolders : f->getDefaultLocationsToSearch(),
+                                                                  true, deadMansPedal, false);
+        scanFormatName = f->getName();
+    }
+    if (! scanner)
+    {
+        // all formats done: this used to be skipped (the timer stopped calling us once the last
+        // scanner finished), so the UI stayed stuck on "scanning" after the final plugin
+        scanActive = false;
+        saveList();
+        sendPluginList();
         return;
     }
-    if (now - scanLastReportMs >= 1000)
-    {
-        scanLastReportMs = now;
-        const auto& job = scanQueue[scanIndex];
-        send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) },
-                     { "file", job.id }, { "format", job.format }, { "seconds", (int) ((now - scanStartedMs) / 1000) } }));
-    }
-}
-
-int PluginHost::scanTimeoutMs()
-{
-    const auto env = juce::SystemStats::getEnvironmentVariable ("MERGE_SCAN_TIMEOUT_MS", {}).getIntValue(); // tests
-    return env > 0 ? env : 120000;
-}
-
-int PluginHost::scanOneToFile (const juce::String& formatName, const juce::String& fileOrId, const juce::File& out)
-{
-    juce::AudioPluginFormatManager fm;
-    fm.addDefaultFormats();
-    juce::OwnedArray<juce::PluginDescription> found;
-    for (auto* f : fm.getFormats())
-        if (f->getName() == formatName)
-            f->findAllTypesForFile (found, fileOrId);
-    juce::XmlElement root ("PLUGINS");
-    for (auto* d : found) root.addChildElement (d->createXml().release());
-    out.replaceWithText (root.toString());
-    return found.size();
+    juce::String name;
+    const bool more = scanner->scanNextFile (! scanRescanAll, name);
+    send (obj ({ { "type", "plugins.scan" }, { "progress", scanner->getProgress() }, { "file", name }, { "format", scanFormatName } }));
+    if (! more) scanner.reset(); // next tick moves to the next format or finishes
 }
 
 bool PluginHost::scanFile (const juce::String& path)
@@ -479,70 +355,26 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
             slots[s.slotId] = std::move (slot);
             continue;
         }
-        if (stuckPlugins.contains (s.pluginId))
-        {
-            std::cout << "[insert] held back " << desc->name << " (" << s.slotId << ")" << std::endl;
-            send (obj ({ { "type", "insert.error" }, { "slotId", s.slotId }, { "pluginId", s.pluginId }, { "retry", true },
-                         { "message", "Merge got stuck loading " + desc->name + " last time, so it wasn't loaded (audio passes through). "
-                                      "If it needs a licence or activation window, sort that out, then Retry." } }));
-            slots[s.slotId] = std::move (slot);
-            continue;
-        }
-        // Loaded later, one at a time: licence checks (iLok/PACE, Waves, NI, UA...) can take seconds,
-        // open an activation window or stall, and must never hold up audio or the console. Plugins
-        // are created on the message thread, which is what copy-protection dialogs expect.
+        // Load asynchronously: licence checks (iLok/PACE, Waves, NI, UA...) can take seconds or open an
+        // activation window, and must never stall the engine. Plugins are always created and shown on
+        // the message thread, which is what copy-protection dialogs expect.
         slot.loading = true;
-        slots[s.slotId] = std::move (slot);
-        loadQueue.push_back (s.slotId);
-        send (obj ({ { "type", "insert.loading" }, { "slotId", s.slotId }, { "pluginId", s.pluginId } }));
-    }
-    scheduleNextLoad();
-    return changed;
-}
-
-void PluginHost::scheduleNextLoad()
-{
-    if (loadInProgress || loadQueue.empty()) return;
-    loadInProgress = true;
-    juce::MessageManager::callAsync ([this, alive = std::weak_ptr<int> (aliveToken)] {
-        if (alive.expired()) return;
-        loadNext();
-    });
-}
-
-void PluginHost::loadNext()
-{
-    // skip slots removed or replaced while queued
-    while (! loadQueue.empty())
-    {
-        const auto slotId = loadQueue.front();
-        loadQueue.pop_front();
-        auto it = slots.find (slotId);
-        if (it == slots.end() || ! it->second.loading || it->second.insert) continue;
-        const auto desc = findDescription (it->second.pluginId);
-        if (! desc) continue;
-        const auto pluginId = it->second.pluginId, strip = it->second.strip;
-        const auto gen = it->second.generation;
+        const auto slotId = s.slotId, pluginId = s.pluginId, strip = s.strip;
+        const auto gen = slot.generation;
+        slots[slotId] = std::move (slot);
         std::cout << "[insert] loading " << desc->name << " (" << slotId << ")" << std::endl;
-        loadingMarker.replaceWithText (pluginId + "\n" + desc->name);
-        setActivity ("loading plugin " + desc->name);
+        send (obj ({ { "type", "insert.loading" }, { "slotId", slotId }, { "pluginId", pluginId } }));
         formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
-            [this, slotId, pluginId, strip, gen, alive = std::weak_ptr<int> (aliveToken)] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
-                if (alive.expired()) return;
-                loadingMarker.deleteFile();
-                setActivity ({});
-                loadInProgress = false;
-                auto finished = [this] { scheduleNextLoad(); };
-                auto sit = slots.find (slotId);
-                if (sit == slots.end() || sit->second.generation != gen) { finished(); return; } // slot removed/replaced meanwhile
-                auto& sl = sit->second;
+            [this, slotId, pluginId, strip, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
+                auto it = slots.find (slotId);
+                if (it == slots.end() || it->second.generation != gen) return; // slot removed/replaced meanwhile
+                auto& sl = it->second;
                 sl.loading = false;
                 if (! inst)
                 {
                     std::cout << "[insert] failed " << pluginId << ": " << err << std::endl;
                     send (obj ({ { "type", "insert.error" }, { "slotId", slotId }, { "pluginId", pluginId },
                                  { "message", err.isNotEmpty() ? err : juce::String ("Plugin failed to load (check its licence / authorisation)") } }));
-                    finished();
                     return;
                 }
                 const int stripChannels = strip.startsWith ("ch") ? 1 : 2;
@@ -554,29 +386,9 @@ void PluginHost::loadNext()
                              { "latency", sl.insert->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", sl.insert->getPluginChannels() },
                              { "params", sl.insert->describeParams() } }));
                 if (onInstancesChanged) onInstancesChanged();
-                finished();
             });
-        return; // one at a time: the next starts when this one finishes
     }
-    loadInProgress = false;
-}
-
-void PluginHost::saveStuck()
-{
-    if (stuckPlugins.isEmpty()) stuckFile.deleteFile();
-    else stuckFile.replaceWithText (stuckPlugins.joinIntoString ("\n"));
-}
-
-void PluginHost::retryInsert (const juce::String& slotId)
-{
-    auto it = slots.find (slotId);
-    if (it == slots.end()) return;
-    stuckPlugins.removeString (it->second.pluginId);
-    saveStuck();
-    if (it->first == dockedSlot) undock();
-    it->second.editor.reset();
-    slots.erase (it);                       // re-created by the next sync
-    if (onInstancesChanged) onInstancesChanged();
+    return changed;
 }
 
 int PluginHost::numLoading() const

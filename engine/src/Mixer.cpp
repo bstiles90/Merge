@@ -87,17 +87,10 @@ void Mixer::prepare (double sr, int block, int, int)
         c.pdc.prepare (16384);             // plugin delay compensation
     }
     for (auto& b : bus)
-    {
         for (auto& d : b.delay) d.prepare ((int) sr + 1);
-        for (auto& d : b.chanPdc) d.prepare (16384);
-        for (auto& d : b.outPdc) d.prepare (16384);
-    }
-    for (auto& d : mainDirectPdc) d.prepare (16384);
     for (auto& d : mainDelay) d.prepare ((int) (2 * sr) + 1); // lip-sync up to 2 s
     chanBuf.setSize (kNumChannels, maxBlock);
     busBuf.setSize (kNumBuses * 2, maxBlock);
-    busFeed.setSize (kNumBuses * 2, maxBlock);
-    mainFromBuses.setSize (2, maxBlock);
     mainBuf.setSize (2, maxBlock);
     cueBuf.setSize (2, maxBlock);
     monBuf.setSize (2, maxBlock);
@@ -207,28 +200,9 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             maxLat = juce::jmax (maxLat, chanLat[c]);
         }
         maxLat = juce::jmin (maxLat, 16000);
-
-        // delay compensation through the bus tree: every path into a bus (and into Main LR)
-        // arrives at the same time, whatever plugins sit on the buses along the way
-        int inLat[kNumBuses], outLat[kNumBuses];
-        for (int b = 0; b < kNumBuses; ++b) inLat[b] = maxLat;
-        int mainIn = maxLat;
-        for (int oi = 0; oi < kNumBuses; ++oi)
-        {
-            const int b = plan->busOrder[(size_t) oi];
-            int lat = 0;
-            for (auto& r : plan->buses[(size_t) b].inserts)
-                if (r.insert) lat += r.insert->getLatency();
-            outLat[b] = juce::jmin (inLat[b] + lat, 16000);
-            const int t = plan->buses[(size_t) b].to;
-            if (t >= 0) inLat[t] = juce::jmax (inLat[t], outLat[b]);
-            else if (t == -2) mainIn = juce::jmax (mainIn, outLat[b]);
-        }
-        pdcSamples.store (mainIn, std::memory_order_relaxed);
+        pdcSamples.store (maxLat, std::memory_order_relaxed);
 
         busBuf.clear (0, n);
-        busFeed.clear (0, n);
-        mainFromBuses.clear (0, n);
         mainBuf.clear (0, n);
         cueBuf.clear (0, n);
         float* mainL = mainBuf.getWritePointer (0);
@@ -242,20 +216,6 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             auto& st = ch[(size_t) c];
             const auto& cp = plan->channels[(size_t) c];
             const float panAngle = (cp.pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
-            // timed fade: starts when a plan brings a new fade id; any later change of the
-            // target (a hand move) cancels it and the normal ~10 ms smoothing takes over
-            if (cp.fadeId != 0 && cp.fadeId != st.fade.id)
-            {
-                st.fade.id = cp.fadeId;
-                st.fade.active = cp.fadeMs > 0 && std::abs (cp.post - st.post.cur) > 1.0e-6f;
-                st.fade.start = st.post.cur;
-                st.fade.target = cp.post;
-                st.fade.total = juce::jmax (1, (int) (cp.fadeMs * 0.001 * sampleRate));
-                st.fade.pos = 0;
-                st.fade.sendCoef = (float) (1.0 - std::exp (-1.0 / (juce::jmax (0.001, cp.fadeMs * 0.001 / 4.0) * sampleRate)));
-            }
-            if (st.fade.active && std::abs (cp.post - st.fade.target) > 1.0e-7f) st.fade.active = false;
-            const float ks = st.fade.active ? st.fade.sendCoef : k;
             st.post.set (cp.post);
             st.main.set (cp.mainGain);
             st.panL.set (std::cos (panAngle));
@@ -284,32 +244,12 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             if (comp > 0)
                 for (int i = 0; i < n; ++i) x[i] = st.pdc.run (x[i], comp);
 
-            // only the sends that are on (or still fading out): 64 buses, most unused per channel
-            int active[kNumBuses];
-            int numActive = 0;
-            for (int b = 0; b < kNumBuses; ++b)
-            {
-                auto& sm = st.sends[(size_t) b];
-                if (sm.target != 0.0f || std::abs (sm.cur) > 1.0e-6f) active[numActive++] = b;
-                else sm.cur = 0.0f;
-            }
-
             float peak = 0;
             for (int i = 0; i < n; ++i)
             {
                 const float s = x[i];
                 peak = juce::jmax (peak, std::abs (s));
-                float post;
-                if (st.fade.active)
-                {
-                    // S-curve (raised cosine) from start to target over the fade time
-                    const float t = (float) ++st.fade.pos / (float) st.fade.total;
-                    const float shape = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * juce::jmin (1.0f, t));
-                    post = st.fade.start + (st.fade.target - st.fade.start) * shape;
-                    st.post.cur = post;
-                    if (st.fade.pos >= st.fade.total) { st.fade.active = false; st.post.cur = st.fade.target; }
-                }
-                else post = st.post.next (k);
+                const float post = st.post.next (k);
                 const float pl = st.panL.next (k), pr = st.panR.next (k);
                 const float m = s * post * st.main.next (k);
                 mainL[i] += m * pl;
@@ -320,18 +260,13 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                     if (cp.cuePre) { cueL[i] += s * cue; cueR[i] += s * cue; }
                     else { cueL[i] += s * cue * pl; cueR[i] += s * cue * pr; }
                 }
-                for (int a = 0; a < numActive; ++a)
+                for (int b = 0; b < kNumBuses; ++b)
                 {
-                    const int b = active[a];
-                    const float g = st.sends[(size_t) b].next (ks);
+                    const float g = st.sends[(size_t) b].next (k);
                     if (g == 0) continue;
-                    // output assignments are panned exactly like the main mix; post sends are panned
-                    // (unity at centre); pre sends are mono (centre, unity)
-                    const bool route = cp.sendRoute[(size_t) b], pre = cp.sendPre[(size_t) b];
-                    const float gl = route ? pl : pre ? 1.0f : pl * juce::MathConstants<float>::sqrt2;
-                    const float gr = route ? pr : pre ? 1.0f : pr * juce::MathConstants<float>::sqrt2;
-                    busBuf.getWritePointer (b * 2)[i] += s * g * gl;
-                    busBuf.getWritePointer (b * 2 + 1)[i] += s * g * gr;
+                    // post sends are panned like the main mix; pre sends are mono (centre, unity)
+                    busBuf.getWritePointer (b * 2)[i] += s * g * (cp.sendPre[(size_t) b] ? 1.0f : pl * juce::MathConstants<float>::sqrt2);
+                    busBuf.getWritePointer (b * 2 + 1)[i] += s * g * (cp.sendPre[(size_t) b] ? 1.0f : pr * juce::MathConstants<float>::sqrt2);
                 }
             }
             meters[(size_t) c].raise (peak, peak);
@@ -345,18 +280,11 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                         juce::FloatVectorOperations::addWithMultiply (busBuf.getWritePointer (b * 2 + side), inPtrs[plan->talkbackInput], plan->talkbackGain, n);
 
         // ------------------------------------------------------------ buses
-        for (int oi = 0; oi < kNumBuses; ++oi)
+        for (int b = 0; b < kNumBuses; ++b)
         {
-            const int b = plan->busOrder[(size_t) oi]; // sources before the buses they feed
             auto& st = bus[(size_t) b];
             const auto& bp = plan->buses[(size_t) b];
             float* lr[2] = { busBuf.getWritePointer (b * 2), busBuf.getWritePointer (b * 2 + 1) };
-            // channel part delayed to line up with other buses feeding this one, then add those
-            if (const int cd = inLat[b] - maxLat; cd > 0)
-                for (int side = 0; side < 2; ++side)
-                    for (int i = 0; i < n; ++i) lr[side][i] = st.chanPdc[(size_t) side].run (lr[side][i], cd);
-            for (int side = 0; side < 2; ++side)
-                juce::FloatVectorOperations::add (lr[side], busFeed.getReadPointer (b * 2 + side), n);
             const int d = (int) (bp.delayMs * 0.001 * sampleRate);
             if (d > 0)
                 for (int side = 0; side < 2; ++side)
@@ -382,30 +310,10 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 pr = juce::jmax (pr, std::abs (lr[1][i]));
             }
             meters[(size_t) (kNumChannels + b)].raise (pl, pr);
-
-            // on to Main LR or the next bus, delayed to line up with the other paths into it
-            if (bp.to != -1)
-            {
-                const int target = bp.to == -2 ? mainIn : inLat[bp.to];
-                const int od = juce::jlimit (0, 16000, target - outLat[b]);
-                for (int side = 0; side < 2; ++side)
-                {
-                    float* dst = bp.to == -2 ? mainFromBuses.getWritePointer (side) : busFeed.getWritePointer (bp.to * 2 + side);
-                    if (od > 0)
-                        for (int i = 0; i < n; ++i) dst[i] += st.outPdc[(size_t) side].run (lr[side][i], od);
-                    else
-                        juce::FloatVectorOperations::add (dst, lr[side], n);
-                }
-            }
         }
 
         // ------------------------------------------------------------ main
         {
-            // channels straight to Main LR, lined up with the bus paths, plus the buses
-            if (const int md = mainIn - maxLat; md > 0)
-                for (int i = 0; i < n; ++i) { mainL[i] = mainDirectPdc[0].run (mainL[i], md); mainR[i] = mainDirectPdc[1].run (mainR[i], md); }
-            juce::FloatVectorOperations::add (mainL, mainFromBuses.getReadPointer (0), n);
-            juce::FloatVectorOperations::add (mainR, mainFromBuses.getReadPointer (1), n);
             float* lr[2] = { mainL, mainR };
             for (auto& r : plan->main.inserts)
                 if (r.insert) r.insert->process (lr, 2, n);

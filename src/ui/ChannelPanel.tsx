@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { useConsole } from '../core/store';
 import { linkInfo } from '../core/links';
 import type { Channel } from '../core/types';
-import { ROLES, type Role } from '../core/moments';
 import { fmtDb, fmtMs, Knob, Toggle } from './controls';
 import { ColorPicker, Inserts, LinkSection, SourcePicker } from './Detail';
 
@@ -33,15 +32,8 @@ function InTab({ ch }: { ch: Channel }) {
           {ch.inputMode === 'live' ? 'LIVE INPUT' : 'PLAYBACK'}
         </Toggle>
         <Toggle kind="rec" on={ch.recArm} onClick={() => up({ recArm: !ch.recArm })} small>REC ARM</Toggle>
-        <Toggle kind="safe" on={ch.recallSafe} onClick={() => up({ recallSafe: !ch.recallSafe })} small title="Scenes and show moments won't change this channel">RECALL SAFE</Toggle>
+        <Toggle kind="safe" on={ch.recallSafe} onClick={() => up({ recallSafe: !ch.recallSafe })} small title="Scenes won't change this channel">RECALL SAFE</Toggle>
       </div>
-      <label className="row">
-        <span className="hint">Role</span>
-        <select value={ch.role ?? ''} onChange={(e) => up({ role: (e.target.value || undefined) as Role | undefined })} title="Show moments (Song, Sermon…) open and close channels by role">
-          <option value="">— no role —</option>
-          {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
-        </select>
-      </label>
       <LinkSection ch={ch} />
     </div>
   );
@@ -52,17 +44,8 @@ function SendsTab({ ch }: { ch: Channel }) {
   const up = (p: Partial<Channel>) => s.updateChannel(ch.id, p);
   return (
     <div className="tab-body">
-      <div className="row">
-        <select value="" onChange={(e) => e.target.value && up({ sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false } } })}>
-          <option value="">+ Add send to…</option>
-          {s.buses
-            .filter((b) => b.type !== 'mixminus' && !(ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)) && !(ch.routes ?? []).includes(b.id))
-            .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
-        </select>
-        <span className="hint">Sends (aux, FX, feeds) have their own level, pre or post fader. To make a channel part of a group, use ASSIGN.</span>
-      </div>
       <div className="sends sends-big">
-        {s.buses.filter((b) => b.type === 'mixminus' || ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)).map((b) => {
+        {s.buses.map((b) => {
           if (b.type === 'mixminus') {
             const included = ch.mainAssign && b.mixMinusExclude !== ch.id;
             return (
@@ -80,7 +63,6 @@ function SendsTab({ ch }: { ch: Channel }) {
               <input type="range" min={-60} max={10} step={0.5} value={isFinite(snd.levelDb) ? snd.levelDb : -60} onChange={(e) => setSend({ levelDb: Number(e.target.value) <= -60 ? -Infinity : Number(e.target.value), on: true })} />
               <span className="send-db">{isFinite(snd.levelDb) ? fmtDb(snd.levelDb) : '-∞'}</span>
               <Toggle small on={snd.pre} onClick={() => setSend({ pre: !snd.pre })} title="Pre-fader (e.g. IEM / foldback)">PRE</Toggle>
-              <button className="icon-btn" title="Remove this send" onClick={() => { const { [b.id]: _gone, ...rest } = ch.sends; up({ sends: rest }); }}>✕</button>
             </div>
           );
         })}
@@ -95,27 +77,8 @@ function AssignTab({ ch }: { ch: Channel }) {
   return (
     <div className="tab-body">
       <div className="section-title">Output</div>
-      <p className="hint">Where this channel goes after its fader and pan. E.g. kick → Drums only (Main LR off), and the Drums bus goes to Main LR.</p>
-      <div className="chips">
-        <button className={'chip' + (ch.mainAssign ? ' on' : '')} onClick={() => up({ mainAssign: !ch.mainAssign })}>Main LR</button>
-        {(ch.routes ?? []).map((id) => {
-          const b = s.buses.find((x) => x.id === id);
-          return (
-            <button key={id} className="chip on" style={{ background: b?.color }} title="Click to remove" onClick={() => up({ routes: (ch.routes ?? []).filter((x) => x !== id) })}>
-              {b?.name ?? id} ✕
-            </button>
-          );
-        })}
-        <select
-          value=""
-          onChange={(e) => e.target.value && up({ routes: [...(ch.routes ?? []), e.target.value] })}
-          title="Assign this channel's output to a bus (group)"
-        >
-          <option value="">+ bus…</option>
-          {s.buses
-            .filter((b) => b.type !== 'mixminus' && !(ch.routes ?? []).includes(b.id))
-            .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
-        </select>
+      <div className="row">
+        <Toggle on={ch.mainAssign} onClick={() => up({ mainAssign: !ch.mainAssign })}>MAIN LR</Toggle>
       </div>
       <div className="section-title">DCAs</div>
       <div className="chips">

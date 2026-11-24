@@ -30,8 +30,6 @@ export interface NativeInsert {
   hasEditor?: boolean;
   editorOpen?: boolean;
   error?: string;
-  /** held back because Merge got stuck loading it last time: offer Retry */
-  retry?: boolean;
   params: NativeParam[];
 }
 
@@ -56,7 +54,7 @@ interface NativeState {
   version?: string;
   error?: string;
   device?: NativeDevice;
-  scan?: { progress: number; file: string; format?: string; seconds?: number };
+  scan?: { progress: number; file: string; format?: string };
   scanning: boolean;
   blacklisted: string[];
   pdc: number;
@@ -69,10 +67,6 @@ interface NativeState {
   docked?: { slotId: string; name: string; width: number; height: number } | null;
   /** the engine can't dock plugin GUIs (e.g. Linux): show parameters instead */
   dockUnavailable?: boolean;
-  /** ProPresenter connection (followed by the engine) and its latest data per endpoint */
-  pp: { state: 'off' | 'connecting' | 'connected' | 'polling' | 'error'; message: string; raw: Record<string, any> };
-  /** Planning Center is linked (a Personal Access Token is saved on this computer) */
-  pcoLinked?: boolean;
 }
 
 export const useNative = create<NativeState>(() => ({
@@ -82,11 +76,9 @@ export const useNative = create<NativeState>(() => ({
   blacklisted: [],
   pdc: 0,
   inserts: {},
-  pp: { state: 'off', message: 'Not connected', raw: {} },
 }));
 
 let ws: WebSocket | null = null;
-let metersLogged = false;
 let unsubscribe: (() => void) | null = null;
 let lastPlanJson = '';
 let planTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,52 +100,16 @@ export function sendNative(msg: object) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
-const errText = (err: unknown) => (err instanceof Error ? `${err.message} @ ${(err.stack ?? '').split('\n').slice(0, 3).join(' | ')}` : String(err));
-
 /** Inside the app: write a line to the engine's log (console errors and start-up steps). */
 export function uiLog(text: string) {
   if (EMBEDDED) sendNative({ type: 'ui.log', text: text.slice(0, 500) });
 }
 
-const pcoPending = new Map<number, (r: { status: number; body: any }) => void>();
-let pcoSeq = 0;
-/** GET a Planning Center Services path through the engine (which holds the token). */
-export function pcoGet(path: string): Promise<{ status: number; body: any }> {
-  if (ws?.readyState !== WebSocket.OPEN) return Promise.resolve({ status: 0, body: 'The Merge engine is not connected' });
-  const id = ++pcoSeq;
-  return new Promise((resolve) => {
-    pcoPending.set(id, resolve);
-    sendNative({ type: 'pco.get', id, path });
-    setTimeout(() => {
-      if (pcoPending.delete(id)) resolve({ status: 0, body: 'Planning Center took too long to answer' });
-    }, 30000);
-  });
-}
-
-let lastPpConfig = '';
-/** The engine follows ProPresenter; tell it where (only when the setting changes). */
-function sendPpConfig() {
-  const c = useConsole.getState().automation?.propresenter;
-  if (!c) return;
-  const json = JSON.stringify(c);
-  if (json === lastPpConfig) return;
-  lastPpConfig = json;
-  sendNative({ type: 'pp.config', enabled: c.enabled, host: c.host, port: c.port });
-}
-
 function schedulePlan() {
-  sendPpConfig();
   if (planTimer) return;
   planTimer = setTimeout(() => {
     planTimer = null;
-    let json: string;
-    try {
-      json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
-    } catch (err) {
-      uiLog(`building the mix failed: ${errText(err)}`);
-      return;
-    }
-    if (!lastPlanJson) uiLog(`first mix sent (${Math.round(json.length / 1024)} KB)`);
+    const json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
     if (json === lastPlanJson) return; // e.g. only UI-only state changed
     lastPlanJson = json;
     if (ws?.readyState === WebSocket.OPEN) ws.send(`{"type":"plan","plan":${json}}`);
@@ -205,7 +161,7 @@ function onMessage(m: any) {
       useNative.setState({ scanning: !!m.scanning, blacklisted: m.blacklisted ?? [], scan: m.scanning ? useNative.getState().scan : undefined });
       break;
     case 'plugins.scan':
-      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format, seconds: m.seconds } });
+      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format } });
       break;
     case 'meters': {
       const next = new Map<string, MeterReading>();
@@ -214,10 +170,6 @@ function onMessage(m: any) {
       next.set('main', { peak: m.main[0], peakR: m.main[1] });
       next.set('monitor', { peak: m.mon[0], peakR: m.mon[1] });
       meters = next;
-      if (!metersLogged && (m.main[0] > 0 || m.main[1] > 0)) {
-        metersLogged = true;
-        uiLog(`meters arriving (main peak ${Math.max(m.main[0], m.main[1]).toFixed(3)})`);
-      }
       const f = (x: number | null) => (x === null || x === undefined ? -Infinity : x);
       loudness = { momentary: f(m.loud[0]), shortTerm: f(m.loud[1]), integrated: f(m.loud[2]), peak: [m.main[0], m.main[1]] };
       if (m.pdc !== useNative.getState().pdc) useNative.setState({ pdc: m.pdc });
@@ -228,7 +180,6 @@ function onMessage(m: any) {
       break;
     }
     case 'insert.loading':
-      setInsert(m.slotId, { error: undefined, retry: false });
       setInsert(m.slotId, { loading: true, error: undefined });
       break;
     case 'insert.ready': {
@@ -249,7 +200,7 @@ function onMessage(m: any) {
       patchSlot(m.slotId, { state: m.state });
       break;
     case 'insert.error':
-      setInsert(m.slotId, { loading: false, error: m.message, retry: !!m.retry });
+      setInsert(m.slotId, { loading: false, error: m.message });
       break;
     case 'insert.editor':
       setInsert(m.slotId, { editorOpen: m.open });
@@ -259,7 +210,6 @@ function onMessage(m: any) {
       if (!autosaveReady) {
         if (m.text) {
           try {
-            uiLog(`saved show received (${Math.round(String(m.text).length / 1024)} KB)`);
             useConsole.getState().loadShow(parseShow(m.text));
             uiLog(`restored show "${useConsole.getState().showName}"`);
           } catch (err) {
@@ -269,21 +219,6 @@ function onMessage(m: any) {
         } else uiLog('no saved show found: starting with the default show');
         autosaveReady = true;
       }
-      break;
-    case 'pp.status':
-      useNative.setState((st) => ({ pp: { ...st.pp, state: m.state, message: m.message, raw: m.state === 'off' ? {} : st.pp.raw } }));
-      break;
-    case 'pco.status':
-      useNative.setState({ pcoLinked: !!m.linked });
-      break;
-    case 'pco.response': {
-      const p = pcoPending.get(m.id);
-      pcoPending.delete(m.id);
-      p?.({ status: m.status, body: m.body });
-      break;
-    }
-    case 'pp.update':
-      useNative.setState((st) => ({ pp: { ...st.pp, raw: { ...st.pp.raw, [m.url]: m.data } } }));
       break;
     case 'insert.docked':
       if (m.error) uiLog(`dock unavailable: ${m.error}`);
@@ -337,12 +272,7 @@ export function startEmbedded() {
   if (!EMBEDDED) return;
   useNative.setState({ url: EMBEDDED_URL });
   window.addEventListener('error', (e) => uiLog(`error: ${e.message} (${e.filename}:${e.lineno})`));
-  window.addEventListener('unhandledrejection', (e) => uiLog(`unhandled: ${errText(e.reason)}`));
-  const origError = console.error.bind(console);
-  console.error = (...a: unknown[]) => {
-    origError(...a);
-    uiLog(`console error: ${a.map((x) => (x instanceof Error ? errText(x) : String(x))).join(' ')}`);
-  };
+  window.addEventListener('unhandledrejection', (e) => uiLog(`unhandled: ${e.reason}`));
   const attempt = () => {
     if (useNative.getState().status === 'connected') return;
     connectNative(EMBEDDED_URL).catch(() => setTimeout(attempt, 1000));
@@ -362,22 +292,11 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
     const sock = new WebSocket(url);
     ws = sock;
     sock.onopen = () => {
-      // each start-up step is guarded and logged: one failure must not stop the mix reaching the engine
-      const step = (name: string, fn: () => void) => {
-        try {
-          fn();
-        } catch (err) {
-          uiLog(`start-up step "${name}" failed: ${errText(err)}`);
-        }
-      };
-      step('status', () => useNative.setState({ status: 'connected' }));
-      step('load show', () => { if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' }); });
+      useNative.setState({ status: 'connected' });
+      if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
       lastPlanJson = '';
-      lastPpConfig = '';
-      step('propresenter', sendPpConfig);
-      step('first mix', schedulePlan);
-      step('follow changes', () => { unsubscribe = useConsole.subscribe(schedulePlan); });
-      uiLog('console connected');
+      schedulePlan();
+      unsubscribe = useConsole.subscribe(schedulePlan);
       resolve();
     };
     sock.onmessage = (e) => {
@@ -385,7 +304,6 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
         onMessage(JSON.parse(e.data));
       } catch (err) {
         console.error('Bad engine message', err);
-        uiLog(`error handling an engine message: ${errText(err)}`);
       }
     };
     sock.onerror = () => {

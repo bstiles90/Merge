@@ -15,46 +15,8 @@ export interface PlanInsert {
 const inserts = (list: InsertSlot[]): PlanInsert[] => list.map((i) => ({ id: i.id, pluginId: i.pluginId, bypass: i.bypass }));
 const r = (x: number) => Math.round(x * 1e6) / 1e6; // keep the JSON small and stable
 
-/** How long after a moment its fade is still sent with the plan (the engine starts it once). */
-const FADE_WINDOW_MS = 3000;
-
-/** Where a bus goes: 'main', another bus id, or '' (outputs only). Loops are cut. */
-export function busTarget(s: Pick<ConsoleState, 'buses'>, id: string): string {
-  const b = s.buses.find((x) => x.id === id);
-  const out = b?.output ?? 'none';
-  if (out === 'main') return 'main';
-  if (out === 'none' || out === id || !s.buses.some((x) => x.id === out)) return '';
-  return createsLoop(s, id, out) ? '' : out;
-}
-
-/** Would routing bus `from` into bus `to` make a loop (to → … → from)? */
-export function createsLoop(s: Pick<ConsoleState, 'buses'>, from: string, to: string): boolean {
-  let cur: string | undefined = to;
-  for (let i = 0; i <= s.buses.length && cur; i++) {
-    if (cur === from) return true;
-    const out: string | undefined = s.buses.find((x) => x.id === cur)?.output;
-    cur = out && out !== 'main' && out !== 'none' ? out : undefined;
-  }
-  return false;
-}
-
-/** Buses ordered so each comes before the bus it feeds (the engine processes them in this order). */
-export function busOrder(s: Pick<ConsoleState, 'buses'>): string[] {
-  const depth = (id: string) => {
-    let d = 0, cur = busTarget(s, id);
-    while (cur && cur !== 'main' && d <= s.buses.length) {
-      d++;
-      cur = busTarget(s, cur);
-    }
-    return d; // number of buses downstream: further from Main LR = earlier
-  };
-  return s.buses.map((b, i) => ({ id: b.id, d: depth(b.id), i })).sort((a, b) => b.d - a.d || a.i - b.i).map((x) => x.id);
-}
-
-export function buildMixPlan(s: ConsoleState, now = Date.now()) {
+export function buildMixPlan(s: ConsoleState) {
   const solo = anySolo(s);
-  const f = s.automation?.fade;
-  const fade = f && now - f.at < f.ms + FADE_WINDOW_MS ? f : null;
   const pfl = s.monitor.soloMode === 'pfl';
   return {
     channels: s.channels.map((ch) => {
@@ -69,16 +31,11 @@ export function buildMixPlan(s: ConsoleState, now = Date.now()) {
         pan: ch.pan,
         post: r(g.post),
         main: ch.mainAssign ? 1 : 0,
-        sends: [
-          ...Object.entries(g.routes).filter(([, v]) => v > 0).map(([bus, v]) => ({ bus, gain: r(v), pre: false, route: true })),
-          // a bus the channel is assigned to takes the assignment, not a send as well
-          ...Object.entries(g.sends)
-            .filter(([bus, v]) => v.gain > 0 && !(bus in g.routes))
-            .map(([bus, v]) => ({ bus, gain: r(v.gain), pre: v.pre })),
-        ],
+        sends: Object.entries(g.sends)
+          .filter(([, v]) => v.gain > 0)
+          .map(([bus, v]) => ({ bus, gain: r(v.gain), pre: v.pre })),
         cue: r(g.cue),
         cuePre: g.cuePre,
-        ...(fade && fade.channels.includes(ch.id) ? { fadeId: fade.id, fadeMs: fade.ms } : {}),
       };
     }),
     buses: s.buses.map((b) => {
@@ -90,10 +47,8 @@ export function buildMixPlan(s: ConsoleState, now = Date.now()) {
         cuePost: b.solo && !pfl ? 1 : 0,
         delayMs: b.delayMs,
         inserts: inserts(b.inserts),
-        to: busTarget(s, b.id),
       };
     }),
-    busOrder: busOrder(s),
     main: { out: r(computeMainGain(s)), delayMs: s.main.delayMs, inserts: inserts(s.main.inserts) },
     monitor: {
       source: solo ? 'cue' : s.monitor.source,
