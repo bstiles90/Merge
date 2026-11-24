@@ -50,6 +50,9 @@ target_sources(MergeEngine PRIVATE
   src/SelfTest.cpp
   src/TruePeak.cpp
   src/ConsoleWindow.cpp)
+if(APPLE)
+  target_sources(MergeEngine PRIVATE src/MacSupport.mm)
+endif()
 
 target_compile_definitions(MergeEngine PRIVATE
   JUCE_PLUGINHOST_VST3=1

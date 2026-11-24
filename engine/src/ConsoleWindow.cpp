@@ -5,6 +5,10 @@
 namespace merge
 {
 
+#if JUCE_MAC
+void macKeepAwake (void* windowNSView); // MacSupport.mm
+#endif
+
 juce::File findUiDirectory()
 {
     if (auto env = juce::SystemStats::getEnvironmentVariable ("MERGE_UI_DIR", {}); env.isNotEmpty())
@@ -121,6 +125,10 @@ ConsoleWindow::ConsoleWindow (Engine& e, const juce::String& devUrl)
     const auto url = devUrl.isNotEmpty() ? devUrl + query : bundled + query;
     juce::Component::SafePointer<juce::WebBrowserComponent> safe (browser.get());
     juce::MessageManager::callAsync ([safe, url] { if (safe) safe->goToURL (url); });
+    std::cout << "[ui] loading console: " << url << std::endl;
+   #if JUCE_MAC
+    macKeepAwake (getWindowHandle());
+   #endif
 
     // Plugin dock: a child native layer attached to this window, so the plugin's own GUI (native
     // view or JUCE-drawn) sits on top of the console exactly where the console's dock area is.

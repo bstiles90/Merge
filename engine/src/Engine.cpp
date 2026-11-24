@@ -136,6 +136,10 @@ void Engine::applyPlan (juce::var planJson)
     std::vector<InsertSpec> specs;
     const double sr = mix.getSampleRate();
     parsePlan (planJson, sr, nullptr, &specs);   // collect insert specs
+    static size_t lastSlotCount = (size_t) -1;
+    if (specs.size() != lastSlotCount)
+        std::cout << "[plan] " << specs.size() << " plugin slot(s)" << std::endl;
+    lastSlotCount = specs.size();
     plugins.syncInserts (specs);                 // create / remove plugin instances
     auto resolve = [this] (const juce::String& id) { return plugins.find (id); };
     mix.setPlan (parsePlan (planJson, sr, resolve, nullptr));
@@ -145,6 +149,10 @@ void Engine::handleMessage (int clientId, const juce::String& text)
 {
     const auto msg = juce::JSON::parse (text);
     const auto type = msg["type"].toString();
+    // trace: what the console asks for (not the high-rate messages), plus console errors
+    if (type == "ui.log") { std::cout << "[ui] " << msg["text"].toString() << std::endl; return; }
+    if (type != "plan" && type != "dock.bounds" && type != "insert.param" && type != "ping" && type != "show.autosave")
+        std::cout << "[msg] " << type << (msg["slotId"].isString() ? " " + msg["slotId"].toString() : juce::String()) << std::endl;
     if (type == "plan") applyPlan (msg["plan"]);
     else if (type == "insert.param") plugins.setParam (msg["slotId"], msg["id"], (float) (double) msg["value"]);
     else if (type == "insert.setState") plugins.setState (msg["slotId"], msg["state"]);

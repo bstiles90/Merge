@@ -80,7 +80,8 @@ jobs:
           "$APP/Contents/MacOS/Merge" > app.log 2>&1 &
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
-          for i in $(seq 1 20); do grep -q "\[dock\]" app.log && break; sleep 1; done
+          osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $PID) to true" || true
+          for i in $(seq 1 30); do grep -q "\[dock\] Merge" app.log && break; sleep 1; done
           sleep 3
           screencapture -x app-screenshot.png || true
           kill $PID || true

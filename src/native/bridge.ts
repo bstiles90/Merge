@@ -100,6 +100,11 @@ export function sendNative(msg: object) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+/** Inside the app: write a line to the engine's log (console errors and start-up steps). */
+export function uiLog(text: string) {
+  if (EMBEDDED) sendNative({ type: 'ui.log', text: text.slice(0, 500) });
+}
+
 function schedulePlan() {
   if (planTimer) return;
   planTimer = setTimeout(() => {
@@ -206,14 +211,17 @@ function onMessage(m: any) {
         if (m.text) {
           try {
             useConsole.getState().loadShow(parseShow(m.text));
+            uiLog(`restored show "${useConsole.getState().showName}"`);
           } catch (err) {
             console.error('Could not restore the last show', err);
+            uiLog(`could not restore the last show: ${err}`);
           }
         }
         autosaveReady = true;
       }
       break;
     case 'insert.docked':
+      if (m.error) uiLog(`dock unavailable: ${m.error}`);
       useNative.setState({ docked: m.slotId ? { slotId: m.slotId, name: m.name, width: m.width, height: m.height } : null, ...(m.error ? { dockUnavailable: true } : {}) });
       break;
     case 'show.saved':
@@ -263,6 +271,8 @@ function scheduleAutosave() {
 export function startEmbedded() {
   if (!EMBEDDED) return;
   useNative.setState({ url: EMBEDDED_URL });
+  window.addEventListener('error', (e) => uiLog(`error: ${e.message} (${e.filename}:${e.lineno})`));
+  window.addEventListener('unhandledrejection', (e) => uiLog(`unhandled: ${e.reason}`));
   const attempt = () => {
     if (useNative.getState().status === 'connected') return;
     connectNative(EMBEDDED_URL).catch(() => setTimeout(attempt, 1000));

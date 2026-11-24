@@ -348,6 +348,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         const auto desc = findDescription (s.pluginId);
         if (! desc)
         {
+            std::cout << "[insert] not found " << s.pluginId << std::endl;
             // built-in browser plugins and plugins missing on this machine land here
             send (obj ({ { "type", "insert.error" }, { "slotId", s.slotId }, { "pluginId", s.pluginId },
                          { "message", s.pluginId.startsWith ("builtin.") ? "Built-in effect not available in the native engine yet" : "Plugin not installed / not scanned on this machine" } }));
@@ -361,6 +362,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         const auto slotId = s.slotId, pluginId = s.pluginId, strip = s.strip;
         const auto gen = slot.generation;
         slots[slotId] = std::move (slot);
+        std::cout << "[insert] loading " << desc->name << " (" << slotId << ")" << std::endl;
         send (obj ({ { "type", "insert.loading" }, { "slotId", slotId }, { "pluginId", pluginId } }));
         formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
             [this, slotId, pluginId, strip, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
@@ -370,6 +372,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
                 sl.loading = false;
                 if (! inst)
                 {
+                    std::cout << "[insert] failed " << pluginId << ": " << err << std::endl;
                     send (obj ({ { "type", "insert.error" }, { "slotId", slotId }, { "pluginId", pluginId },
                                  { "message", err.isNotEmpty() ? err : juce::String ("Plugin failed to load (check its licence / authorisation)") } }));
                     return;
@@ -378,6 +381,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
                 sl.insert = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
                 sl.insert->bypass = sl.bypass;
                 auto& p = sl.insert->plugin();
+                std::cout << "[insert] ready " << p.getName() << " (" << slotId << ")" << std::endl;
                 send (obj ({ { "type", "insert.ready" }, { "slotId", slotId }, { "pluginId", pluginId }, { "name", p.getName() },
                              { "latency", sl.insert->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", sl.insert->getPluginChannels() },
                              { "params", sl.insert->describeParams() } }));
@@ -460,7 +464,11 @@ bool PluginHost::dock (const juce::String& slotId)
 {
     auto* holder = getDockHolder ? getDockHolder() : nullptr;
     auto it = slots.find (slotId);
-    if (holder == nullptr || it == slots.end() || ! it->second.insert) return false;
+    if (holder == nullptr || it == slots.end() || ! it->second.insert)
+    {
+        std::cout << "[dock] refused " << slotId << ": " << (holder == nullptr ? "no dock layer" : it == slots.end() ? "unknown slot" : "plugin not loaded") << std::endl;
+        return false;
+    }
     if (dockedSlot == slotId && dockedEditor) return true;
     undock();
     it->second.editor.reset(); // close its floating window, if open (frees the active editor)
