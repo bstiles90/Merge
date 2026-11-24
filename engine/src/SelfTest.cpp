@@ -5,6 +5,7 @@
 #include "Engine.h"
 #include "ConsoleWindow.h"
 #include <iostream>
+#include <cstdlib>
 
 namespace merge
 {
@@ -16,6 +17,15 @@ void check (bool ok, const juce::String& what, const juce::String& detail = {})
 {
     std::cout << (ok ? "  PASS  " : "  FAIL  ") << what << (detail.isNotEmpty() ? "  (" + detail + ")" : juce::String()) << std::endl;
     if (! ok) ++failures;
+}
+
+void setEnv (const char* k, const char* v)
+{
+   #if JUCE_WINDOWS
+    _putenv_s (k, v != nullptr ? v : "");
+   #else
+    if (v != nullptr) setenv (k, v, 1); else unsetenv (k);
+   #endif
 }
 
 bool near (double a, double b, double tol) { return std::abs (a - b) <= tol; }
@@ -320,8 +330,31 @@ void testPluginHosting (const juce::String& pluginPath)
     e.host().setAudioConfig (kSr, kBlock);
 
     // a folder scan must finish and report the list (it used to hang after the last plugin)
+    {
+        // a plugin that never finishes loading must not freeze the app or stop the scan
+        setEnv ("MERGE_TEST_PLUGIN_HANG", "1");
+        setEnv ("MERGE_SCAN_TIMEOUT_MS", "3000");
+        // a copy without moduleinfo.json, so the scan has to load the plugin (like older plugins)
+        const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("merge-hang-test");
+        dir.deleteRecursively();
+        dir.createDirectory();
+        const auto copy = dir.getChildFile (juce::File (pluginPath).getFileName());
+        juce::File (pluginPath).copyDirectoryTo (copy);
+        for (auto& f : copy.findChildFiles (juce::File::findFiles, true, "moduleinfo.json")) f.deleteFile();
+        const auto t0 = juce::Time::getMillisecondCounter();
+        int ticks = 0;
+        e.host().startScanIn (juce::FileSearchPath (dir.getFullPathName()), true);
+        for (int i = 0; i < 1500 && e.host().isScanning(); ++i) { pump (20); ++ticks; }
+        setEnv ("MERGE_TEST_PLUGIN_HANG", nullptr);
+        setEnv ("MERGE_SCAN_TIMEOUT_MS", nullptr);
+        const auto secs = (juce::Time::getMillisecondCounter() - t0) / 1000.0;
+        check (! e.host().isScanning() && secs < 15, "scan finishes even when a plugin hangs while loading", juce::String (secs, 1) + " s");
+        check (ticks > 100, "the app stays responsive during the scan (plugins load in a helper process)", juce::String (ticks) + " UI ticks");
+        check (e.host().getKnownList().getBlacklistedFiles().contains (copy.getFullPathName()), "the hanging plugin is skipped and listed");
+        dir.deleteRecursively();
+    }
     e.host().startScanIn (juce::FileSearchPath (juce::File (pluginPath).getParentDirectory().getFullPathName()), true);
-    for (int i = 0; i < 300 && e.host().isScanning(); ++i) pump (20);
+    for (int i = 0; i < 1500 && e.host().isScanning(); ++i) pump (20); // each file is scanned in a helper process
     bool listed = false;
     for (auto& v : sent) listed = listed || (v["type"] == "plugins" && ! (bool) v["scanning"]);
     check (! e.host().isScanning() && listed, "plugin folder scan finishes and reports the list");

@@ -54,7 +54,7 @@ interface NativeState {
   version?: string;
   error?: string;
   device?: NativeDevice;
-  scan?: { progress: number; file: string; format?: string };
+  scan?: { progress: number; file: string; format?: string; seconds?: number };
   scanning: boolean;
   blacklisted: string[];
   pdc: number;
@@ -84,6 +84,7 @@ export const useNative = create<NativeState>(() => ({
 }));
 
 let ws: WebSocket | null = null;
+let metersLogged = false;
 let unsubscribe: (() => void) | null = null;
 let lastPlanJson = '';
 let planTimer: ReturnType<typeof setTimeout> | null = null;
@@ -192,7 +193,7 @@ function onMessage(m: any) {
       useNative.setState({ scanning: !!m.scanning, blacklisted: m.blacklisted ?? [], scan: m.scanning ? useNative.getState().scan : undefined });
       break;
     case 'plugins.scan':
-      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format } });
+      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format, seconds: m.seconds } });
       break;
     case 'meters': {
       const next = new Map<string, MeterReading>();
@@ -201,6 +202,10 @@ function onMessage(m: any) {
       next.set('main', { peak: m.main[0], peakR: m.main[1] });
       next.set('monitor', { peak: m.mon[0], peakR: m.mon[1] });
       meters = next;
+      if (!metersLogged && (m.main[0] > 0 || m.main[1] > 0)) {
+        metersLogged = true;
+        uiLog(`meters arriving (main peak ${Math.max(m.main[0], m.main[1]).toFixed(3)})`);
+      }
       const f = (x: number | null) => (x === null || x === undefined ? -Infinity : x);
       loudness = { momentary: f(m.loud[0]), shortTerm: f(m.loud[1]), integrated: f(m.loud[2]), peak: [m.main[0], m.main[1]] };
       if (m.pdc !== useNative.getState().pdc) useNative.setState({ pdc: m.pdc });

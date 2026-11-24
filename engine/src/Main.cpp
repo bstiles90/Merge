@@ -1,9 +1,56 @@
+#include <fstream>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Engine.h"
 #include "ConsoleWindow.h"
 #include "PluginHost.h"
 
 namespace merge { int runSelfTest (const juce::StringArray& args); }
+
+
+namespace
+{
+/** Copies everything written to std::cout/cerr into a log file, so the log exists even when the
+    app is opened from Finder (where the console output goes nowhere). */
+struct TeeBuf : std::streambuf
+{
+    TeeBuf (std::streambuf* a, std::streambuf* b) : first (a), second (b) {}
+    int overflow (int c) override
+    {
+        if (c == EOF) return !EOF;
+        const auto r1 = first->sputc ((char) c), r2 = second->sputc ((char) c);
+        return r1 == EOF || r2 == EOF ? EOF : c;
+    }
+    int sync() override { const int a = first->pubsync(), b = second->pubsync(); return a == 0 && b == 0 ? 0 : -1; }
+    std::streambuf *first, *second;
+};
+
+juce::File logFolder()
+{
+   #if JUCE_MAC
+    return juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/Merge");
+   #else
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/Logs");
+   #endif
+}
+
+void startLogFile()
+{
+    static std::ofstream file;
+    static std::unique_ptr<TeeBuf> outTee, errTee;
+    const auto dir = logFolder();
+    dir.createDirectory();
+    const auto log = dir.getChildFile ("merge.log");
+    if (log.existsAsFile()) log.moveFileTo (dir.getChildFile ("merge-previous.log"));
+    file.open (log.getFullPathName().toStdString(), std::ios::out | std::ios::trunc);
+    if (! file.is_open()) return;
+    outTee = std::make_unique<TeeBuf> (std::cout.rdbuf(), file.rdbuf());
+    errTee = std::make_unique<TeeBuf> (std::cerr.rdbuf(), file.rdbuf());
+    std::cout.rdbuf (outTee.get());
+    std::cerr.rdbuf (errTee.get());
+    std::cout << "Merge " << MERGE_ENGINE_VERSION << " started " << juce::Time::getCurrentTime().toString (true, true) << " ("
+              << juce::SystemStats::getOperatingSystemName() << ")" << std::endl;
+}
+} // namespace
 
 class MergeEngineApp : public juce::JUCEApplication
 {
@@ -15,6 +62,23 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         const auto args = juce::StringArray::fromTokens (commandLine, true);
+        if (const auto params = getCommandLineParameterArray(); params.contains ("--scan-one"))
+        {
+            // plugin-scan helper: load one plugin file, write what it contains, exit. Runs in its own
+            // process so a plugin that hangs or crashes can't take the app down with it.
+            const int i = params.indexOf ("--scan-one");
+           #if JUCE_MAC
+            juce::Process::setDockIconVisible (false);
+           #endif
+            const auto format = params[i + 1], id = params[i + 2];
+            const juce::File out (params[i + 3]);
+            juce::MessageManager::callAsync ([format, id, out] {
+                const int n = merge::PluginHost::scanOneToFile (format, id, out);
+                std::fflush (stdout);
+                std::_Exit (n > 0 ? 0 : 2);
+            });
+            return;
+        }
         if (args.contains ("--print-plugin-ids"))
         {
             // lists the scanned plugins (id <tab> name); used by CI to build a test show
@@ -38,6 +102,7 @@ public:
             });
             return;
         }
+        startLogFile(); // the app itself (not the scan helper / tests)
         merge::Engine::Options opt;
         if (const int i = args.indexOf ("--port"); i >= 0) opt.port = args[i + 1].getIntValue();
         opt.virtualDevice = args.contains ("--virtual");

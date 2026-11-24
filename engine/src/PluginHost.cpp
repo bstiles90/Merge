@@ -189,7 +189,6 @@ PluginHost::PluginHost()
     dataDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge");
     dataDir.createDirectory();
     listFile = dataDir.getChildFile ("plugins.xml");
-    deadMansPedal = dataDir.getChildFile ("scan-in-progress.txt");
     if (auto xml = juce::parseXML (listFile)) known.recreateFromXml (*xml);
     startTimerHz (20);
 }
@@ -197,6 +196,7 @@ PluginHost::PluginHost()
 PluginHost::~PluginHost()
 {
     stopTimer();
+    if (scanChild) scanChild->kill(); // don't leave a scan helper running after quitting
     send = nullptr; // the engine's socket may already be gone at shutdown
     undock();
     for (auto& [id, s] : slots) s.editor.reset();
@@ -227,47 +227,150 @@ std::optional<juce::PluginDescription> PluginHost::findDescription (const juce::
 
 void PluginHost::startScanIn (const juce::FileSearchPath& folders, bool rescanAll)
 {
+    scanFolders = folders;
     startScan (rescanAll);
-    scanFolders = folders; // applies from the first format created below
 }
 
 void PluginHost::startScan (bool rescanAll)
 {
+    if (scanActive) return;
+    if (rescanAll) known.clearBlacklistedFiles();
+    scanQueue.clear();
+    scanIndex = 0;
+    scanProblems.clear();
+    // list the plugin files of every format (fast: nothing is loaded here)
+    for (auto* f : formats.getFormats())
+    {
+        if (! f->canScanForPlugins()) continue;
+        const auto paths = scanFolders ? *scanFolders : f->getDefaultLocationsToSearch();
+        for (auto& id : f->searchPathsForPlugins (paths, true, true))
+        {
+            if (known.getBlacklistedFiles().contains (id)) continue;
+            if (! rescanAll && known.isListingUpToDate (id, *f)) continue;
+            scanQueue.push_back ({ f->getName(), id });
+        }
+    }
     scanFolders.reset();
     scanActive = true;
-    scanFormatIndex = 0;
-    scanRescanAll = rescanAll;
-    scanner.reset();
-    if (rescanAll) known.clearBlacklistedFiles();
-    scanStep();
+    std::cout << "[scan] " << scanQueue.size() << " plugin file(s) to scan" << std::endl;
+    startNextScanJob();
+}
+
+void PluginHost::scanFileAsync (const juce::String& path)
+{
+    for (auto* f : formats.getFormats())
+        if (f->fileMightContainThisPluginType (path))
+        {
+            scanQueue.push_back ({ f->getName(), path });
+            if (! scanActive) { scanActive = true; scanProblems.clear(); startNextScanJob(); }
+            return;
+        }
+    send (obj ({ { "type", "error" }, { "message", "Not a plugin file Merge can load: " + path } }));
+}
+
+void PluginHost::skipCurrentScan()
+{
+    if (scanChild) scanSkipRequested = true;
+}
+
+void PluginHost::startNextScanJob()
+{
+    if (scanIndex >= scanQueue.size())
+    {
+        scanActive = false;
+        scanQueue.clear();
+        scanIndex = 0;
+        saveList();
+        std::cout << "[scan] finished: " << known.getNumTypes() << " plugin(s) known"
+                  << (scanProblems.isEmpty() ? juce::String() : ", skipped: " + scanProblems.joinIntoString (", ")) << std::endl;
+        sendPluginList();
+        return;
+    }
+    const auto& job = scanQueue[scanIndex];
+    scanOut = juce::File::createTempFile (".xml");
+    juce::StringArray args { juce::File::getSpecialLocation (juce::File::currentExecutableFile).getFullPathName(),
+                             "--scan-one", job.format, job.id, scanOut.getFullPathName() };
+    scanChild = std::make_unique<juce::ChildProcess>();
+    scanStartedMs = scanLastReportMs = juce::Time::getMillisecondCounter();
+    scanSkipRequested = false;
+    std::cout << "[scan] " << job.format << ": " << job.id << std::endl;
+    if (! scanChild->start (args, 0))
+    {
+        std::cout << "[scan] couldn't start the scanner helper" << std::endl;
+        scanChild.reset();
+        finishScanJob (false);
+        return;
+    }
+    send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) },
+                 { "file", job.id }, { "format", job.format }, { "seconds", 0 } }));
+}
+
+/** Called when the helper exits (or is stopped): collect what it found and move on. */
+void PluginHost::finishScanJob (bool timedOut)
+{
+    const auto job = scanQueue[scanIndex];
+    const auto name = juce::File::createFileWithoutCheckingPath (job.id).getFileName().isNotEmpty()
+                          ? juce::File::createFileWithoutCheckingPath (job.id).getFileName() : job.id;
+    int found = 0;
+    const int exitCode = scanChild && ! timedOut ? (int) scanChild->getExitCode() : -1;
+    if (! timedOut)
+        if (auto xml = juce::parseXML (scanOut))
+            for (auto* e : xml->getChildIterator())
+            {
+                juce::PluginDescription d;
+                if (d.loadFromXml (*e)) { known.addType (d); ++found; }
+            }
+    scanOut.deleteFile();
+    scanChild.reset();
+    if (timedOut || (found == 0 && exitCode != 0 && exitCode != 2))
+    {
+        const auto why = scanSkipRequested ? "skipped" : timedOut ? "didn't finish loading" : "crashed while loading";
+        known.addToBlacklist (job.id);
+        scanProblems.add (name + " (" + why + ")");
+        std::cout << "[scan] " << name << ": " << why << ", skipped" << std::endl;
+    }
+    ++scanIndex;
+    startNextScanJob();
 }
 
 void PluginHost::scanStep()
 {
-    // Called by the timer while a scan is active: scan one file per tick so the engine stays
-    // responsive. Moves on through each plugin format, then finishes (saves + reports the list).
-    if (! scanActive) return;
-    while (! scanner && scanFormatIndex < formats.getNumFormats())
+    if (! scanActive || ! scanChild) return;
+    const auto now = juce::Time::getMillisecondCounter();
+    if (! scanChild->isRunning()) { finishScanJob (false); return; }
+    if (scanSkipRequested || now - scanStartedMs > (juce::uint32) scanTimeoutMs())
     {
-        auto* f = formats.getFormat (scanFormatIndex++);
-        if (! f->canScanForPlugins()) continue;
-        scanner = std::make_unique<juce::PluginDirectoryScanner> (known, *f, scanFolders ? *scanFolders : f->getDefaultLocationsToSearch(),
-                                                                  true, deadMansPedal, false);
-        scanFormatName = f->getName();
-    }
-    if (! scanner)
-    {
-        // all formats done: this used to be skipped (the timer stopped calling us once the last
-        // scanner finished), so the UI stayed stuck on "scanning" after the final plugin
-        scanActive = false;
-        saveList();
-        sendPluginList();
+        scanChild->kill();
+        finishScanJob (true);
         return;
     }
-    juce::String name;
-    const bool more = scanner->scanNextFile (! scanRescanAll, name);
-    send (obj ({ { "type", "plugins.scan" }, { "progress", scanner->getProgress() }, { "file", name }, { "format", scanFormatName } }));
-    if (! more) scanner.reset(); // next tick moves to the next format or finishes
+    if (now - scanLastReportMs >= 1000)
+    {
+        scanLastReportMs = now;
+        const auto& job = scanQueue[scanIndex];
+        send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) },
+                     { "file", job.id }, { "format", job.format }, { "seconds", (int) ((now - scanStartedMs) / 1000) } }));
+    }
+}
+
+int PluginHost::scanTimeoutMs()
+{
+    const auto env = juce::SystemStats::getEnvironmentVariable ("MERGE_SCAN_TIMEOUT_MS", {}).getIntValue(); // tests
+    return env > 0 ? env : 120000;
+}
+
+int PluginHost::scanOneToFile (const juce::String& formatName, const juce::String& fileOrId, const juce::File& out)
+{
+    juce::AudioPluginFormatManager fm;
+    fm.addDefaultFormats();
+    juce::OwnedArray<juce::PluginDescription> found;
+    for (auto* f : fm.getFormats())
+        if (f->getName() == formatName)
+            f->findAllTypesForFile (found, fileOrId);
+    juce::XmlElement root ("PLUGINS");
+    for (auto* d : found) root.addChildElement (d->createXml().release());
+    out.replaceWithText (root.toString());
+    return found.size();
 }
 
 bool PluginHost::scanFile (const juce::String& path)

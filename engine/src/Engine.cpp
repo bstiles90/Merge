@@ -170,7 +170,17 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "insert.setState") plugins.setState (msg["slotId"], msg["state"]);
     else if (type == "insert.editor") (bool) msg["open"] ? plugins.openEditor (msg["slotId"]) : plugins.closeEditor (msg["slotId"]);
     else if (type == "plugins.scan") plugins.startScan ((bool) msg["rescan"]);
-    else if (type == "plugins.addFile") plugins.scanFile (msg["path"]);
+    else if (type == "plugins.addFile") plugins.scanFileAsync (msg["path"]);
+    else if (type == "plugins.skip") plugins.skipCurrentScan();
+    else if (type == "log.reveal")
+    {
+       #if JUCE_MAC
+        const auto log = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Library/Logs/Merge/merge.log");
+       #else
+        const auto log = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/Logs/merge.log");
+       #endif
+        if (log.existsAsFile()) log.revealToUser();
+    }
     else if (type == "plugins.list") send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), clientId);
     else if (type == "device.list") send (deviceInfo(), clientId);
     else if (type == "device.set") setDevice (msg);
@@ -327,6 +337,7 @@ void Engine::setDevice (const juce::var& msg)
 
 void Engine::timerCallback()
 {
+    heartbeat.store (juce::Time::getMillisecondCounter());
     mix.collectGarbage();
     if (ws.numClients() == 0 && ! extraSink) return;
     juce::Array<juce::var> chans, buses;

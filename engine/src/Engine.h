@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "Mixer.h"
+#include <iostream>
 #include "PluginHost.h"
 #include "ProPresenter.h"
 #include "PlanningCenter.h"
@@ -79,6 +80,30 @@ private:
     juce::File settingsFile;
     int meterTick = 0;
     std::unique_ptr<juce::FileChooser> chooser;
+
+    /** Logs when the app's main thread stops responding (meters/faders would freeze), so a stall
+        shows up in the log with how long it lasted. */
+    struct Watchdog : juce::Thread
+    {
+        explicit Watchdog (std::atomic<juce::uint32>& b) : juce::Thread ("Merge watchdog"), beat (b) { startThread(); }
+        ~Watchdog() override { stopThread (1000); }
+        void run() override
+        {
+            bool stalled = false;
+            while (! threadShouldExit())
+            {
+                wait (500);
+                const auto last = beat.load();
+                if (last == 0) continue;
+                const auto gap = juce::Time::getMillisecondCounter() - last;
+                if (gap > 3000 && ! stalled) { stalled = true; std::cout << "[stall] the app's main thread is busy: meters and faders are frozen" << std::endl; }
+                if (gap < 1000 && stalled) { stalled = false; std::cout << "[stall] main thread responding again" << std::endl; }
+            }
+        }
+        std::atomic<juce::uint32>& beat;
+    };
+    std::atomic<juce::uint32> heartbeat { 0 };
+    Watchdog watchdog { heartbeat };
 };
 
 } // namespace merge
