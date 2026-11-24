@@ -94,6 +94,8 @@ export const DEFAULT_RULES: Rule[] = [
   { id: 'r1', field: 'item', match: 'Message', moment: 'speech', enabled: true },
   { id: 'r2', field: 'item', match: 'Sermon', moment: 'speech', enabled: true },
   { id: 'r3', field: 'item', match: 'Prayer', moment: 'prayer', enabled: true },
+  { id: 'r13', field: 'item', match: 'Communion', moment: 'prayer', enabled: true },
+  { id: 'r14', field: 'item', match: 'Loop', moment: 'walk', enabled: true },
   { id: 'r5', field: 'item', match: 'Welcome', moment: 'host', enabled: true },
   { id: 'r4', field: 'item', match: 'Announcement', moment: 'host', enabled: true },
   { id: 'r6', field: 'item', match: 'Video', moment: 'video', enabled: true },

@@ -52,7 +52,8 @@ editable on the Show page, checked top to bottom, first match wins):
 | *(off by default)* Slide group **Chorus** / **Bridge** / **Tag** | Chorus / Bridge-Tag |
 | Any song presentation (has Verse / Chorus / Pre-chorus / Bridge / Refrain groups) | Song |
 | Playlist item contains **Message** / **Sermon** | Sermon / Speech |
-| Playlist item contains **Prayer** | Prayer |
+| Playlist item contains **Prayer** / **Communion** | Prayer |
+| Playlist item contains **Loop** (e.g. Announcement Loop) | Walk-in / Walk-out |
 | Playlist item contains **Welcome** / **Announcement** | Announcements / Host |
 | Playlist item contains **Video**, or matches **Walk\*** | Video / Walk-in |
 | *(off by default)* Media is playing | Video / Playback (motion backgrounds would trigger it) |

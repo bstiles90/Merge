@@ -173,6 +173,18 @@ describe('ProPresenter rules', () => {
     expect(decideMoment(contextFromProPresenter(raw('Message', [['Intro', 1], ['Point 1', 3]], 0)), a)?.moment.id).toBe('speech');
   });
 
+  it('a real service order (playlist from our church)', () => {
+    const item = (name: string, groups: [string, number][] = [['Slides', 2]]) => decideMoment(contextFromProPresenter(raw(name, groups, 0)), a)?.moment.id;
+    const song: [string, number][] = [['Intro', 1], ['Verse 1', 2], ['Chorus 1', 2], ['Turnaround', 1], ['Refrain', 1], ['Bridge', 2], ['Ending', 1]];
+    expect(item('Announcement Loop')).toBe('walk');
+    expect(item('Welcome')).toBe('host');
+    expect(item('Here I Am To Worship', song)).toBe('song');
+    expect(item('Prayer + Giving Moment')).toBe('prayer');
+    expect(item('Message')).toBe('speech');
+    expect(item('Forever YHWH', song)).toBe('song');
+    expect(item('Communion')).toBe('prayer');
+  });
+
   it('nothing recognisable → no change', () => {
     expect(decideMoment(contextFromProPresenter(raw('Countdown', [['Group', 1]], 0)), a)).toBeUndefined();
   });
