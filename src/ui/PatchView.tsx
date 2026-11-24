@@ -4,6 +4,8 @@ import type { OutputSource, StripRef } from '../core/types';
 import { enableMidi, midiStatus, onMidiChange, startLearn } from '../control/midi';
 import { Toggle } from './controls';
 import { useEngine, useEngineInputs } from './useEngine';
+import { NativePanel } from './NativePanel';
+import { useNative } from '../native/bridge';
 
 function DevicesPanel() {
   const engine = useEngine();
@@ -95,7 +97,7 @@ function DevicesPanel() {
 
 function InputPatch() {
   const s = useConsole();
-  const { devices, channelsFor } = useEngineInputs();
+  const { devices, channelsFor, channelName } = useEngineInputs();
   const [bulk, setBulk] = useState({ deviceId: '', from: 1, to: 1, count: 8 });
   return (
     <div className="panel">
@@ -155,7 +157,7 @@ function InputPatch() {
                 <optgroup key={d.deviceId} label={d.label || d.deviceId.slice(0, 8)}>
                   {Array.from({ length: channelsFor(d.deviceId) }, (_, i) => (
                     <option key={i} value={`in:${d.deviceId}:${i}`}>
-                      In {i + 1}
+                      {channelName(d.deviceId, i)}
                     </option>
                   ))}
                 </optgroup>
@@ -174,7 +176,9 @@ function InputPatch() {
 function OutputPatch() {
   const s = useConsole();
   const engine = useEngine();
-  const max = engine?.maxOutputChannels ?? 2;
+  const native = useNative();
+  const nativeOuts = native.status === 'connected' ? native.device?.outputs : undefined;
+  const max = nativeOuts ? nativeOuts.length : engine?.maxOutputChannels ?? 2;
   const n = Math.max(2, Math.min(64, Math.max(max, s.io.outputPatch.length)));
   const value = (o: OutputSource | null | undefined) => (o ? `${o.src}:${o.side}` : '');
   const set = (i: number, v: string) =>
@@ -196,7 +200,7 @@ function OutputPatch() {
       <div className="patch-list">
         {Array.from({ length: n }, (_, i) => (
           <div key={i} className={'patch-row' + (i >= max ? ' offline' : '')}>
-            <span className="patch-ch">Out {i + 1}</span>
+            <span className="patch-ch" title={nativeOuts?.[i]}>Out {i + 1}</span>
             <select value={value(s.io.outputPatch[i])} onChange={(e) => set(i, e.target.value)}>
               <option value="">—</option>
               {sources.map((src) => (
@@ -215,7 +219,7 @@ function OutputPatch() {
 
 function TalkbackPanel() {
   const s = useConsole();
-  const { devices, channelsFor } = useEngineInputs();
+  const { devices, channelsFor, channelName } = useEngineInputs();
   const tb = s.talkback;
   const up = (p: Partial<typeof tb>) => s.update((st) => ({ talkback: { ...st.talkback, ...p } }));
   return (
@@ -233,7 +237,7 @@ function TalkbackPanel() {
         <select value={tb.deviceChannel} onChange={(e) => up({ deviceChannel: Number(e.target.value) })}>
           {Array.from({ length: channelsFor(tb.deviceId) }, (_, i) => (
             <option key={i} value={i}>
-              In {i + 1}
+              {channelName(tb.deviceId, i)}
             </option>
           ))}
         </select>
@@ -315,10 +319,12 @@ function MidiPanel() {
 }
 
 export function PatchView() {
+  const nativeOn = useNative((st) => st.status === 'connected');
   return (
     <div className="page grid3">
       <div className="col">
-        <DevicesPanel />
+        <NativePanel />
+        {!nativeOn && <DevicesPanel />}
         <TalkbackPanel />
         <MidiPanel />
       </div>

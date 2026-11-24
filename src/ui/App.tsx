@@ -9,6 +9,8 @@ import { SetupView } from './SetupView';
 import { fmtTime, TimelineView } from './TimelineView';
 import { services } from '../core/services';
 import { bootEngine, useEngine } from './useEngine';
+import { useNative } from '../native/bridge';
+import { toggleNative } from './NativePanel';
 
 type Tab = 'mix' | 'timeline' | 'scenes' | 'setup' | 'io';
 const TABS: [Tab, string][] = [
@@ -46,6 +48,7 @@ function TransportMini() {
 export function App() {
   const [tab, setTab] = useState<Tab>('mix');
   const engine = useEngine();
+  const native = useNative();
   const [starting, setStarting] = useState(false);
   const [err, setErr] = useState('');
   const s = useConsole();
@@ -102,12 +105,23 @@ export function App() {
             New
           </button>
         </div>
-        {engine ? (
-          <span className="engine-on" title={`${engine.ctx.sampleRate} Hz`}>● ENGINE</span>
-        ) : (
-          <button className="engine-start" onClick={start} disabled={starting}>
-            {starting ? 'Starting…' : 'Start audio'}
+        {native.status === 'connected' ? (
+          <button className="engine-on native" onClick={toggleNative} title={`Native engine at ${native.url} — click to disconnect`}>
+            ● NATIVE {native.device ? `${native.device.sampleRate / 1000}k` : ''}
           </button>
+        ) : (
+          <>
+            {engine ? (
+              <span className="engine-on" title={`${engine.ctx.sampleRate} Hz`}>● BROWSER ENGINE</span>
+            ) : (
+              <button className="engine-start" onClick={start} disabled={starting}>
+                {starting ? 'Starting…' : 'Start audio'}
+              </button>
+            )}
+            <button onClick={toggleNative} title="Connect to Merge Engine (native audio + VST3/AU hosting)">
+              {native.status === 'connecting' ? 'Connecting…' : 'Connect engine'}
+            </button>
+          </>
         )}
         <input
           ref={fileRef}
@@ -127,7 +141,8 @@ export function App() {
         />
       </header>
       {err && <div className="error-bar">Audio engine failed to start: {err}</div>}
-      {!engine && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> to hear it and see meters.</div>}
+      {native.status === 'error' && <div className="error-bar">{native.error}</div>}
+      {!engine && native.status !== 'connected' && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> for the browser engine, or <b>Connect engine</b> for native audio with VST3/AU plugins.</div>}
       <main className="content">
         {tab === 'mix' && <MixView />}
         {tab === 'timeline' && <TimelineView />}

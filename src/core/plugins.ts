@@ -23,7 +23,10 @@ export interface PluginDescriptor {
   name: string;
   vendor: string;
   format: PluginFormat;
-  category: 'Dynamics' | 'EQ' | 'Time' | 'Reverb' | 'Utility';
+  /** 'Dynamics' | 'EQ' | 'Time' | 'Reverb' | 'Utility' for built-ins; whatever the plugin reports otherwise */
+  category: string;
+  /** built-ins run in the browser engine; everything else needs the native engine */
+  native?: boolean;
   params: PluginParam[];
 }
 
@@ -100,9 +103,32 @@ export const BUILTIN_PLUGINS: PluginDescriptor[] = [
 
 const registry = new Map<string, PluginDescriptor>(BUILTIN_PLUGINS.map((p) => [p.id, p]));
 
+const listeners = new Set<() => void>();
+let version = 0;
+const changed = () => {
+  version++;
+  listeners.forEach((l) => l());
+};
+
 export function registerPlugin(desc: PluginDescriptor) {
   registry.set(desc.id, desc);
+  changed();
 }
+
+/** Replace all natively hosted plugins (VST3/AU) with the engine's current list. */
+export function setNativePlugins(list: PluginDescriptor[]) {
+  for (const [id, d] of registry) if (d.native) registry.delete(id);
+  for (const d of list) registry.set(d.id, { ...d, native: true });
+  changed();
+}
+
+export function onPluginsChange(fn: () => void) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+export const pluginsVersion = () => version;
 
 export function getPlugin(id: string): PluginDescriptor | undefined {
   return registry.get(id);

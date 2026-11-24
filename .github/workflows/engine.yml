@@ -1,0 +1,50 @@
+name: engine
+
+on:
+  push:
+    paths: ['engine/**', '.github/workflows/engine.yml']
+  pull_request:
+    paths: ['engine/**', '.github/workflows/engine.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libxcomposite-dev libfreetype-dev libgl-dev xvfb ninja-build
+
+      - name: Configure
+        run: cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release ${{ runner.os == 'Linux' && '-G Ninja' || '' }}
+
+      - name: Build
+        run: cmake --build engine/build --config Release --parallel 4
+
+      - name: Self-test (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a "engine/build/MergeEngine_artefacts/Release/Merge Engine" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
+
+      - name: Self-test (macOS)
+        if: runner.os == 'macOS'
+        run: '"engine/build/MergeEngine_artefacts/Release/Merge Engine.app/Contents/MacOS/Merge Engine" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"'
+
+      - name: Self-test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: '"engine/build/MergeEngine_artefacts/Release/Merge Engine.exe" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: merge-engine-${{ runner.os }}
+          path: |
+            engine/build/MergeEngine_artefacts/Release
+            engine/build/testplugin/MergeTestGain_artefacts/Release/VST3

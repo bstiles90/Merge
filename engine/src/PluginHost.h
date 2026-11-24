@@ -1,0 +1,114 @@
+#pragma once
+#include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_gui_basics/juce_gui_basics.h>
+#include "Plan.h"
+#include <map>
+#include <optional>
+
+namespace merge
+{
+
+/**
+ * A plugin instance living in an insert slot. Owned via shared_ptr by the host
+ * and by any mix plans that reference it, so it is only destroyed (on the message
+ * thread) once the audio thread can no longer be using it.
+ */
+class HostedInsert : private juce::AudioProcessorParameter::Listener,
+                     private juce::AudioProcessorListener
+{
+public:
+    HostedInsert (std::unique_ptr<juce::AudioPluginInstance> instance, int stripChannels, double sampleRate, int maxBlock);
+    ~HostedInsert() override;
+
+    /** Audio thread: process the strip's channels in place. */
+    void process (float* const* chans, int numChans, int numSamples) noexcept;
+
+    /** Message thread, audio stopped: re-prepare for a new sample rate / block size. */
+    void prepare (double sampleRate, int maxBlock);
+
+    juce::AudioPluginInstance& plugin() { return *instance; }
+    int getLatency() const noexcept { return latency.load(); }
+    int getPluginChannels() const noexcept { return pluginChannels; }
+
+    std::atomic<bool> bypass { false };
+    std::atomic<bool> paramsDirty { false };
+    std::atomic<bool> stateDirty { false };
+    std::unique_ptr<std::atomic<bool>[]> paramDirty;
+    int numParams = 0;
+
+    juce::var describeParams (const std::vector<int>* onlyIndices = nullptr) const;
+    int findParam (const juce::String& id) const;
+
+private:
+    void parameterValueChanged (int index, float) override;
+    void parameterGestureChanged (int, bool) override {}
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override;
+
+    std::unique_ptr<juce::AudioPluginInstance> instance;
+    int stripChannels, pluginChannels = 2;
+    juce::AudioBuffer<float> scratch;
+    juce::AudioBuffer<float> bypassDelay; // keeps latency constant when bypassed (PDC stays valid)
+    int bypassPos = 0;
+    juce::MidiBuffer midi;
+    std::atomic<int> latency { 0 };
+};
+
+class PluginHost : private juce::Timer
+{
+public:
+    PluginHost();
+    ~PluginHost() override;
+
+    void setAudioConfig (double sampleRate, int maxBlock);
+
+    // ---- scanning (incremental on the message thread; crashing plugins are blacklisted next run)
+    void startScan (bool rescanAll);
+    bool scanFile (const juce::String& path); // add one plugin file (tests / drag-drop)
+    bool isScanning() const { return scanner != nullptr; }
+    juce::var describePlugins() const;
+
+    // ---- insert slots
+    /** Create/remove instances so they match the plan; returns true if anything changed. */
+    bool syncInserts (const std::vector<InsertSpec>& specs);
+    std::shared_ptr<HostedInsert> find (const juce::String& slotId) const;
+    bool setParam (const juce::String& slotId, const juce::String& paramId, float normalised);
+    bool setState (const juce::String& slotId, const juce::String& base64);
+    juce::String getState (const juce::String& slotId) const;
+    void openEditor (const juce::String& slotId);
+    void closeEditor (const juce::String& slotId);
+
+    /** Outgoing messages to the UI. */
+    std::function<void (const juce::var&)> send;
+
+    juce::KnownPluginList& getKnownList() { return known; }
+    static juce::String pluginIdFor (const juce::PluginDescription&);
+
+private:
+    void timerCallback() override;
+    void scanStep();
+    void saveList();
+    void sendPluginList();
+    std::optional<juce::PluginDescription> findDescription (const juce::String& pluginId) const;
+
+    struct Slot
+    {
+        juce::String pluginId, strip;
+        std::shared_ptr<HostedInsert> insert;
+        std::unique_ptr<juce::DocumentWindow> editor;
+        int lastStateSent = 0;
+    };
+
+    juce::AudioPluginFormatManager formats;
+    juce::KnownPluginList known;
+    std::unique_ptr<juce::PluginDirectoryScanner> scanner;
+    int scanFormatIndex = 0;
+    bool scanRescanAll = false;
+    juce::File dataDir, listFile, deadMansPedal;
+    double sampleRate = 48000;
+    int maxBlock = 512;
+    std::map<juce::String, Slot> slots;
+    int ticks = 0;
+};
+
+} // namespace merge

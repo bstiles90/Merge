@@ -6,6 +6,8 @@ import type { Channel, InsertSlot, SourceKind } from '../core/types';
 import { fmtDb, fmtHz, fmtMs, Knob, Toggle } from './controls';
 import { EqCurve } from './EqCurve';
 import { useEngineInputs } from './useEngine';
+import { sendNative, useNative } from '../native/bridge';
+import { usePluginsVersion } from './NativePanel';
 
 const MAX_INSERTS = 4;
 
@@ -19,23 +21,72 @@ export function ColorPicker({ value, onChange }: { value: string; onChange: (c: 
   );
 }
 
+function NativeInsertEditor({ ins }: { ins: InsertSlot }) {
+  const n = useNative((st) => st.inserts[ins.id]);
+  const connected = useNative((st) => st.status === 'connected');
+  const [filter, setFilter] = useState('');
+  if (!connected) return <div className="plugin-editor"><span className="hint">Connect the native engine (I/O page) to load this plugin.</span></div>;
+  if (!n) return <div className="plugin-editor"><span className="hint">Loading…</span></div>;
+  if (n.error) return <div className="plugin-editor"><span className="error">{n.error}</span></div>;
+  const shown = n.params.filter((p) => !filter || p.name.toLowerCase().includes(filter.toLowerCase())).slice(0, 40);
+  const set = (id: string, value: number) => {
+    sendNative({ type: 'insert.param', slotId: ins.id, id, value });
+    useNative.setState((st) => ({
+      inserts: { ...st.inserts, [ins.id]: { ...n, params: n.params.map((p) => (p.id === id ? { ...p, value } : p)) } },
+    }));
+  };
+  return (
+    <div className="plugin-editor native-editor">
+      <div className="row wrap">
+        <button className={n.editorOpen ? 'on' : ''} onClick={() => sendNative({ type: 'insert.editor', slotId: ins.id, open: !n.editorOpen })}>
+          {n.editorOpen ? 'Close plugin window' : 'Open plugin window'}
+        </button>
+        <span className="hint">latency {n.latency ?? 0} smp · {n.params.length} params</span>
+      </div>
+      {n.params.length > 8 && <input placeholder="Filter parameters…" value={filter} onChange={(e) => setFilter(e.target.value)} />}
+      <div className="native-params">
+        {shown.map((p) => (
+          <label key={p.id} className="native-param">
+            <span className="np-name">{p.name}</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={p.steps > 1 ? 1 / (p.steps - 1) : 0.001}
+              value={p.value}
+              onChange={(e) => set(p.id, Number(e.target.value))}
+            />
+            <span className="np-text">{p.text} {p.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange: (i: InsertSlot[]) => void }) {
   const [open, setOpen] = useState<string | null>(null);
-  const plugins = listPlugins();
+  usePluginsVersion();
+  const nativeConnected = useNative((st) => st.status === 'connected');
+  const errors = useNative((st) => st.inserts);
+  const plugins = listPlugins().filter((p) => (nativeConnected ? p.native : !p.native));
+  const groups = [...new Set(plugins.map((p) => `${p.format === 'builtin' ? 'Built-in' : p.format.toUpperCase()} · ${p.category}`))].sort();
   return (
     <div className="section">
       <div className="section-title">
-        Inserts <span className="hint">plugin host · {MAX_INSERTS} slots</span>
+        Inserts <span className="hint">{nativeConnected ? 'native host (VST3/AU)' : 'browser effects'} · {MAX_INSERTS} slots</span>
       </div>
       {inserts.map((ins, i) => {
         const desc = getPlugin(ins.pluginId);
+        const isNative = !ins.pluginId.startsWith('builtin.');
+        const err = errors[ins.id]?.error;
         return (
-          <div key={ins.id} className={'insert' + (ins.bypass ? ' bypassed' : '')}>
+          <div key={ins.id} className={'insert' + (ins.bypass ? ' bypassed' : '') + (err ? ' error' : '')}>
             <div className="insert-row">
               <span className="insert-idx">{i + 1}</span>
               <button className="insert-name" onClick={() => setOpen(open === ins.id ? null : ins.id)}>
-                {desc?.name ?? ins.pluginId}
-                <span className="hint"> {desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : 'missing'}</span>
+                {desc?.name ?? ins.pluginName ?? ins.pluginId}
+                <span className="hint"> {desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : isNative ? 'VST3 · not loaded' : 'missing'}</span>
               </button>
               <Toggle small on={ins.bypass} onClick={() => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))}>
                 BYP
@@ -47,7 +98,9 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
               }}>↑</button>
               <button className="icon-btn" title="Remove" onClick={() => onChange(inserts.filter((x) => x.id !== ins.id))}>✕</button>
             </div>
-            {open === ins.id && desc && (
+            {err && open !== ins.id && <div className="insert-err">{err}</div>}
+            {open === ins.id && isNative && <NativeInsertEditor ins={ins} />}
+            {open === ins.id && !isNative && desc && (
               <div className="plugin-editor">
                 {desc.params.map((p) => (
                   <Knob
@@ -77,16 +130,17 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
           onChange={(e) => {
             const desc = getPlugin(e.target.value);
             if (!desc) return;
-            const slot = { id: newId('ins'), pluginId: desc.id, bypass: false, params: defaultParams(desc) };
+            const slot: InsertSlot = { id: newId('ins'), pluginId: desc.id, pluginName: desc.name, bypass: false, params: defaultParams(desc) };
             onChange([...inserts, slot]);
             setOpen(slot.id);
           }}
         >
-          <option value="">+ Add plugin…</option>
-          {['Dynamics', 'EQ', 'Time', 'Reverb', 'Utility'].map((cat) => (
-            <optgroup key={cat} label={cat}>
+          <option value="">{plugins.length ? '+ Add plugin…' : nativeConnected ? 'No plugins yet — scan in I/O' : '+ Add plugin…'}</option>
+          {groups.map((g) => (
+            <optgroup key={g} label={g}>
               {plugins
-                .filter((p) => p.category === cat)
+                .filter((p) => `${p.format === 'builtin' ? 'Built-in' : p.format.toUpperCase()} · ${p.category}` === g)
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.vendor})
@@ -129,7 +183,7 @@ function SourcePicker({ ch }: { ch: Channel }) {
           <select value={ch.source.deviceChannel ?? 0} onChange={(e) => set({ deviceChannel: Number(e.target.value) })}>
             {Array.from({ length: inputs.channelsFor(ch.source.deviceId) }, (_, i) => (
               <option key={i} value={i}>
-                In {i + 1}
+                {inputs.channelName(ch.source.deviceId, i)}
               </option>
             ))}
           </select>

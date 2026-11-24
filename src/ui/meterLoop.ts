@@ -2,6 +2,7 @@
 // canvases directly – no React renders at 60 fps.
 
 import { getEngine, type LoudnessReading, type MeterReading } from '../audio/engine';
+import { isNativeConnected, readNativeLoudness, readNativeMeters } from '../native/bridge';
 
 type Draw = (m: SmoothedMeter | undefined) => void;
 export interface SmoothedMeter {
@@ -69,15 +70,17 @@ function ensure() {
   if (running) return;
   running = true;
   const tick = (now: number) => {
-    const eng = getEngine();
-    const readings = eng?.readMeters();
+    const native = isNativeConnected();
+    const eng = native ? null : getEngine();
+    const readings = native ? readNativeMeters() : eng?.readMeters();
     for (const [id, set] of draws) {
       if (!set.size) continue;
       const r = readings?.get(id);
       const m = r ? ballistics(id, r, now) : undefined;
       set.forEach((fn) => fn(m));
     }
-    if (eng) loudnessDraws.forEach((fn) => fn(eng.loudness));
+    if (native) loudnessDraws.forEach((fn) => fn(readNativeLoudness()));
+    else if (eng) loudnessDraws.forEach((fn) => fn(eng.loudness));
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);

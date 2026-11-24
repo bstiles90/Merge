@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { anySolo } from '../core/mix';
 import { useConsole } from '../core/store';
 import { getEngine } from '../audio/engine';
+import { sendNative } from '../native/bridge';
 import { Detail } from './Detail';
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
@@ -67,7 +68,7 @@ function Loudness() {
         <div><span className="hint">M</span><span ref={refs.m} className="lufs-val">—</span></div>
         <div><span className="hint">S</span><span ref={refs.s} className="lufs-val">—</span></div>
         <div><span className="hint">I</span><span ref={refs.i} className="lufs-val big">—</span><span className="hint">LUFS</span></div>
-        <button className="link-btn" onClick={() => getEngine()?.resetLoudness()}>reset</button>
+        <button className="link-btn" onClick={() => { getEngine()?.resetLoudness(); sendNative({ type: 'loudness.reset' }); }}>reset</button>
       </div>
       <div className="lufs-bar">
         <div ref={refs.bar} className="lufs-fill" />

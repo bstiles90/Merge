@@ -4,7 +4,14 @@ A broadcast/live mixing console with DAW features. The workflow is built around 
 live desk: mute groups, DCAs, custom fader layers, assignable user keys, scenes with
 recall safes. Recording, playback and plugins are added on top of that.
 
-This is the **browser prototype**. It runs real audio through Web Audio so the
+There are two audio engines behind the same console UI:
+
+- **Browser engine (Web Audio):** zero install, good for trying the workflow.
+- **Native engine ([`engine/`](engine/README.md), C++/JUCE):** real interfaces
+  (CoreAudio/ASIO/WASAPI) and **third-party VST3 / AU plugins**. Run `Merge Engine`,
+  then click **Connect engine** in the UI.
+
+The section below describes the browser prototype. It runs real audio through Web Audio so the
 workflow can be tested now. The console model and action system are written to carry
 over unchanged to the native macOS/Windows engine (see Roadmap).
 
@@ -64,6 +71,17 @@ There are two key design rules:
    are computed from the console state, so they stay correct whatever made the change.
 2. **The engine follows state.** The engine reads the console state and renders
    audio. The native engine implements the same contract.
+
+## Native engine status
+
+Done (see [engine/README.md](engine/README.md)):
+- JUCE engine with the realtime mixer
+- VST3/AU hosting: scanning, plugin windows, parameters, state in show files, delay compensation
+- device selection
+- R128 loudness
+- WebSocket link to the UI
+- self-test suite
+- CI on macOS, Windows and Linux
 
 ## Roadmap to the native app (macOS + Windows)
 

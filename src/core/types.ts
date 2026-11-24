@@ -49,6 +49,10 @@ export interface InsertSlot {
   pluginId: string;
   bypass: boolean;
   params: Record<string, number>;
+  /** display name, so a show still reads sensibly on a machine without the plugin */
+  pluginName?: string;
+  /** opaque plugin state (base64) from a natively hosted plugin, restored on load */
+  state?: string;
 }
 
 export interface Send {
