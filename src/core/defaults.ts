@@ -166,8 +166,8 @@ export function defaultState(): ConsoleState {
       c.comp = { ...c.comp, on: true };
     }
   }
-  channels[4].pan = -0.7;
-  channels[5].pan = 0.7;
+  channels[4].pan = -1;
+  channels[5].pan = 1;
   // Host 1 has a different voice than Host 2 for the demo.
   channels[1].source.freq = 1300;
   channels[2].source.freq = 800;
@@ -196,6 +196,8 @@ export function defaultState(): ConsoleState {
   return {
     showName: 'Untitled Show',
     channels,
+    // demo: the audience mic pair is stereo-linked
+    stereoLinks: [{ left: 'ch5', right: 'ch6', options: { fader: true, mute: true, solo: true, sends: true, groups: true, input: true, processing: true } }],
     buses,
     main: { faderDb: 0, mute: false, delayMs: 0, inserts: [] },
     dcas,

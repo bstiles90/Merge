@@ -222,8 +222,16 @@ std::optional<juce::PluginDescription> PluginHost::findDescription (const juce::
     return std::nullopt;
 }
 
+void PluginHost::startScanIn (const juce::FileSearchPath& folders, bool rescanAll)
+{
+    startScan (rescanAll);
+    scanFolders = folders; // applies from the first format created below
+}
+
 void PluginHost::startScan (bool rescanAll)
 {
+    scanFolders.reset();
+    scanActive = true;
     scanFormatIndex = 0;
     scanRescanAll = rescanAll;
     scanner.reset();
@@ -233,22 +241,30 @@ void PluginHost::startScan (bool rescanAll)
 
 void PluginHost::scanStep()
 {
+    // Called by the timer while a scan is active: scan one file per tick so the engine stays
+    // responsive. Moves on through each plugin format, then finishes (saves + reports the list).
+    if (! scanActive) return;
     while (! scanner && scanFormatIndex < formats.getNumFormats())
     {
         auto* f = formats.getFormat (scanFormatIndex++);
         if (! f->canScanForPlugins()) continue;
-        scanner = std::make_unique<juce::PluginDirectoryScanner> (known, *f, f->getDefaultLocationsToSearch(), true, deadMansPedal, false);
+        scanner = std::make_unique<juce::PluginDirectoryScanner> (known, *f, scanFolders ? *scanFolders : f->getDefaultLocationsToSearch(),
+                                                                  true, deadMansPedal, false);
+        scanFormatName = f->getName();
     }
     if (! scanner)
     {
+        // all formats done: this used to be skipped (the timer stopped calling us once the last
+        // scanner finished), so the UI stayed stuck on "scanning" after the final plugin
+        scanActive = false;
         saveList();
         sendPluginList();
         return;
     }
     juce::String name;
     const bool more = scanner->scanNextFile (! scanRescanAll, name);
-    send (obj ({ { "type", "plugins.scan" }, { "progress", scanner->getProgress() }, { "file", name }, { "format", scanner->getProgress() < 1 ? juce::var (formats.getFormat (scanFormatIndex - 1)->getName()) : juce::var() } }));
-    if (! more) scanner.reset();
+    send (obj ({ { "type", "plugins.scan" }, { "progress", scanner->getProgress() }, { "file", name }, { "format", scanFormatName } }));
+    if (! more) scanner.reset(); // next tick moves to the next format or finishes
 }
 
 bool PluginHost::scanFile (const juce::String& path)
@@ -450,7 +466,7 @@ void PluginHost::closeEditor (const juce::String& slotId)
 
 void PluginHost::timerCallback()
 {
-    if (scanner) scanStep();
+    if (scanActive) scanStep();
     ++ticks;
     for (auto& [id, slot] : slots)
     {

@@ -109,6 +109,22 @@ void testMixer()
     p = render (m, 100);
     check (near (p[2], 0.0625, 0.002), "pre-fader send reaches bus 1 with fader down", juce::String (p[2], 4));
 
+    // PFL: the monitor (output 4 in tonePlan) carries only the soloed channel, pre-fader
+    {
+        auto plan = tonePlan (2, "[]", "[]", 1.0f);
+        auto* ch1 = plan["channels"][0].getDynamicObject();
+        auto* ch2 = plan["channels"][1].getDynamicObject();
+        ch2->setProperty ("src", juce::JSON::parse (R"({"kind":"noise"})"));
+        ch1->setProperty ("post", 0.0);  // fader down: PFL is pre-fader, so it must still be heard
+        ch1->setProperty ("cue", 1.0);
+        ch1->setProperty ("cuePre", true);
+        plan["monitor"].getDynamicObject()->setProperty ("source", "cue");
+        m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+        auto pk = render (m, 100);
+        check (near (pk[3], 0.125, 0.003), "PFL: soloed channel reaches the monitor pre-fader (tone only)", juce::String (pk[3], 4));
+        check (pk[0] > 0.05f, "PFL leaves the main mix running", juce::String (pk[0], 4));
+    }
+
     m.setPlan (parsePlan (tonePlan (1), kSr, nullptr, nullptr));
     render (m, (int) (4 * kSr / kBlock));
     // BS.1770: K-weighting is +0.69 dB at 1 kHz, cancelling the -0.691 offset (a 0 dBFS 1 kHz sine in one channel = -3.01 LUFS)
@@ -162,6 +178,12 @@ void testPluginHosting (const juce::String& pluginPath)
     e.mixer().prepare (kSr, kBlock, 0, 4);
     e.host().setAudioConfig (kSr, kBlock);
 
+    // a folder scan must finish and report the list (it used to hang after the last plugin)
+    e.host().startScanIn (juce::FileSearchPath (juce::File (pluginPath).getParentDirectory().getFullPathName()), true);
+    for (int i = 0; i < 300 && e.host().isScanning(); ++i) pump (20);
+    bool listed = false;
+    for (auto& v : sent) listed = listed || (v["type"] == "plugins" && ! (bool) v["scanning"]);
+    check (! e.host().isScanning() && listed, "plugin folder scan finishes and reports the list");
     check (e.host().scanFile (pluginPath), "scan finds the VST3");
     juce::String pluginId;
     const auto plugins = e.host().describePlugins();

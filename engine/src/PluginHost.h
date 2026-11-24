@@ -64,8 +64,10 @@ public:
 
     // ---- scanning (incremental on the message thread; crashing plugins are blacklisted next run)
     void startScan (bool rescanAll);
+    /** Scan only these folders (self-test / custom locations). */
+    void startScanIn (const juce::FileSearchPath& folders, bool rescanAll);
     bool scanFile (const juce::String& path); // add one plugin file (tests / drag-drop)
-    bool isScanning() const { return scanner != nullptr; }
+    bool isScanning() const { return scanActive; }
     juce::var describePlugins() const;
 
     // ---- insert slots
@@ -112,6 +114,9 @@ private:
     std::unique_ptr<juce::PluginDirectoryScanner> scanner;
     int scanFormatIndex = 0;
     bool scanRescanAll = false;
+    bool scanActive = false;
+    std::optional<juce::FileSearchPath> scanFolders;
+    juce::String scanFormatName;
     juce::File dataDir, listFile, deadMansPedal;
     double sampleRate = 48000;
     int maxBlock = 512;

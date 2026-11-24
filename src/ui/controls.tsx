@@ -21,18 +21,15 @@ export function Fader({
   const travel = height - capHeight;
 
   const onPointerDown = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    // Only the cap moves the fader (like a real console): clicks elsewhere on the track do nothing,
+    // so a stray click can never jump a live fader.
     const rect = ref.current!.getBoundingClientRect();
     const capTop = rect.top + (1 - pos) * travel;
-    const onCap = e.clientY >= capTop && e.clientY <= capTop + capHeight;
-    if (!onCap) {
-      // jump cap centre to click point
-      const p = 1 - (e.clientY - rect.top - capHeight / 2) / travel;
-      onChange(faderPosToDb(p));
-      drag.current = { y: e.clientY, pos: Math.min(1, Math.max(0, p)) };
-    } else {
-      drag.current = { y: e.clientY, pos };
-    }
+    const onCap = e.clientY >= capTop - 4 && e.clientY <= capTop + capHeight + 4;
+    if (!onCap) return;
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    drag.current = { y: e.clientY, pos };
   };
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag.current) return;
@@ -56,9 +53,13 @@ export function Fader({
       onPointerMove={onPointerMove}
       onPointerUp={end}
       onPointerCancel={end}
-      onDoubleClick={() => onChange(0)}
+      onDoubleClick={(e) => {
+        const rect = ref.current!.getBoundingClientRect();
+        const capTop = rect.top + (1 - pos) * travel;
+        if (e.clientY >= capTop - 4 && e.clientY <= capTop + capHeight + 4) onChange(0);
+      }}
       onWheel={onWheel}
-      title={`${formatDb(db)} dB — double-click for 0 dB, shift-drag for fine`}
+      title={`${formatDb(db)} dB — drag the cap to move, double-click the cap for 0 dB, shift-drag for fine`}
     >
       <div className="fader-slot" />
       {[10, 5, 0, -5, -10, -20, -30, -40, -60].map((m) => (
@@ -66,7 +67,7 @@ export function Fader({
           <span>{m > 0 ? `+${m}` : m}</span>
         </div>
       ))}
-      <div className="fader-cap" style={{ top: (1 - pos) * travel, height: capHeight, borderTopColor: color }} />
+      <div className="fader-cap" style={{ top: (1 - pos) * travel, height: capHeight, borderTopColor: color, cursor: 'grab' }} />
     </div>
   );
 }
@@ -181,7 +182,7 @@ export function Knob({
   const centreT = min < 0 && max > 0 && !log ? toT(0) : 0;
   const ca = a0 + centreT * (a1 - a0);
   return (
-    <div className="knob" title={label}>
+    <div className="knob" title={label} onClick={(e) => e.stopPropagation()}>
       <svg
         width={size}
         height={size}

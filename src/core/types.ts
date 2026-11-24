@@ -238,9 +238,19 @@ export interface TransportState {
   recordProgram: boolean;
 }
 
+/** Two mono channels linked as a stereo pair. */
+export interface StereoLink {
+  left: ChannelId;
+  right: ChannelId;
+  /** which settings move together (pan and plugins never do) */
+  options: { fader: boolean; mute: boolean; solo: boolean; sends: boolean; groups: boolean; input: boolean; processing: boolean };
+}
+
 export interface ConsoleState {
   showName: string;
   channels: Channel[];
+  /** stereo-linked channel pairs */
+  stereoLinks: StereoLink[];
   buses: Bus[];
   main: Main;
   dcas: Dca[];

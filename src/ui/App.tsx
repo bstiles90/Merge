@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { installHotkeys } from '../control/hotkeys';
 import { defaultState } from '../core/defaults';
+import { anySolo } from '../core/mix';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { MixView } from './MixView';
 import { PatchView } from './PatchView';
@@ -111,6 +112,11 @@ export function App() {
         <div className="scene-mini" title="Current scene">
           <span className="hint">SCENE</span> {scene?.name ?? '—'}
         </div>
+        {anySolo(s) && (
+          <button className="solo-flash" onClick={() => s.dispatch({ type: 'solo.clear', args: {} })} title="A channel or bus is soloed — the monitor is on the cue/PFL bus. Click to clear.">
+            SOLO
+          </button>
+        )}
         <TransportMini />
         <div className="file-btns">
           <button onClick={save}>Save show</button>

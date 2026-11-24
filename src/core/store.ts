@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+import { create, type StateCreator } from 'zustand';
+import { syncLinks } from './links';
 import { runActions } from './actions';
 import { defaultState } from './defaults';
 import type { ActionCall, Bus, Channel, ConsoleState, Dca, Main, MuteGroup, StripRef, UserKey } from './types';
@@ -28,7 +29,25 @@ export function stateOnly(s: ConsoleStore | ConsoleState): ConsoleState {
   return out as unknown as ConsoleState;
 }
 
-export const useConsole = create<ConsoleStore>((set, get) => ({
+/** Mirror stereo-linked channel settings after every state change, whatever made it. */
+const withStereoLinks =
+  (config: StateCreator<ConsoleStore>): StateCreator<ConsoleStore> =>
+  (set, get, api) =>
+    config(
+      (partial, replace) => {
+        const prev = get();
+        (set as (p: typeof partial, r?: boolean) => void)(partial, replace as boolean | undefined);
+        const next = get();
+        if (next.channels !== prev?.channels && next.stereoLinks?.length) {
+          const channels = syncLinks(prev, next);
+          if (channels !== next.channels) set({ channels });
+        }
+      },
+      get,
+      api,
+    );
+
+export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => ({
   ...loadAutosave(),
   dispatch: (calls) => {
     const list = Array.isArray(calls) ? calls : [calls];
@@ -60,7 +79,7 @@ export const useConsole = create<ConsoleStore>((set, get) => ({
     set({ ...next, keyStates: { ...s.keyStates, [id]: false } });
   },
   loadShow: (show) => set({ ...defaultState(), ...show, keyStates: {} }),
-}));
+})));
 
 // ---- show files ------------------------------------------------------------
 // JSON has no Infinity; encode -Infinity faders as the string "-inf".

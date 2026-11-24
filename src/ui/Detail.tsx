@@ -8,6 +8,7 @@ import { EqCurve } from './EqCurve';
 import { useEngineInputs } from './useEngine';
 import { sendNative, useNative } from '../native/bridge';
 import { usePluginsVersion } from './NativePanel';
+import { createLink, linkInfo, naturalPartner, removeLink, setLinkOption, type LinkOption } from '../core/links';
 
 const MAX_INSERTS = 4;
 
@@ -201,6 +202,58 @@ function SourcePicker({ ch }: { ch: Channel }) {
   );
 }
 
+const LINK_OPTION_LABELS: [LinkOption, string][] = [
+  ['fader', 'Fader'],
+  ['mute', 'Mute'],
+  ['solo', 'Solo'],
+  ['sends', 'Sends'],
+  ['groups', 'Groups'],
+  ['input', 'Gain/delay'],
+  ['processing', 'HPF/Gate/EQ/Dyn'],
+];
+
+function LinkSection({ ch }: { ch: Channel }) {
+  const s = useConsole();
+  const info = linkInfo(s, ch.id);
+  const partnerId = info?.partner ?? naturalPartner(ch.id);
+  const partner = s.channels.find((c) => c.id === partnerId);
+  if (!partner) return null;
+  return (
+    <div className="section">
+      <div className="section-title">
+        Stereo link {info && <span className="hint">this is the {info.side === 'L' ? 'left' : 'right'} side · paired with {partner.name}</span>}
+      </div>
+      {!info ? (
+        <div className="row">
+          <button
+            onClick={() => {
+              const [left, right] = Number(ch.id.slice(2)) % 2 === 1 ? [ch.id, partnerId] : [partnerId, ch.id];
+              s.update((st) => createLink(st, left, right));
+            }}
+          >
+            Link with {partner.name} (ch {partnerId.slice(2)})
+          </button>
+          <span className="hint">pans go hard L/R</span>
+        </div>
+      ) : (
+        <>
+          <div className="link-opts">
+            {LINK_OPTION_LABELS.map(([opt, label]) => (
+              <Toggle key={opt} small on={info.link.options[opt]} onClick={() => s.update((st) => setLinkOption(st, ch.id, opt, !info.link.options[opt]))} title={`Link ${label} between the two sides`}>
+                {label}
+              </Toggle>
+            ))}
+          </div>
+          <div className="row">
+            <button onClick={() => s.update((st) => removeLink(st, ch.id))}>Unlink</button>
+            <span className="hint">Pan and plugins are always per side. Turn off HPF/Gate/EQ/Dyn to process L and R separately.</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ChannelDetail({ ch }: { ch: Channel }) {
   const s = useConsole();
   const up = (p: Partial<Channel>) => s.updateChannel(ch.id, p);
@@ -234,6 +287,8 @@ function ChannelDetail({ ch }: { ch: Channel }) {
           </div>
         </div>
       </div>
+
+      <LinkSection ch={ch} />
 
       <div className="section">
         <div className="section-title">

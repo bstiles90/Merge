@@ -1,10 +1,11 @@
+import { useEffect, useRef, useState } from 'react';
 import { busMuteReason, channelMuteReason, formatDb } from '../core/mix';
+import { getPlugin } from '../core/plugins';
+import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
-import type { StripRef } from '../core/types';
-import { Fader, Meter, Toggle } from './controls';
+import type { Bus, Channel, InsertSlot, StripRef } from '../core/types';
+import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
-import { useFaderHeight } from './Pages';
-
 
 export function sameRef(a: StripRef | null, b: StripRef | null) {
   if (!a || !b) return false;
@@ -12,162 +13,325 @@ export function sameRef(a: StripRef | null, b: StripRef | null) {
   return a.kind === 'main' || (a as { id: string }).id === (b as { id: string }).id;
 }
 
+/** Height of the fader area, measured so faders use whatever space the window gives the strip. */
+function useHeight<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [h, setH] = useState(220);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setH(Math.max(100, Math.round(e.contentRect.height))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, h] as const;
+}
+
+const isControl = (t: EventTarget | null) =>
+  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader, .knob, .minibar, .rack-slot');
+
+// ------------------------------------------------------------------ strip sections
+function sourceLabel(ch: Channel) {
+  if (ch.inputMode === 'playback') return 'PB';
+  switch (ch.source.kind) {
+    case 'input':
+      return `IN ${(ch.source.deviceChannel ?? 0) + 1}`;
+    case 'tone':
+      return 'TONE';
+    case 'noise':
+      return 'NOISE';
+    case 'speech':
+      return 'SPCH';
+    default:
+      return '—';
+  }
+}
+
+function InputSection({ ch }: { ch: Channel }) {
+  const s = useConsole();
+  return (
+    <div className="sec sec-input">
+      <div className="sec-src" title="Input source (patch in the channel settings or I/O)">
+        {sourceLabel(ch)}
+        {ch.phaseInvert && <span className="phase">Ø</span>}
+      </div>
+      <Knob size={24} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
+    </div>
+  );
+}
+
+function ProcSection({ ch }: { ch: Channel }) {
+  const s = useConsole();
+  const chip = (label: string, on: boolean, toggle: () => void, title: string) => (
+    <button className={'proc-chip' + (on ? ' on' : '')} onClick={toggle} title={title}>
+      {label}
+    </button>
+  );
+  return (
+    <div className="sec sec-proc">
+      {chip('HPF', ch.hpf.on, () => s.updateChannel(ch.id, { hpf: { ...ch.hpf, on: !ch.hpf.on } }), `High-pass ${Math.round(ch.hpf.freq)} Hz`)}
+      {chip('GATE', ch.gate.on, () => s.updateChannel(ch.id, { gate: { ...ch.gate, on: !ch.gate.on } }), 'Gate')}
+      {chip('EQ', ch.eq.on, () => s.updateChannel(ch.id, { eq: { ...ch.eq, on: !ch.eq.on } }), 'EQ')}
+      {chip('DYN', ch.comp.on, () => s.updateChannel(ch.id, { comp: { ...ch.comp, on: !ch.comp.on } }), 'Compressor')}
+    </div>
+  );
+}
+
+function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?: () => void }) {
+  const slots = Array.from({ length: 4 }, (_, i) => inserts?.[i]);
+  return (
+    <div className="sec sec-rack">
+      {inserts &&
+        slots.map((ins, i) => {
+          const name = ins ? getPlugin(ins.pluginId)?.name ?? ins.pluginName ?? 'Plugin' : '';
+          return (
+            <div
+              key={i}
+              className={'rack-slot' + (ins ? ' used' : '') + (ins?.bypass ? ' byp' : '')}
+              title={ins ? `${name}${ins.bypass ? ' (bypassed)' : ''} — open in the channel settings` : 'Empty insert — add in the channel settings'}
+              onClick={onSelect}
+            >
+              {ins ? name : '·'}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+/** Horizontal send/level bar: drag sideways to change (relative), double-click to switch on/off. */
+function MiniBar({ label, db, on, onChange, onToggle, auto }: { label: string; db: number; on: boolean; onChange: (db: number) => void; onToggle: () => void; auto?: boolean }) {
+  const drag = useRef<{ x: number; db: number } | null>(null);
+  const frac = isFinite(db) ? Math.max(0, Math.min(1, (db + 60) / 70)) : 0;
+  return (
+    <div
+      className={'minibar' + (on ? ' on' : '') + (auto ? ' auto' : '')}
+      title={auto ? `${label}: mix-minus (automatic)` : `${label}: ${isFinite(db) ? db.toFixed(1) : '-∞'} dB${on ? '' : ' (off)'} — drag sideways, double-click on/off`}
+      onPointerDown={(e) => {
+        if (auto) return;
+        e.stopPropagation();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, db: isFinite(db) ? db : -60 };
+      }}
+      onPointerMove={(e) => {
+        if (!drag.current) return;
+        const next = Math.max(-60, Math.min(10, drag.current.db + (e.clientX - drag.current.x) * (e.shiftKey ? 0.1 : 0.5)));
+        onChange(next <= -60 ? -Infinity : Math.round(next * 2) / 2);
+      }}
+      onPointerUp={() => (drag.current = null)}
+      onDoubleClick={() => !auto && onToggle()}
+    >
+      <span className="mb-label">{label}</span>
+      <span className="mb-track">
+        <span className="mb-fill" style={{ width: `${auto ? 100 : frac * 100}%` }} />
+      </span>
+    </div>
+  );
+}
+
+function SendsSection({ ch }: { ch?: Channel }) {
+  const s = useConsole();
+  return (
+    <div className="sec sec-sends">
+      {ch &&
+        s.buses.map((b: Bus, i) => {
+          if (b.type === 'mixminus')
+            return <MiniBar key={b.id} label={`${i + 1}`} db={0} on={ch.mainAssign && b.mixMinusExclude !== ch.id} auto onChange={() => {}} onToggle={() => {}} />;
+          const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
+          return (
+            <MiniBar
+              key={b.id}
+              label={`${i + 1}`}
+              db={snd.levelDb}
+              on={snd.on}
+              onChange={(levelDb) => s.updateChannel(ch.id, { sends: { ...ch.sends, [b.id]: { ...snd, levelDb, on: true } } })}
+              onToggle={() => s.updateChannel(ch.id, { sends: { ...ch.sends, [b.id]: { ...snd, on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 } } })}
+            />
+          );
+        })}
+    </div>
+  );
+}
+
+const panText = (p: number) => (Math.abs(p) < 0.01 ? 'C' : p < 0 ? `L${Math.round(-p * 100)}` : `R${Math.round(p * 100)}`);
+
+// ------------------------------------------------------------------ the strip
 export function Strip({ refr, index }: { refr: StripRef | null; index: number }) {
   const s = useConsole();
-  const FADER_H = useFaderHeight();
+  const [bodyRef, faderH] = useHeight<HTMLDivElement>();
   if (!refr) return <div className="strip empty"><div className="strip-num">{index + 1}</div></div>;
 
   const selected = sameRef(s.selected, refr);
   const select = () => s.select(refr);
+  const onStripClick = (e: React.MouseEvent) => {
+    if (!isControl(e.target)) select();
+  };
+
+  let head: React.ReactNode, sections: React.ReactNode, buttons: React.ReactNode, meter: React.ReactNode, fader: React.ReactNode, dbText: string, mute: React.ReactNode;
+  let cls = 'strip';
 
   if (refr.kind === 'channel') {
     const ch = s.channels.find((c) => c.id === refr.id);
     if (!ch) return null;
     const mr = channelMuteReason(s, ch);
-    const groupMuted = mr.muted && !mr.self;
-    return (
-      <div className={'strip' + (selected ? ' selected' : '')}>
-        <div className="strip-head" draggable title="Drag to move this strip" style={{ background: ch.color }} onClick={select}>
-          <span className="strip-num">{ch.id.replace('ch', '')}</span>
-          <span className="strip-name">{ch.name}</span>
+    const link = linkInfo(s, ch.id);
+    head = (
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: ch.color }}>
+        <span className="strip-num">
+          {ch.id.replace('ch', '')}
+          {link && <span className="link-badge" title={`Stereo linked with ${s.channels.find((c) => c.id === link.partner)?.name}`}>{link.side === 'L' ? '⟦L' : 'R⟧'}</span>}
+          {ch.inputMode === 'playback' && <span className="mini-tag pb">PB</span>}
+          {ch.recArm && <span className="mini-tag rec">REC</span>}
+          {ch.recallSafe && <span className="mini-tag safe">S</span>}
+        </span>
+        <span className="strip-name">{ch.name}</span>
+      </div>
+    );
+    sections = (
+      <>
+        <InputSection ch={ch} />
+        <ProcSection ch={ch} />
+        <RackSection inserts={ch.inserts} onSelect={select} />
+        <SendsSection ch={ch} />
+        <div className="sec sec-pan">
+          <Knob size={30} value={ch.pan} min={-1} max={1} defaultValue={0} format={panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
         </div>
-        <div className="strip-tags">
-          {ch.inputMode === 'playback' && <span className="tag pb" title="Playing back recorded track">PB</span>}
-          {ch.recArm && <span className="tag rec">REC</span>}
-          {ch.inserts.length > 0 && <span className="tag fx">FX{ch.inserts.length}</span>}
-          {ch.recallSafe && <span className="tag safe">SAFE</span>}
-        </div>
-        <div className="strip-groups">
+        <div className="sec sec-groups">
           {s.muteGroups.map((g) => (
-            <span
-              key={g.id}
-              className={'mg-dot' + (ch.muteGroups.includes(g.id) ? ' member' : '') + (g.active && ch.muteGroups.includes(g.id) ? ' active' : '')}
-              title={g.name}
-            >
+            <span key={g.id} className={'mg-dot' + (ch.muteGroups.includes(g.id) ? ' member' : '') + (g.active && ch.muteGroups.includes(g.id) ? ' active' : '')} title={g.name}>
               {g.id.replace('mg', '')}
             </span>
           ))}
         </div>
-        <div className="strip-pan" title={`Pan ${ch.pan.toFixed(2)}`} onDoubleClick={() => s.updateChannel(ch.id, { pan: 0 })}>
-          <input
-            type="range"
-            min={-1}
-            max={1}
-            step={0.01}
-            value={ch.pan}
-            onChange={(e) => s.updateChannel(ch.id, { pan: Number(e.target.value) })}
-          />
-        </div>
-        <div className="strip-btns">
-          <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
-          <Toggle kind="solo" on={ch.solo} onClick={() => s.dispatch({ type: 'channel.solo.toggle', args: { id: ch.id } })} small>
-            {s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}
-          </Toggle>
-        </div>
-        <div className="strip-body">
-          <Meter id={ch.id} height={FADER_H} showGr />
-          <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={FADER_H} />
-        </div>
-        <div className="strip-db">{formatDb(ch.faderDb)}</div>
-        <button
-          className={'mute-btn' + (ch.mute ? ' on' : '') + (groupMuted ? ' group' : '')}
-          onClick={() => s.dispatch({ type: 'channel.mute.toggle', args: { id: ch.id } })}
-          title={groupMuted ? `Muted by ${[...mr.groups, ...mr.dcas].join(', ')}` : 'Mute'}
-        >
-          MUTE
-        </button>
-      </div>
+      </>
     );
-  }
-
-  if (refr.kind === 'bus') {
+    buttons = (
+      <>
+        <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
+        <Toggle kind="solo" on={ch.solo} onClick={() => s.dispatch({ type: 'channel.solo.toggle', args: { id: ch.id } })} small>
+          {s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}
+        </Toggle>
+      </>
+    );
+    meter = <Meter id={ch.id} height={faderH} showGr />;
+    fader = <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={faderH} />;
+    dbText = formatDb(ch.faderDb);
+    mute = (
+      <button
+        className={'mute-btn' + (ch.mute ? ' on' : '') + (mr.muted && !mr.self ? ' group' : '')}
+        onClick={() => s.dispatch({ type: 'channel.mute.toggle', args: { id: ch.id } })}
+        title={mr.muted && !mr.self ? `Muted by ${[...mr.groups, ...mr.dcas].join(', ')}` : 'Mute'}
+      >
+        MUTE
+      </button>
+    );
+  } else if (refr.kind === 'bus') {
     const b = s.buses.find((x) => x.id === refr.id);
     if (!b) return null;
     const mr = busMuteReason(s, b);
-    return (
-      <div className={'strip bus' + (selected ? ' selected' : '')}>
-        <div className="strip-head" draggable title="Drag to move this strip" style={{ background: b.color }} onClick={select}>
-          <span className="strip-num">{b.type === 'mixminus' ? 'N-1' : 'MIX'}</span>
-          <span className="strip-name">{b.name}</span>
-        </div>
-        <div className="strip-tags">
-          {b.inserts.length > 0 && <span className="tag fx">FX{b.inserts.length}</span>}
-          {b.type === 'mixminus' && <span className="tag mm">MIX-MINUS</span>}
-        </div>
-        <div className="strip-groups" />
-        <div className="strip-pan" />
-        <div className="strip-btns">
-          <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
-          <Toggle kind="solo" on={b.solo} onClick={() => s.updateBus(b.id, { solo: !b.solo })} small>
-            {s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}
-          </Toggle>
-        </div>
-        <div className="strip-body">
-          <Meter id={b.id} height={FADER_H} stereo />
-          <Fader db={b.faderDb} onChange={(db) => setStripFader(refr, db)} color={b.color} height={FADER_H} />
-        </div>
-        <div className="strip-db">{formatDb(b.faderDb)}</div>
-        <button
-          className={'mute-btn' + (b.mute ? ' on' : '') + (mr.muted && !mr.self ? ' group' : '')}
-          onClick={() => s.dispatch({ type: 'bus.mute.toggle', args: { id: b.id } })}
-        >
-          MUTE
-        </button>
+    cls += ' bus';
+    head = (
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: b.color }}>
+        <span className="strip-num">{b.type === 'mixminus' ? 'N-1' : 'MIX'}</span>
+        <span className="strip-name">{b.name}</span>
       </div>
     );
-  }
-
-  if (refr.kind === 'dca') {
+    sections = (
+      <>
+        <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
+        <div className="sec sec-proc" />
+        <RackSection inserts={b.inserts} onSelect={select} />
+        <SendsSection />
+        <div className="sec sec-pan" />
+        <div className="sec sec-groups" />
+      </>
+    );
+    buttons = (
+      <>
+        <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
+        <Toggle kind="solo" on={b.solo} onClick={() => s.updateBus(b.id, { solo: !b.solo })} small>
+          {s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}
+        </Toggle>
+      </>
+    );
+    meter = <Meter id={b.id} height={faderH} stereo />;
+    fader = <Fader db={b.faderDb} onChange={(db) => setStripFader(refr, db)} color={b.color} height={faderH} />;
+    dbText = formatDb(b.faderDb);
+    mute = (
+      <button className={'mute-btn' + (b.mute ? ' on' : '') + (mr.muted && !mr.self ? ' group' : '')} onClick={() => s.dispatch({ type: 'bus.mute.toggle', args: { id: b.id } })}>
+        MUTE
+      </button>
+    );
+  } else if (refr.kind === 'dca') {
     const d = s.dcas.find((x) => x.id === refr.id);
     if (!d) return null;
     const members = s.channels.filter((c) => c.dcas.includes(d.id));
-    return (
-      <div className={'strip dca' + (selected ? ' selected' : '')}>
-        <div className="strip-head" draggable title="Drag to move this strip" style={{ background: d.color }} onClick={select}>
-          <span className="strip-num">DCA</span>
-          <span className="strip-name">{d.name}</span>
-        </div>
-        <div className="strip-tags">
-          <span className="tag" title={members.map((m) => m.name).join(', ')}>{members.length} ch</span>
-        </div>
-        <div className="strip-groups" />
-        <div className="strip-pan" />
-        <div className="strip-btns">
-          <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
-        </div>
-        <div className="strip-body">
-          <div className="meter-spacer" />
-          <Fader db={d.faderDb} onChange={(db) => setStripFader(refr, db)} color={d.color} height={FADER_H} />
-        </div>
-        <div className="strip-db">{formatDb(d.faderDb)}</div>
-        <button className={'mute-btn' + (d.mute ? ' on' : '')} onClick={() => s.dispatch({ type: 'dca.mute.toggle', args: { id: d.id } })}>
-          MUTE
-        </button>
+    cls += ' dca';
+    head = (
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: d.color }}>
+        <span className="strip-num">DCA</span>
+        <span className="strip-name">{d.name}</span>
       </div>
     );
-  }
-
-  // main
-  return (
-    <div className={'strip main' + (selected ? ' selected' : '')}>
-      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: '#c9ccd1', color: '#111' }} onClick={select}>
+    sections = (
+      <>
+        <div className="sec sec-input"><div className="sec-src" title={members.map((m) => m.name).join(', ')}>{members.length} CH</div></div>
+        <div className="sec sec-proc" />
+        <RackSection />
+        <SendsSection />
+        <div className="sec sec-pan" />
+        <div className="sec sec-groups" />
+      </>
+    );
+    buttons = <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>;
+    meter = <div className="meter-spacer" />;
+    fader = <Fader db={d.faderDb} onChange={(db) => setStripFader(refr, db)} color={d.color} height={faderH} />;
+    dbText = formatDb(d.faderDb);
+    mute = (
+      <button className={'mute-btn' + (d.mute ? ' on' : '')} onClick={() => s.dispatch({ type: 'dca.mute.toggle', args: { id: d.id } })}>
+        MUTE
+      </button>
+    );
+  } else {
+    cls += ' main';
+    head = (
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: '#c9ccd1', color: '#111' }}>
         <span className="strip-num">PGM</span>
         <span className="strip-name">Main LR</span>
       </div>
-      <div className="strip-tags">{s.main.inserts.length > 0 && <span className="tag fx">FX{s.main.inserts.length}</span>}</div>
-      <div className="strip-groups" />
-      <div className="strip-pan" />
-      <div className="strip-btns">
-        <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
-      </div>
-      <div className="strip-body">
-        <Meter id="main" height={FADER_H} stereo />
-        <Fader db={s.main.faderDb} onChange={(db) => setStripFader(refr, db)} color="#fff" height={FADER_H} />
-      </div>
-      <div className="strip-db">{formatDb(s.main.faderDb)}</div>
+    );
+    sections = (
+      <>
+        <div className="sec sec-input"><div className="sec-src">PGM</div></div>
+        <div className="sec sec-proc" />
+        <RackSection inserts={s.main.inserts} onSelect={select} />
+        <SendsSection />
+        <div className="sec sec-pan" />
+        <div className="sec sec-groups" />
+      </>
+    );
+    buttons = <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>;
+    meter = <Meter id="main" height={faderH} stereo />;
+    fader = <Fader db={s.main.faderDb} onChange={(db) => setStripFader(refr, db)} color="#fff" height={faderH} />;
+    dbText = formatDb(s.main.faderDb);
+    mute = (
       <button className={'mute-btn' + (s.main.mute ? ' on' : '')} onClick={() => s.dispatch({ type: 'main.mute.toggle', args: {} })}>
         MUTE
       </button>
+    );
+  }
+
+  return (
+    <div className={cls + (selected ? ' selected' : '')} onClick={onStripClick}>
+      {head}
+      {sections}
+      <div className="strip-btns">{buttons}</div>
+      <div className="strip-body" ref={bodyRef}>
+        {meter}
+        {fader}
+      </div>
+      <div className="strip-db">{dbText}</div>
+      {mute}
     </div>
   );
 }
