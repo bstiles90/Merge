@@ -103,6 +103,32 @@ These are also useful **without AI**: "Match to reference" becomes a button.
 - **Needs internet.** Everything in layers 1–2 works offline; the AI layer degrades to
   "solver buttons only" when there's no connection.
 
+## 2b. How the assistant knows what a style ("Bethel") sounds like
+
+**Claude can't hear audio.** It reads text and images. In Merge the "listening" is done
+by the analysis layer (Layer 1), which measures audio and gives Claude numbers. A style
+target can come from three sources, from rough to precise:
+
+| Source | What it gives | Precision |
+|---|---|---|
+| **1. Claude's own knowledge** (no audio) | Descriptive targets from engineer interviews, production breakdowns and reviews it has read, e.g. "wide ambient bed, upfront polished but never harsh vocal, long lush reverbs, controlled low end, gentle bus glue". It can also web-search for written information (e.g. an engineer interview about the live rig). | Right direction, but not measured |
+| **2. A reference track the user provides** (recommended) | A file the user owns (iTunes, Bandcamp or Amazon purchase, or their own recording) is measured into a **style profile**, and the mix is matched against it exactly. Best results: a reference close to the material (live ballad for a live ballad). The user's own best mixes work too ("make it sound like last Easter"). | Precise, e.g. "within 1 dB of this song's tonal balance" |
+| **3. Built-in profile library** (later) | Profiles built from legally owned tracks, shipped as **measurements only, no audio**, so "Bethel live" works with no reference at all. Get a legal check before shipping this commercially. | Precise for the profiled songs |
+
+**Not built in: fetching audio from YouTube, Spotify or other services.** Streaming
+audio is copy-protected, and grabbing it breaks those services' terms (and often
+copyright). Merge only analyses files the user provides, and the AI only reads
+*written* information online.
+
+**In the UI:**
+- Style command with no reference: the assistant works from general knowledge and says
+  so, e.g. "Going from general knowledge of their sound; add a reference track for a
+  precise match."
+- With a reference: it measures and matches, and shows how close it got, e.g. "Tonal
+  balance 92% matched, width 85%."
+- Best results come from both: Claude's knowledge decides what to change and in what
+  order; the reference sets exactly how much.
+
 ## 3. Live-show safety (non-negotiable)
 
 1. **Propose → review → apply** by default. Changes appear as a diff ("Vocal EQ +1.8 dB @
