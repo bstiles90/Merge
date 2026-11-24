@@ -7,6 +7,11 @@
 
 Ultimately, even rehearsal runs without an operator.
 
+**Context: Merge is the online-broadcast mix.** The band plays a live service; FOH runs the
+room (and the band's monitors). Merge gets the same sources over a split (e.g. Dante from
+the FOH stagebox or console) and makes the **broadcast/stream mix**. There are no speakers
+in Merge's path, so **no feedback, no ring-out, no monitor mixes**. Those are FOH's job.
+
 Companion to [AI_MIX_ASSISTANT_PLAN.md](AI_MIX_ASSISTANT_PLAN.md). This doc covers *when*
 things change (cues and triggers) and *keeping the mix on target*; the AI plan covers
 *how* it decides what a good mix is.
@@ -112,32 +117,46 @@ guest), Merge makes **small, slow fader moves** to restore the rehearsed *balanc
 structure is right, the same template works week after week.
 
 **One-time setup** (an experienced engineer, or a Merge starter template):
-- **House input list:** the church's standard patch (Kick, Snare, Bass DI, Acoustic, Lead
-  Vox, BV1–3, Pastor, Keys L/R…). Instruments are also recognised by ear as a check.
+- **House input list:** the split's standard patch (Kick, Snare, Bass DI, Acoustic, Lead
+  Vox, BV1–3, Pastor, Keys L/R, audience mics…). Instruments are also recognised by ear as a
+  check.
 - **Role templates:** for each instrument type, starting processing (HPF, EQ shape,
   dynamics, effects sends) plus balance targets for each scene type (Band, Speech, Prayer
   + pad, Playback…).
 
 **Each week, automatically:**
-1. **Guided line check.** Merge prompts each musician through their in-ears and/or a screen
-   on stage ("Kick drum, please… thanks. Snare…"). In 10–15 s per source it:
-   - sets digital gain, checks polarity, shapes EQ toward the role target
-   - flags problems: dead mic, buzzing DI, clipping
-2. **Ring-out.** With the vocal mics open, Merge raises level carefully, finds the
-   frequencies that feed back, and notches them. A feedback suppressor stays on during
-   the service as a safety net.
-3. **Full-band pass.** During the first song, auto-balance pulls the mix toward the template
-   targets; the AI refines details (masking, harshness).
-4. **Musicians mix their own in-ears** from a "My Mix" page on their phones. The console UI
-   is already a web app, so this fits naturally. It removes the biggest rehearsal job.
-5. **Scenes are saved** for every scene type, ready for ProPresenter to trigger on Sunday.
+1. **Listen in on FOH's line check.** The band is already line-checked at FOH every week,
+   so Merge doesn't run its own and asks nobody to play. It **detects when a single source
+   is playing alone** (one input active, the rest quiet) and, in those few seconds:
+   - sets digital trim, checks polarity, shapes EQ toward the role target
+   - flags problems: dead mic, buzzing DI, clipping on the split
+   Any source it didn't catch in isolation gets refined in the full-band pass.
+2. **Full-band pass.** During the first song of rehearsal, auto-balance pulls the mix toward
+   the template targets; the AI refines details (masking, harshness).
+3. **Scenes are saved** for every scene type, ready for ProPresenter to trigger on Sunday.
+
+**Broadcast-specific jobs** (the things a broadcast mix needs that FOH doesn't):
+- **Following FOH gain changes.** The split shares FOH's preamps. When FOH turns up a gain
+  mid-service, the broadcast level jumps. Merge detects the step change on the input and
+  **compensates with its own digital trim**, so the stream stays steady. This matters
+  more than anything else for an operator-free broadcast mix.
+- **Room and audience mics.** Close mics sound dry and small on a stream, so the congregation
+  matters. Audience mics come up when the room is singing (worship sets, responses) and
+  sit lower during speech. Scene targets plus auto-balance handle this.
+- **PA and stage bleed.** Mics hear the PA and the room. Analysis has to tell a source's own
+  sound apart from bleed (in-ears and DI'd instruments help), and gates/expanders on drum
+  and vocal mics can tidy it up.
+- **Streaming loudness and limiting.** A target integrated loudness for the platform (e.g.
+  around −14 to −16 LUFS for YouTube/Facebook-style streams), with a true-peak limiter on
+  the main output.
+- **Lip-sync.** A main-output delay lines the audio up with the video path. It's already in
+  the console; set it once.
 
 **Realistic expectations:**
-- A consistent, good baseline every week, not a top engineer's taste.
-- **Analogue preamp gain:** most interfaces don't allow remote control of the physical
-  gain. Someone sets the hardware gains once, Merge sets digital trim and warns about
-  clipping. Remote preamp control for specific Dante stageboxes could be added per brand later.
-- **Loud stages:** bleed makes analysis harder; in-ears and DI'd instruments help a lot.
+- A consistent, good broadcast baseline every week, not a top engineer's taste.
+- **Merge doesn't own the preamps:** FOH does, so Merge works with digital trim only and
+  follows FOH's changes rather than fighting them.
+- **Bleed** is the main analysis challenge (not feedback).
 
 ## 7. Safety rules (no operator means these matter more)
 
@@ -150,8 +169,8 @@ structure is right, the same template works week after week.
 5. **Mics are opened and closed by cues, never by the AI.** Auto-balance and the AI only
    trim inside bounds around the rehearsed scene (±6 dB default), slowly, on opted-in
    channels.
-6. **Always on in automatic modes:** feedback suppression, a limiter on the main, and a
-   loudness cap.
+6. **Always on in automatic modes:** a true-peak limiter on the main output and a loudness cap
+   for the stream.
 7. **Everything logged** for reviewing after the service.
 
 ## 8. Build order
@@ -163,7 +182,7 @@ structure is right, the same template works week after week.
 | 2 | **ProPresenter option A** (state + rules) and option B (macros via MIDI); de-duplication | 1 |
 | 3 | Planning Center: plan import + LIVE follow (backup trigger) | 1 |
 | 4 | Learn the balance at rehearsal, hold it live; automixer + level-rider | 0 |
-| 5 | Auto rehearsal: templates, guided line check, ring-out, feedback suppression, "My Mix" phone pages | 4 |
+| 5 | Auto rehearsal: templates, listening in on FOH's line check, FOH gain-change compensation, audience-mic handling, streaming loudness target | 4 |
 | 6 | AI layer on top (see AI plan): judgement trims, reference matching, learning your taste | 4–5 |
 
 Each step is useful on its own. Steps 1–2 alone remove the need for an operator to hit
