@@ -39,11 +39,11 @@ describe('stereo links', () => {
     expect(ch(out, 'ch1').pan).toBe(-1);
   });
 
-  it('processing can be unlinked for separate L/R EQ', () => {
+  it('gain can be unlinked for separate L/R trim', () => {
     let s = linked();
-    s = { ...s, ...setLinkOption(s, 'ch1', 'processing', false) } as ConsoleState;
-    const next = { ...s, channels: s.channels.map((c) => (c.id === 'ch1' ? { ...c, hpf: { on: true, freq: 200 } } : c)) };
-    expect(ch({ ...next, channels: syncLinks(s, next) } as ConsoleState, 'ch2').hpf.freq).not.toBe(200);
+    s = { ...s, ...setLinkOption(s, 'ch1', 'input', false) } as ConsoleState;
+    const next = { ...s, channels: s.channels.map((c) => (c.id === 'ch1' ? { ...c, gainDb: 6 } : c)) };
+    expect(ch({ ...next, channels: syncLinks(s, next) } as ConsoleState, 'ch2').gainDb).toBe(0);
   });
 
   it('works through the store: actions, user keys and fader moves all follow the link', () => {

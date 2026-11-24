@@ -1,6 +1,5 @@
 // Stereo links: two mono channels that move together (like a console's stereo link),
-// while keeping their own pan and plugins, and optionally their own processing, so each
-// side can be shaped separately.
+// while keeping their own pan and plugins (so each side can be processed separately in its rack).
 
 import type { Channel, ChannelId, ConsoleState, StereoLink } from './types';
 
@@ -14,7 +13,6 @@ const LINKED_FIELDS: Record<LinkOption, (keyof Channel)[]> = {
   sends: ['sends'],
   groups: ['dcas', 'muteGroups', 'mainAssign'],
   input: ['gainDb', 'delayMs'],
-  processing: ['hpf', 'gate', 'eq', 'comp'],
 };
 
 export const DEFAULT_LINK_OPTIONS: StereoLink['options'] = {
@@ -24,7 +22,6 @@ export const DEFAULT_LINK_OPTIONS: StereoLink['options'] = {
   sends: true,
   groups: true,
   input: true,
-  processing: true,
 };
 
 export function findLink(s: Pick<ConsoleState, 'stereoLinks'>, id: ChannelId): StereoLink | undefined {

@@ -18,31 +18,6 @@ export interface SourceConfig {
   deviceChannel?: number;
 }
 
-export type EqBandType = 'lowshelf' | 'peaking' | 'highshelf';
-export interface EqBand {
-  type: EqBandType;
-  freq: number;
-  gainDb: number;
-  q: number;
-}
-
-export interface CompSettings {
-  on: boolean;
-  threshold: number;
-  ratio: number;
-  attack: number;
-  release: number;
-  makeupDb: number;
-}
-
-export interface GateSettings {
-  on: boolean;
-  threshold: number;
-  rangeDb: number;
-  attack: number;
-  release: number;
-}
-
 /** A plugin instance in an insert slot. `pluginId` refers to the plugin registry. */
 export interface InsertSlot {
   id: string;
@@ -69,10 +44,6 @@ export interface Channel {
   gainDb: number;
   phaseInvert: boolean;
   delayMs: number;
-  hpf: { on: boolean; freq: number };
-  gate: GateSettings;
-  eq: { on: boolean; bands: EqBand[] };
-  comp: CompSettings;
   inserts: InsertSlot[];
   pan: number; // -1..1
   faderDb: number;
@@ -243,7 +214,7 @@ export interface StereoLink {
   left: ChannelId;
   right: ChannelId;
   /** which settings move together (pan and plugins never do) */
-  options: { fader: boolean; mute: boolean; solo: boolean; sends: boolean; groups: boolean; input: boolean; processing: boolean };
+  options: { fader: boolean; mute: boolean; solo: boolean; sends: boolean; groups: boolean; input: boolean };
 }
 
 export interface ConsoleState {

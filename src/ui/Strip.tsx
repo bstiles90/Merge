@@ -60,23 +60,6 @@ function InputSection({ ch }: { ch: Channel }) {
   );
 }
 
-function ProcSection({ ch }: { ch: Channel }) {
-  const s = useConsole();
-  const chip = (label: string, on: boolean, toggle: () => void, title: string) => (
-    <button className={'proc-chip' + (on ? ' on' : '')} onClick={toggle} title={title}>
-      {label}
-    </button>
-  );
-  return (
-    <div className="sec sec-proc">
-      {chip('HPF', ch.hpf.on, () => s.updateChannel(ch.id, { hpf: { ...ch.hpf, on: !ch.hpf.on } }), `High-pass ${Math.round(ch.hpf.freq)} Hz`)}
-      {chip('GATE', ch.gate.on, () => s.updateChannel(ch.id, { gate: { ...ch.gate, on: !ch.gate.on } }), 'Gate')}
-      {chip('EQ', ch.eq.on, () => s.updateChannel(ch.id, { eq: { ...ch.eq, on: !ch.eq.on } }), 'EQ')}
-      {chip('DYN', ch.comp.on, () => s.updateChannel(ch.id, { comp: { ...ch.comp, on: !ch.comp.on } }), 'Compressor')}
-    </div>
-  );
-}
-
 function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?: () => void }) {
   const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
   return (
@@ -190,7 +173,6 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <InputSection ch={ch} />
-        <ProcSection ch={ch} />
         <RackSection inserts={ch.inserts} onSelect={select} />
         <SendsSection ch={ch} />
         <div className="sec sec-pan">
@@ -213,7 +195,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         </Toggle>
       </>
     );
-    meter = <Meter id={ch.id} height={faderH} showGr />;
+    meter = <Meter id={ch.id} height={faderH} />;
     fader = <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={faderH} />;
     dbText = formatDb(ch.faderDb);
     mute = (
@@ -239,7 +221,6 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
-        <div className="sec sec-proc" />
         <RackSection inserts={b.inserts} onSelect={select} />
         <SendsSection />
         <div className="sec sec-pan" />
@@ -276,7 +257,6 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src" title={members.map((m) => m.name).join(', ')}>{members.length} CH</div></div>
-        <div className="sec sec-proc" />
         <RackSection />
         <SendsSection />
         <div className="sec sec-pan" />
@@ -303,7 +283,6 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">PGM</div></div>
-        <div className="sec sec-proc" />
         <RackSection inserts={s.main.inserts} onSelect={select} />
         <SendsSection />
         <div className="sec sec-pan" />

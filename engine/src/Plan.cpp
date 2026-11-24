@@ -20,17 +20,6 @@ static int busIndex (const juce::String& id) // "bus3" -> 2
     return id.startsWith ("bus") ? id.substring (3).getIntValue() - 1 : -1;
 }
 
-static IirCoefs::Ptr bandCoefs (const juce::var& b, double sr)
-{
-    const auto type = b["type"].toString();
-    const float f = juce::jlimit (10.0f, (float) (sr * 0.45), num (b, "freq", 1000));
-    const float q = juce::jmax (0.05f, num (b, "q", 0.7f));
-    const float g = juce::Decibels::decibelsToGain (num (b, "gainDb", 0));
-    if (type == "lowshelf") return IirCoefs::makeLowShelf (sr, f, q, g);
-    if (type == "highshelf") return IirCoefs::makeHighShelf (sr, f, q, g);
-    return IirCoefs::makePeakFilter (sr, f, q, g);
-}
-
 static std::vector<InsertRef> parseInserts (const juce::var& arr, const juce::String& strip,
                                            const std::function<std::shared_ptr<HostedInsert> (const juce::String&)>& resolve,
                                            std::vector<InsertSpec>* out)
@@ -46,12 +35,11 @@ static std::vector<InsertRef> parseInserts (const juce::var& arr, const juce::St
     return refs;
 }
 
-std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double sr,
+std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/,
                                     const std::function<std::shared_ptr<HostedInsert> (const juce::String&)>& resolve,
                                     std::vector<InsertSpec>* insertsOut)
 {
     auto plan = std::make_unique<MixPlan>();
-    const auto unity = IirCoefs::makeAllPass (sr, 1000.0); // placeholder so filters always have coefficients
 
     if (auto* chans = json["channels"].getArray())
     {
@@ -72,32 +60,6 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double sr,
             p.gain = num (c, "gain", 1);
             p.delayMs = num (c, "delayMs", 0);
 
-            const auto hpf = c["hpf"];
-            p.hpfOn = flag (hpf, "on", false);
-            p.hpf = IirCoefs::makeHighPass (sr, juce::jlimit (10.0f, 2000.0f, num (hpf, "freq", 80)), 0.707f);
-
-            const auto gate = c["gate"];
-            p.gateOn = flag (gate, "on", false);
-            p.gateThreshDb = num (gate, "threshold", -50);
-            p.gateRangeDb = num (gate, "rangeDb", 40);
-            p.gateAttackMs = num (gate, "attack", 1);
-            p.gateReleaseMs = num (gate, "release", 150);
-
-            const auto eq = c["eq"];
-            p.eqOn = flag (eq, "on", true);
-            if (auto* bands = eq["bands"].getArray())
-                for (int b = 0; b < 4; ++b)
-                    p.eq[(size_t) b] = b < bands->size() ? bandCoefs ((*bands)[b], sr) : unity;
-            else
-                p.eq.fill (unity);
-
-            const auto comp = c["comp"];
-            p.compOn = flag (comp, "on", false);
-            p.compThreshDb = num (comp, "threshold", -18);
-            p.compRatio = juce::jmax (1.0f, num (comp, "ratio", 3));
-            p.compAttackMs = num (comp, "attack", 10);
-            p.compReleaseMs = num (comp, "release", 120);
-            p.compMakeup = juce::Decibels::decibelsToGain (num (comp, "makeupDb", 0));
 
             p.inserts = parseInserts (c["inserts"], "ch" + juce::String (i + 1), resolve, insertsOut);
             p.pan = juce::jlimit (-1.0f, 1.0f, num (c, "pan", 0));

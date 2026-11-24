@@ -9,9 +9,8 @@ show automatically and saves shows to *Documents/Merge Shows*. The engine does:
   Dante Virtual Soundcard, Dante interfaces and the Waves SoundGrid driver show up as
   ordinary devices.
 - **The realtime mixer:**
-  - 32 channels: input/test source, gain/polarity, delay, HPF, gate, 4-band EQ,
-    compressor with gain-reduction metering, 4 inserts, equal-power pan, 8 pre/post
-    sends, cue
+  - 32 channels: input/test source, gain/polarity, delay, an 8-slot plugin rack (all
+    filtering, EQ and dynamics come from plugins), equal-power pan, 8 pre/post sends, cue
   - 8 buses
   - main with lip-sync delay and a **true-peak meter** on the final output (4× oversampled,
     BS.1770-style). Limiting is done by your master-bus plugins in the main inserts.

@@ -209,7 +209,6 @@ const LINK_OPTION_LABELS: [LinkOption, string][] = [
   ['sends', 'Sends'],
   ['groups', 'Groups'],
   ['input', 'Gain/delay'],
-  ['processing', 'HPF/Gate/EQ/Dyn'],
 ];
 
 export function LinkSection({ ch }: { ch: Channel }) {
@@ -246,7 +245,7 @@ export function LinkSection({ ch }: { ch: Channel }) {
           </div>
           <div className="row">
             <button onClick={() => s.update((st) => removeLink(st, ch.id))}>Unlink</button>
-            <span className="hint">Pan and plugins are always per side. Turn off HPF/Gate/EQ/Dyn to process L and R separately.</span>
+            <span className="hint">Pan and plugins are always per side, so each side can have its own rack processing.</span>
           </div>
         </>
       )}

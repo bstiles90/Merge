@@ -103,9 +103,6 @@ private:
         float b[7] {}; // pink noise
         float syll = 0, syllTarget = 0; int syllLeft = 0; float lp = 0;
         Delay delay, pdc;
-        juce::dsp::IIR::Filter<float> hpf;
-        std::array<juce::dsp::IIR::Filter<float>, 4> eq;
-        float gateEnv = 0, gateGain = 1, compEnv = 0;
         Smooth post, main, panL, panR, cue;
         std::array<Smooth, kNumBuses> sends;
     };
@@ -116,10 +113,8 @@ private:
     };
 
     float sourceSample (ChannelState&, const ChannelPlan&, const float* const* in, int numIn, int i) noexcept;
-    void applyCoefficients (const MixPlan&) noexcept;
 
     std::atomic<MixPlan*> current { nullptr };
-    MixPlan* applied = nullptr;
     std::vector<std::pair<MixPlan*, uint64_t>> retired;
     std::atomic<uint64_t> blocksDone { 0 };
     std::atomic<bool> running { false };

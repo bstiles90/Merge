@@ -36,18 +36,6 @@ export function makeChannel(n: number): Channel {
     gainDb: 0,
     phaseInvert: false,
     delayMs: 0,
-    hpf: { on: false, freq: 80 },
-    gate: { on: false, threshold: -50, rangeDb: 40, attack: 1, release: 150 },
-    eq: {
-      on: true,
-      bands: [
-        { type: 'lowshelf', freq: 100, gainDb: 0, q: 0.7 },
-        { type: 'peaking', freq: 500, gainDb: 0, q: 1 },
-        { type: 'peaking', freq: 2500, gainDb: 0, q: 1 },
-        { type: 'highshelf', freq: 8000, gainDb: 0, q: 0.7 },
-      ],
-    },
-    comp: { on: false, threshold: -18, ratio: 3, attack: 10, release: 120, makeupDb: 0 },
     inserts: [],
     pan: 0,
     faderDb: -Infinity,
@@ -161,10 +149,6 @@ export function defaultState(): ConsoleState {
     c.faderDb = fader;
     c.dcas = d;
     c.muteGroups = mg;
-    if (kind === 'speech') {
-      c.hpf = { on: true, freq: 90 };
-      c.comp = { ...c.comp, on: true };
-    }
   }
   channels[4].pan = -1;
   channels[5].pan = 1;
@@ -197,7 +181,7 @@ export function defaultState(): ConsoleState {
     showName: 'Untitled Show',
     channels,
     // demo: the audience mic pair is stereo-linked
-    stereoLinks: [{ left: 'ch5', right: 'ch6', options: { fader: true, mute: true, solo: true, sends: true, groups: true, input: true, processing: true } }],
+    stereoLinks: [{ left: 'ch5', right: 'ch6', options: { fader: true, mute: true, solo: true, sends: true, groups: true, input: true } }],
     buses,
     main: { faderDb: 0, mute: false, delayMs: 0, inserts: [] },
     dcas,

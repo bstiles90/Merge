@@ -13,7 +13,6 @@ constexpr int kNumBuses = 8;
 constexpr int kMaxInserts = 8;
 
 class HostedInsert;
-using IirCoefs = juce::dsp::IIR::Coefficients<float>;
 
 /**
  * The compiled mix plan. The UI owns all console logic (mute groups, DCAs, solo,
@@ -36,14 +35,6 @@ struct ChannelPlan
     bool playback = false;
     float gain = 1.0f; // linear, includes polarity
     float delayMs = 0.0f;
-    bool hpfOn = false;
-    IirCoefs::Ptr hpf;
-    bool gateOn = false;
-    float gateThreshDb = -50, gateRangeDb = 40, gateAttackMs = 1, gateReleaseMs = 150;
-    bool eqOn = true;
-    std::array<IirCoefs::Ptr, 4> eq;
-    bool compOn = false;
-    float compThreshDb = -18, compRatio = 3, compAttackMs = 10, compReleaseMs = 120, compMakeup = 1;
     std::vector<InsertRef> inserts;
     float pan = 0; // -1..1
     float post = 0; // fader * DCA * mute

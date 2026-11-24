@@ -33,10 +33,6 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
   "channels": [            // 32, in order
     { "src": { "kind": "input|tone|noise|speech|none", "freq": 1000, "input": 0 },
       "playback": false, "gain": 1.0, "delayMs": 0,
-      "hpf": { "on": true, "freq": 80 },
-      "gate": { "on": false, "threshold": -50, "rangeDb": 40, "attack": 1, "release": 150 },
-      "eq": { "on": true, "bands": [{ "type": "lowshelf|peaking|highshelf", "freq": 100, "gainDb": 0, "q": 0.7 }] },
-      "comp": { "on": false, "threshold": -18, "ratio": 3, "attack": 10, "release": 120, "makeupDb": 0 },
       "inserts": [{ "id": "slot", "pluginId": "vst3:…", "bypass": false }],   // up to 8
       "pan": 0,          // -1..1, equal power
       "post": 0.5,       // fader × DCAs × mutes (linear)
@@ -58,7 +54,7 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 |---|---|
 | `hello` | `engine, version` |
 | `device` | `virtual, deviceType, inputDevice, outputDevice, sampleRate, bufferSize, latencyMs, inputs[], outputs[], sampleRates[], bufferSizes[], types[{name, inputs[], outputs[]}]` |
-| `meters` (30 Hz) | `ch[[peak, grDb]×32], bus[[l,r]×8], main[l,r], mon[l,r], loud[momentary, shortTerm, integrated] (LUFS or null), pdc` (samples), `tp[l, r]` (program true peak, linear, 4× oversampled, max since last message) |
+| `meters` (30 Hz) | `ch[[peak, 0]×32], bus[[l,r]×8], main[l,r], mon[l,r], loud[momentary, shortTerm, integrated] (LUFS or null), pdc` (samples), `tp[l, r]` (program true peak, linear, 4× oversampled, max since last message) |
 | `plugins` | `list[{id, name, vendor, format, category, version, file}], scanning, blacklisted[]` |
 | `plugins.scan` | `progress, file, format` |
 | `insert.loading` | `slotId, pluginId` — instantiating asynchronously (licence check / activation dialog may be showing) |

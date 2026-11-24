@@ -106,11 +106,6 @@ class ChannelStrip {
   srcIn: GainNode;
   inGain: GainNode;
   delay: DelayNode;
-  hpf: BiquadFilterNode;
-  gate: AudioWorkletNode;
-  eq: BiquadFilterNode[];
-  comp: DynamicsCompressorNode;
-  makeup: GainNode;
   inserts: InsertChain;
   pre: GainNode;
   meter: AnalyserNode;
@@ -137,14 +132,6 @@ class ChannelStrip {
     this.pb.connect(this.srcIn);
     this.inGain = ctx.createGain();
     this.delay = ctx.createDelay(1);
-    this.hpf = ctx.createBiquadFilter();
-    this.hpf.type = 'highpass';
-    this.hpf.Q.value = 0.707;
-    this.gate = new AudioWorkletNode(ctx, 'merge-gate', { outputChannelCount: [1] });
-    this.eq = [0, 1, 2, 3].map(() => ctx.createBiquadFilter());
-    this.comp = ctx.createDynamicsCompressor();
-    this.comp.knee.value = 6;
-    this.makeup = ctx.createGain();
     this.inserts = new InsertChain(ctx);
     this.pre = ctx.createGain();
     this.meter = ctx.createAnalyser();
@@ -155,9 +142,8 @@ class ChannelStrip {
     this.cuePre = ctx.createGain();
     this.cuePost = ctx.createGain();
 
-    let n: AudioNode = this.srcIn.connect(this.inGain).connect(this.delay).connect(this.hpf).connect(this.gate);
-    for (const b of this.eq) n = n.connect(b);
-    n.connect(this.comp).connect(this.makeup).connect(this.inserts.input);
+    // no built-in processing: input gain/polarity, delay, then the plugin rack
+    this.srcIn.connect(this.inGain).connect(this.delay).connect(this.inserts.input);
     this.inserts.output.connect(this.pre);
     this.pre.connect(this.meter);
     this.pre.connect(this.fader).connect(this.panner).connect(this.mainSend).connect(eng.mainIn);
@@ -233,26 +219,6 @@ class ChannelStrip {
     setP(this.pb.gain, ch.inputMode === 'playback' ? 1 : 0, ctx);
     setP(this.inGain.gain, dbToGain(ch.gainDb) * (ch.phaseInvert ? -1 : 1), ctx);
     setP(this.delay.delayTime, ch.delayMs / 1000, ctx);
-    setP(this.hpf.frequency, ch.hpf.on ? ch.hpf.freq : 5, ctx);
-    const gp = this.gate.parameters as Map<string, AudioParam>;
-    gp.get('enabled')!.value = ch.gate.on ? 1 : 0;
-    gp.get('threshold')!.value = ch.gate.threshold;
-    gp.get('range')!.value = ch.gate.rangeDb;
-    gp.get('attack')!.value = ch.gate.attack;
-    gp.get('release')!.value = ch.gate.release;
-    ch.eq.bands.forEach((b, i) => {
-      const f = this.eq[i];
-      if (f.type !== b.type) f.type = b.type;
-      setP(f.frequency, b.freq, ctx);
-      setP(f.gain, ch.eq.on ? b.gainDb : 0, ctx);
-      setP(f.Q, b.q, ctx);
-    });
-    const c = ch.comp;
-    setP(this.comp.threshold, c.on ? c.threshold : 0, ctx);
-    setP(this.comp.ratio, c.on ? c.ratio : 1, ctx);
-    setP(this.comp.attack, c.attack / 1000, ctx);
-    setP(this.comp.release, c.release / 1000, ctx);
-    setP(this.makeup.gain, c.on ? dbToGain(c.makeupDb) : 1, ctx);
     setP(this.panner.pan, ch.pan, ctx);
     this.inserts.sync(ch.inserts);
   }
@@ -658,7 +624,7 @@ export class Engine {
     const out = new Map<string, MeterReading>();
     const sc = this.scratch;
     for (const [id, strip] of this.channels) {
-      out.set(id, { peak: peakOf(strip.meter, sc), gr: strip.comp.reduction });
+      out.set(id, { peak: peakOf(strip.meter, sc) });
     }
     for (const [id, b] of this.buses) out.set(id, { peak: peakOf(b.meter.a[0], sc), peakR: peakOf(b.meter.a[1], sc) });
     out.set('main', { peak: peakOf(this.mainMeter.a[0], sc), peakR: peakOf(this.mainMeter.a[1], sc) });

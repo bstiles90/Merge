@@ -47,9 +47,9 @@ Use **I/O · Patch** to patch real interface inputs.
 
 | Area | Features |
 |---|---|
-| Channel strips | console-style vertical flow on every strip: input/source + gain, HPF/Gate/EQ/Dyn switches, insert rack, 8 send bars (drag), rotary pan, groups, SEL/PFL, meter + fader (moves only by its cap), mute |
-| Stereo link | link mono channel pairs: fader/mute/solo/sends/groups always follow; gain and processing optional; pan and plugins per side |
-| Channels (32) | source/patch, gain, phase, delay, HPF, gate, 4-band EQ with curve, compressor + GR meter, 4 insert slots, pan, 8 sends (pre/post), main assign, rec-arm, live/playback input |
+| Channel strips | console-style vertical flow on every strip: input/source + gain, 8-slot plugin rack (no built-in processing: load filters/EQ/dynamics as plugins), 8 send bars (drag), rotary pan, groups, SEL/PFL, meter + fader (moves only by its cap), mute |
+| Stereo link | link mono channel pairs: fader/mute/solo/sends/groups always follow; gain optional; pan and plugins per side |
+| Channels (32) | source/patch, gain, polarity, delay, 8-slot plugin rack, pan, 8 sends (pre/post), main assign, rec-arm, live/playback input |
 | Buses (8) | aux / IEM, or **mix-minus (N-1)** with auto-feed of main minus a chosen source, delay, inserts |
 | Main / program | inserts, lip-sync delay, **EBU R128 / ATSC A/85 loudness** (M/S/I, gated integrated) |
 | Mute groups (8) | multi-membership; never touch a channel's own mute; group-muted strips show hatched |

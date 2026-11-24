@@ -81,13 +81,10 @@ void Mixer::prepare (double sr, int block, int, int)
     sampleRate = sr;
     maxBlock = juce::jmax (16, block);
     smoothCoef = (float) (1.0 - std::exp (-1.0 / (0.010 * sr))); // ~10 ms
-    const juce::dsp::ProcessSpec spec { sr, (juce::uint32) maxBlock, 1 };
     for (auto& c : ch)
     {
         c.delay.prepare ((int) sr + 1);    // up to 1 s channel delay
         c.pdc.prepare (16384);             // plugin delay compensation
-        c.hpf.prepare (spec);
-        for (auto& e : c.eq) e.prepare (spec);
     }
     for (auto& b : bus)
         for (auto& d : b.delay) d.prepare ((int) sr + 1);
@@ -100,7 +97,6 @@ void Mixer::prepare (double sr, int block, int, int)
     loudness.prepare (sr);
     outTp[0].reset();
     outTp[1].reset();
-    applied = nullptr; // re-apply coefficients
     running = true;
 }
 
@@ -126,18 +122,6 @@ void Mixer::collectGarbage()
                        return false;
                    }),
                    retired.end());
-}
-
-void Mixer::applyCoefficients (const MixPlan& p) noexcept
-{
-    for (int i = 0; i < kNumChannels; ++i)
-    {
-        auto& c = ch[(size_t) i];
-        const auto& cp = p.channels[(size_t) i];
-        if (cp.hpf) c.hpf.coefficients = cp.hpf; // pointer copy; the plan keeps them alive
-        for (size_t b = 0; b < 4; ++b)
-            if (cp.eq[b]) c.eq[b].coefficients = cp.eq[b];
-    }
 }
 
 float Mixer::sourceSample (ChannelState& c, const ChannelPlan& p, const float* const* in, int numIn, int i) noexcept
@@ -204,7 +188,6 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             offset += n;
             continue;
         }
-        if (plan != applied) { applyCoefficients (*plan); applied = plan; }
         const float k = smoothCoef;
 
         // plugin delay compensation: delay every channel up to the slowest one
@@ -248,45 +231,12 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
 
             float* x = chanBuf.getWritePointer (c);
             const int delaySamples = (int) (cp.delayMs * 0.001 * sampleRate);
-            const float gateThr = juce::Decibels::decibelsToGain (cp.gateThreshDb);
-            const float gateFloor = juce::Decibels::decibelsToGain (-cp.gateRangeDb);
-            const float gateAtt = std::exp (-1.0f / (float) (sampleRate * juce::jmax (0.05f, cp.gateAttackMs) * 0.001));
-            const float gateRel = std::exp (-1.0f / (float) (sampleRate * juce::jmax (1.0f, cp.gateReleaseMs) * 0.001));
-            const float envCoef = std::exp (-1.0f / (float) (sampleRate * 0.005));
-            const float compAtt = std::exp (-1.0f / (float) (sampleRate * juce::jmax (0.1f, cp.compAttackMs) * 0.001));
-            const float compRel = std::exp (-1.0f / (float) (sampleRate * juce::jmax (1.0f, cp.compReleaseMs) * 0.001));
-            const float slope = 1.0f - 1.0f / cp.compRatio;
-            float maxGr = 0;
-
+            // Channels have no built-in processing: input gain/polarity and delay, then the plugin rack.
             for (int i = 0; i < n; ++i)
             {
-                float s = sourceSample (st, cp, inPtrs, ni, i) * cp.gain;
-                if (delaySamples > 0) s = st.delay.run (s, delaySamples);
-                if (cp.hpfOn) s = st.hpf.processSample (s);
-                if (cp.gateOn)
-                {
-                    const float a = std::abs (s);
-                    st.gateEnv = a > st.gateEnv ? a : st.gateEnv * envCoef + a * (1 - envCoef);
-                    const float target = st.gateEnv >= gateThr ? 1.0f : gateFloor;
-                    const float coef = target > st.gateGain ? gateAtt : gateRel;
-                    st.gateGain = target + (st.gateGain - target) * coef;
-                    s *= st.gateGain;
-                }
-                if (cp.eqOn)
-                    for (auto& f : st.eq) s = f.processSample (s);
-                if (cp.compOn)
-                {
-                    const float a = std::abs (s);
-                    st.compEnv = a > st.compEnv ? a + (st.compEnv - a) * compAtt : a + (st.compEnv - a) * compRel;
-                    const float lvl = juce::Decibels::gainToDecibels (st.compEnv, -120.0f);
-                    const float over = lvl - cp.compThreshDb;
-                    float gr = 0; // 6 dB soft knee
-                    if (over > 3.0f) gr = over * slope;
-                    else if (over > -3.0f) gr = slope * (over + 3.0f) * (over + 3.0f) / 12.0f;
-                    maxGr = juce::jmax (maxGr, gr);
-                    s *= juce::Decibels::decibelsToGain (-gr) * cp.compMakeup;
-                }
-                x[i] = s;
+                float smp = sourceSample (st, cp, inPtrs, ni, i) * cp.gain;
+                if (delaySamples > 0) smp = st.delay.run (smp, delaySamples);
+                x[i] = smp;
             }
             for (auto& r : cp.inserts)
                 if (r.insert) r.insert->process (&x, 1, n);
@@ -320,7 +270,6 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 }
             }
             meters[(size_t) c].raise (peak, peak);
-            meters[(size_t) c].gr.store (-maxGr, std::memory_order_relaxed);
         }
 
         // ------------------------------------------------------------ talkback
