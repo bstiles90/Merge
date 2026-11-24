@@ -149,19 +149,30 @@ ProPresenter rules (below). A **show log** lists what fired, when and why.
 moment fired by hand stays until the service moves on. When Ableton and Planning Center are
 added: the earliest source wins, in trust order Ableton → ProPresenter → Planning Center.
 
-## 4. Planning Center Services integration
+## 4. Planning Center Services integration (who leads, which mic)
 
-- Link a service type (e.g. "Sunday 9am") with a Personal Access Token or OAuth. The
-  token lives in the native engine, never in show files.
-- Merge pulls the week's **plan** and shows the service order with the cue each item
-  will fire, so you can check before rehearsal. Mapping uses rules (item type, title)
-  plus optional item-note tags (`merge: Baptism`), because plans change every week.
-- Follows **Services LIVE** as a backup trigger. It could also *advance* LIVE (a Stream Deck
-  key for "next item"), but following is the main job.
-- *To verify when building* (Planning Center's developer site is blocked from the build
-  environment today): Live endpoint details, webhooks vs polling (polling about once a
-  second is fine for cues), and rate limits. That needs `api.planningcenteronline.com` and
-  `developer.planning.center` allowed.
+**Built (to verify with our real Planning Center account):**
+- Link once with a **Personal Access Token** (api.planningcenteronline.com/oauth/applications
+  → Personal Access Tokens). The application ID and secret are saved on the Merge computer only
+  (app data, readable by that user only), never in show files. The engine makes the requests,
+  read-only, and only to Services paths.
+- **Load this week's plan:** pick the service type; Merge loads the next plan from the start of
+  today (so today's service stays "this week" while it runs), with every item's **Person** item
+  note (who leads it). The plan is saved in the show, so Sunday doesn't depend on the internet.
+- **Mics this week** come from the weekly **production plan note** (any plan note whose lines
+  read like `HH1 - Sarah` or `Pastor Mike: HS2`; a category named Production / Mics / Audio is
+  preferred). Anything missing is set on Merge's mic screen at line check. **Label strips**
+  names them "HH1 · Sarah" for the week (Clear labels puts the mic names back; matching always
+  uses the mic's own name).
+- **Moments led by a person:** ProPresenter's item title (synced from Planning Center) finds the
+  plan item, its Person note finds the leader, and the mic list finds their channel. Then, of the
+  speaking mics (speaker / host), only the leader's opens; the band still stays under. Their
+  mic opens even if it has another role (the worship leader praying from their vocal mic). Names
+  match loosely ("Pastor Mike" = "Mike Smith"); "Sarah & Mike" opens both. If the leader or
+  their mic is unknown, every speaking mic opens, as before.
+- The Show page shows "Led by Pastor Mike → only HS1 opens", and the log records it.
+
+**Later:** follow Services LIVE as a backup trigger; read team positions for auto-labelling.
 
 ## 5. Holding the rehearsed sound live (auto-balance)
 
@@ -262,7 +273,7 @@ structure is right, the same template works week after week.
 | 0 | Foundations: undo (needed); native recorder/playback (needed for step 5, not for 1–2) | (in progress) |
 | 1 | **Roles + built-in moments + learned levels + timed fades + NOW / GO / undo / log** (built) ; MIDI → moments (to do) | 0 |
 | 2 | **ProPresenter option A** (state + rules + slide-note tags) (built; to verify on a real ProPresenter); option B via MIDI (to do) | 1 |
-| 3 | Planning Center: plan import + LIVE follow (backup trigger) | 1 |
+| 3 | Planning Center: plan import, Person notes → leader's mic, production note → mics, strip labels (built); LIVE follow (to do) | 1 |
 | 4 | Learn the balance at rehearsal, hold it live; automixer + level-rider | 0 |
 | 5 | Auto rehearsal: templates, listening in on FOH's line check, FOH gain-change compensation, audience-mic handling, streaming loudness target | 4 |
 | 6 | AI layer on top (see AI plan): judgement trims, reference matching, learning your taste | 2, 4–5 |

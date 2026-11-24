@@ -62,4 +62,11 @@ describe('stereo links', () => {
     const s = runAction(linked(), { type: 'channel.solo.toggle', args: { id: 'ch1' } });
     expect(ch({ ...s, channels: syncLinks(linked(), s) } as ConsoleState, 'ch2').solo).toBe(true);
   });
+
+  it('linked channels always share a role (show moments move the pair together)', () => {
+    const s0 = defaultState();
+    const linked = { ...s0, ...createLink(s0, 'ch1', 'ch2') } as typeof s0;
+    const next = { ...linked, channels: linked.channels.map((c) => (c.id === 'ch1' ? { ...c, role: 'keys' as const } : c)) };
+    expect(syncLinks(linked, next).find((c) => c.id === 'ch2')?.role).toBe('keys');
+  });
 });

@@ -69,6 +69,8 @@ interface NativeState {
   dockUnavailable?: boolean;
   /** ProPresenter connection (followed by the engine) and its latest data per endpoint */
   pp: { state: 'off' | 'connecting' | 'connected' | 'polling' | 'error'; message: string; raw: Record<string, any> };
+  /** Planning Center is linked (a Personal Access Token is saved on this computer) */
+  pcoLinked?: boolean;
 }
 
 export const useNative = create<NativeState>(() => ({
@@ -106,6 +108,21 @@ export function sendNative(msg: object) {
 /** Inside the app: write a line to the engine's log (console errors and start-up steps). */
 export function uiLog(text: string) {
   if (EMBEDDED) sendNative({ type: 'ui.log', text: text.slice(0, 500) });
+}
+
+const pcoPending = new Map<number, (r: { status: number; body: any }) => void>();
+let pcoSeq = 0;
+/** GET a Planning Center Services path through the engine (which holds the token). */
+export function pcoGet(path: string): Promise<{ status: number; body: any }> {
+  if (ws?.readyState !== WebSocket.OPEN) return Promise.resolve({ status: 0, body: 'The Merge engine is not connected' });
+  const id = ++pcoSeq;
+  return new Promise((resolve) => {
+    pcoPending.set(id, resolve);
+    sendNative({ type: 'pco.get', id, path });
+    setTimeout(() => {
+      if (pcoPending.delete(id)) resolve({ status: 0, body: 'Planning Center took too long to answer' });
+    }, 30000);
+  });
 }
 
 let lastPpConfig = '';
@@ -237,6 +254,15 @@ function onMessage(m: any) {
     case 'pp.status':
       useNative.setState((st) => ({ pp: { ...st.pp, state: m.state, message: m.message, raw: m.state === 'off' ? {} : st.pp.raw } }));
       break;
+    case 'pco.status':
+      useNative.setState({ pcoLinked: !!m.linked });
+      break;
+    case 'pco.response': {
+      const p = pcoPending.get(m.id);
+      pcoPending.delete(m.id);
+      p?.({ status: m.status, body: m.body });
+      break;
+    }
     case 'pp.update':
       useNative.setState((st) => ({ pp: { ...st.pp, raw: { ...st.pp.raw, [m.url]: m.data } } }));
       break;

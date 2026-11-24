@@ -33,6 +33,8 @@ describe('roles', () => {
     expect(suggestRole('Tracks L')).toBe('playback');
     expect(suggestRole('Aud L')).toBe('audience');
     expect(suggestRole('Keys L')).toBe('keys');
+    expect(suggestRole('HS1')).toBe('speaker');
+    expect(suggestRole('HH2')).toBe('host');
     expect(suggestRole('Ch 17')).toBeUndefined();
   });
   it('only fills channels without a role', () => {

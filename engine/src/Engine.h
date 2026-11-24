@@ -3,6 +3,7 @@
 #include "Mixer.h"
 #include "PluginHost.h"
 #include "ProPresenter.h"
+#include "PlanningCenter.h"
 #include "WebSocketServer.h"
 
 namespace merge
@@ -70,6 +71,7 @@ private:
     PluginHost plugins;
     WebSocketServer ws;
     ProPresenterClient propresenter;
+    PlanningCenterClient planningCenter;
     juce::var ppStatus;                          // last ProPresenter connection status
     std::map<juce::String, juce::var> ppLatest;  // last update per endpoint, replayed to new UI clients
     std::unique_ptr<VirtualDevice> virtualDevice;

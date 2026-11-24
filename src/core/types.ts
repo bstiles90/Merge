@@ -61,6 +61,8 @@ export interface Channel {
   recallSafe: boolean;
   /** what this channel is (speaker, lead vocal, band…): show moments act on roles */
   role?: Role;
+  /** the mic's own name while the strip is labelled with this week's person ("HH1 · Sarah") */
+  baseName?: string;
 }
 
 export type BusType = 'aux' | 'mixminus';

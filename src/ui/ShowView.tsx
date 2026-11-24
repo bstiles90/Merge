@@ -5,7 +5,8 @@ import { useState } from 'react';
 import { contextFromProPresenter, decideMoment, DEFAULT_MOMENTS, emptyContext, ROLES, applySuggestedRoles, suggestRole, type Moment, type Role, type Rule, type RuleField, type ShowContext } from '../core/moments';
 import { newId } from '../core/defaults';
 import { useConsole } from '../core/store';
-import { useNative } from '../native/bridge';
+import { pcoGet, sendNative, useNative } from '../native/bridge';
+import { clearLabels, findMicNote, labelChannels, micName, parseItems, parseMicNote, parsePlanNotes, parsePlans, parseServiceTypes, pcoPaths, peopleInPlan, samePerson, startOfTodayIso, type PcoState } from '../core/pco';
 import { useShow } from '../native/showFollow';
 
 const FIELD_LABEL: Record<RuleField, string> = {
@@ -40,7 +41,7 @@ export function MomentBar({ compact }: { compact?: boolean }) {
           {next && (
             <>
               <span className="hint"> · ProPresenter says {next.name} </span>
-              <button className="go small" title="Fire what ProPresenter is calling for" onClick={() => dispatch({ type: 'moment.fire', args: { moment: next.id, source: 'GO' } })}>
+              <button className="go small" title="Fire what ProPresenter is calling for" onClick={() => dispatch({ type: 'moment.fire', args: { moment: next.id, source: 'GO', ...(decided?.focus?.length ? { focus: decided.focus.join(','), leader: decided.leader ?? '' } : {}) } })}>
                 GO
               </button>
             </>
@@ -71,6 +72,7 @@ function ProPresenterPanel() {
   const ctx = useShow((s) => s.ctx);
   const decided = useShow((s) => s.decided);
   const moments = useConsole((s) => s.automation.moments);
+  const channels = useConsole((s) => s.channels);
   const set = (patch: Partial<typeof pp>) => update((s) => ({ automation: { ...s.automation, propresenter: { ...s.automation.propresenter, ...patch } } }));
   const light = conn.state === 'connected' || conn.state === 'polling' ? 'ok' : conn.state === 'connecting' ? 'warn' : conn.state === 'error' ? 'bad' : 'off';
   return (
@@ -84,7 +86,7 @@ function ProPresenterPanel() {
       </label>
       <div className="row">
         <label className="col">
-          <span className="hint">Computer (IP address; 127.0.0.1 = this Mac)</span>
+          <span className="hint">ProPresenter computer's IP address</span>
           <input value={pp.host} onChange={(e) => set({ host: e.target.value })} style={{ width: 160 }} />
         </label>
         <label className="col">
@@ -93,7 +95,8 @@ function ProPresenterPanel() {
         </label>
       </div>
       <p className="hint">
-        In ProPresenter: <b>Settings → Network</b>, turn on <b>Enable Network</b>, and use the port shown there. {!engine && <b>Needs the Merge app (engine) running.</b>}
+        On the ProPresenter computer: <b>Settings → Network</b>, turn on <b>Enable Network</b>; the IP address and port are shown there. Both computers must be on
+        the same network (give the ProPresenter computer a fixed IP). {!engine && <b>Needs the Merge app (engine) running.</b>}
       </p>
       {pp.enabled && <p className="hint">{conn.message}</p>}
       <div className="pp-now">
@@ -106,7 +109,142 @@ function ProPresenterPanel() {
           <span className="hint">Calls for</span> <b>{decided ? moments.find((m) => m.id === decided.moment)?.name : 'no change'}</b>
           {decided && <span className="hint"> ({decided.why})</span>}
         </div>
+        {decided?.leader && (
+          <div>
+            <span className="hint">Led by</span> {decided.leader}{' '}
+            {decided.focus?.length ? (
+              <span className="hint">→ only {decided.focus.map((id) => channels.find((c) => c.id === id)?.name ?? id).join(', ')} opens</span>
+            ) : (
+              <span className="hint">(no mic set for them: all speaking mics open)</span>
+            )}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function PlanningCenterPanel() {
+  const linked = useNative((s) => !!s.pcoLinked);
+  const engine = useNative((s) => s.status === 'connected');
+  const pco = useConsole((s) => s.automation.pco);
+  const channels = useConsole((s) => s.channels);
+  const update = useConsole((s) => s.update);
+  const [types, setTypes] = useState<{ id: string; name: string }[]>([]);
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const [cred, setCred] = useState({ appId: '', secret: '' });
+  const setPco = (patch: Partial<PcoState>) => update((s) => ({ automation: { ...s.automation, pco: { ...s.automation.pco, ...patch } } }));
+  const fail = (what: string, r: { status: number; body: any }) =>
+    setErr(`${what}: ${r.status === 401 ? 'Planning Center refused the token (check the application ID and secret)' : r.status === 0 ? String(r.body) : `HTTP ${r.status}`}`);
+
+  const loadTypes = async () => {
+    setBusy('Loading service types…'); setErr('');
+    const r = await pcoGet(pcoPaths.serviceTypes());
+    setBusy('');
+    if (r.status !== 200) return fail('Service types', r);
+    setTypes(parseServiceTypes(r.body));
+  };
+  const loadPlan = async () => {
+    if (!pco.serviceTypeId) return;
+    setBusy('Loading this week\'s plan…'); setErr('');
+    const plans = await pcoGet(pcoPaths.upcomingPlans(pco.serviceTypeId, startOfTodayIso()));
+    if (plans.status !== 200) { setBusy(''); return fail('Plans', plans); }
+    const plan = parsePlans(plans.body)[0];
+    if (!plan) { setBusy(''); return setErr('No upcoming plan found for this service type.'); }
+    const [items, notes] = await Promise.all([pcoGet(pcoPaths.items(pco.serviceTypeId, plan.id)), pcoGet(pcoPaths.planNotes(pco.serviceTypeId, plan.id))]);
+    setBusy('');
+    if (items.status !== 200) return fail('Plan items', items);
+    const st = useConsole.getState();
+    const micNote = notes.status === 200 ? findMicNote(parsePlanNotes(notes.body), st.channels) : '';
+    const fromNote = micNote ? parseMicNote(micNote, st.channels) : {};
+    setPco({ planId: plan.id, planTitle: plan.title, planDates: plan.dates, items: parseItems(items.body, pco.personCategory), micNote, mics: fromNote, loadedAt: Date.now() });
+  };
+  const people = peopleInPlan(pco.items);
+  const micFor = (p: string) => Object.entries(pco.mics).find(([who]) => samePerson(who, p))?.[1] ?? '';
+  const setMic = (p: string, ch: string) => {
+    const mics = Object.fromEntries(Object.entries(pco.mics).filter(([who]) => !samePerson(who, p)));
+    if (ch) mics[p] = ch;
+    setPco({ mics });
+  };
+
+  if (!linked)
+    return (
+      <div className="panel">
+        <div className="panel-title">Planning Center</div>
+        <p className="hint">
+          Link Planning Center so moments open only the mic of the person leading each item (your <b>Person</b> item notes). Create a Personal Access Token at{' '}
+          <b>api.planningcenteronline.com/oauth/applications</b> → <b>Personal Access Tokens</b> → <b>New</b>, then paste its Application ID and Secret here. They're
+          saved on this computer only (not in show files). {!engine && <b>Needs the Merge app running.</b>}
+        </p>
+        <div className="row wrap">
+          <input placeholder="Application ID" value={cred.appId} onChange={(e) => setCred({ ...cred, appId: e.target.value })} style={{ width: 200 }} />
+          <input placeholder="Secret" type="password" value={cred.secret} onChange={(e) => setCred({ ...cred, secret: e.target.value })} style={{ width: 200 }} />
+          <button disabled={!engine || !cred.appId || !cred.secret} onClick={() => { sendNative({ type: 'pco.credentials', ...cred }); setCred({ appId: '', secret: '' }); }}>
+            Link
+          </button>
+        </div>
+      </div>
+    );
+
+  return (
+    <div className="panel">
+      <div className="panel-title row between">
+        <span>Planning Center</span>
+        <button className="link-btn" onClick={() => sendNative({ type: 'pco.credentials', appId: '', secret: '' })} title="Remove the saved token from this computer">unlink</button>
+      </div>
+      <div className="row wrap">
+        <select
+          value={pco.serviceTypeId}
+          onFocus={() => !types.length && loadTypes()}
+          onChange={(e) => setPco({ serviceTypeId: e.target.value, serviceTypeName: types.find((t) => t.id === e.target.value)?.name ?? '' })}
+        >
+          <option value="">{pco.serviceTypeName || '— service type —'}</option>
+          {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <button className="go" disabled={!pco.serviceTypeId || !!busy} onClick={loadPlan}>Load this week's plan</button>
+        <label className="row">
+          <span className="hint">Person note category</span>
+          <input value={pco.personCategory} onChange={(e) => setPco({ personCategory: e.target.value })} style={{ width: 80 }} />
+        </label>
+      </div>
+      {busy && <p className="hint">{busy}</p>}
+      {err && <p className="hint bad-text">{err}</p>}
+      {pco.planId && (
+        <>
+          <p className="hint">
+            <b>{pco.planTitle || 'Plan'}</b> {pco.planDates} · loaded {new Date(pco.loadedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
+            {pco.micNote ? ' · mics read from your production note' : ' · no mic note found: set mics below'}
+          </p>
+          <div className="pco-mics">
+            <div className="hint">Mics this week</div>
+            {!people.length && <p className="hint">No Person notes in this plan.</p>}
+            {people.map((p) => (
+              <label key={p} className="row">
+                <span className="pco-person">{p}</span>
+                <select value={micFor(p)} onChange={(e) => setMic(p, e.target.value)}>
+                  <option value="">— no mic —</option>
+                  {channels.map((c) => <option key={c.id} value={c.id}>{c.id.slice(2)} · {micName(c)}</option>)}
+                </select>
+              </label>
+            ))}
+            <div className="row">
+              <button onClick={() => update((s) => ({ channels: labelChannels(s.channels, s.automation.pco.mics) }))} title="Name the strips 'HH1 · Sarah' for this week">Label strips</button>
+              <button onClick={() => update((s) => ({ channels: clearLabels(s.channels) }))}>Clear labels</button>
+            </div>
+          </div>
+          <details>
+            <summary className="hint">Service order ({pco.items.length} items)</summary>
+            <table className="list">
+              <tbody>
+                {pco.items.map((i, n) => (
+                  <tr key={n}><td>{i.title}</td><td className="hint">{i.person || '—'}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        </>
+      )}
     </div>
   );
 }
@@ -286,7 +424,7 @@ function RolesPanel() {
       </p>
       <div className="roles-list">
         {channels.map((c) => {
-          const sug = !c.role ? suggestRole(c.name) : undefined;
+          const sug = !c.role ? suggestRole(c.baseName ?? c.name) : undefined;
           return (
             <label key={c.id} className="row role-row">
               <span className="role-ch">{c.id.slice(2)}</span>
@@ -328,6 +466,7 @@ export function ShowView() {
       <div className="grid2">
         <div className="col">
           <ProPresenterPanel />
+          <PlanningCenterPanel />
           <RulesPanel />
           <LogPanel />
         </div>

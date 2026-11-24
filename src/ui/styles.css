@@ -520,3 +520,6 @@ button.arm.on { background: #8f2d1e; border-color: #e5484d; color: #fff; }
 .show-page > .grid2 { gap: 10px; }
 .show-page { display: flex; flex-direction: column; }
 button.go.small { padding: 1px 10px; margin-left: 4px; }
+.bad-text { color: #ff8b8e; }
+.pco-mics { display: flex; flex-direction: column; gap: 4px; background: var(--panel2); border-radius: 4px; padding: 6px 8px; }
+.pco-person { width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

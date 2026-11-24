@@ -9,6 +9,7 @@
 // moment is held once; recall-safe channels are never touched; one-step undo.
 
 import type { Channel, ConsoleState } from './types';
+import { defaultPco, type PcoState } from './pco';
 
 export type Role = 'speaker' | 'host' | 'leadVocal' | 'bvs' | 'band' | 'keys' | 'playback' | 'audience';
 
@@ -29,7 +30,7 @@ export const roleLabel = (r?: Role) => ROLES.find((x) => x.id === r)?.label ?? '
 export function suggestRole(name: string): Role | undefined {
   const n = name.toLowerCase();
   const has = (...w: string[]) => w.some((x) => new RegExp(`(^|[^a-z])${x}`).test(n));
-  if (has('pastor', 'preach', 'sermon', 'speaker', 'pulpit', 'lectern', 'teach')) return 'speaker';
+  if (has('pastor', 'preach', 'sermon', 'speaker', 'pulpit', 'lectern', 'teach', 'hs', 'headset')) return 'speaker';
   if (has('host', 'mc', 'announce', 'emcee', 'wireless', 'hh', 'handheld', 'lav')) return 'host';
   if (has('aud', 'crowd', 'room', 'amb', 'congreg', 'house')) return 'audience';
   if (has('track', 'playback', 'video', 'vid', 'pb', 'click', 'walk', 'music bed', 'spotify', 'pc', 'mac', 'propres', 'pro7', 'media')) return 'playback';
@@ -131,6 +132,8 @@ export interface Automation {
   /** the fade the engine should run (sent with the mix plan for a short while) */
   fade: { id: number; ms: number; at: number; channels: string[] } | null;
   propresenter: { enabled: boolean; host: string; port: number };
+  /** Planning Center: this week's plan (cached, so it works without internet on Sunday) */
+  pco: PcoState;
   /** last thing automation did, for the show log */
   lastEvent?: { at: number; moment: string; text: string };
 }
@@ -145,7 +148,8 @@ export function defaultAutomation(): Automation {
     lastApplied: {},
     undo: null,
     fade: null,
-    propresenter: { enabled: false, host: '127.0.0.1', port: 50001 },
+    propresenter: { enabled: false, host: '', port: 50001 },
+    pco: defaultPco(),
   };
 }
 
@@ -155,7 +159,7 @@ export function mergeAutomation(a: Partial<Automation> | undefined): Automation 
   if (!a) return d;
   const moments = [...(a.moments ?? [])];
   for (const m of d.moments) if (!moments.some((x) => x.id === m.id)) moments.push(m);
-  return { ...d, ...a, moments, rules: a.rules ?? d.rules, propresenter: { ...d.propresenter, ...a.propresenter } };
+  return { ...d, ...a, moments, rules: a.rules ?? d.rules, propresenter: { ...d.propresenter, ...a.propresenter }, pco: { ...d.pco, ...a.pco } };
 }
 
 const FALLBACK_OPEN_DB = -10;
@@ -185,8 +189,13 @@ export interface MomentResult {
 
 let fadeCounter = Math.floor(Date.now() / 1000) % 1_000_000;
 
-/** Fire a moment: learn the outgoing moment's levels, then open/close channels by role. */
-export function fireMoment(s: ConsoleState, momentId: string, now = Date.now()): MomentResult {
+/** Speaking roles: when we know who leads (Planning Center), only their mic opens. */
+const SPOKEN: Role[] = ['speaker', 'host'];
+
+/** Fire a moment: learn the outgoing moment's levels, then open/close channels by role.
+ *  `focus`: the leader's channels. Then, of the speaking mics, only theirs open (the others
+ *  close), and their mic opens even if it has another role (e.g. the worship leader prays). */
+export function fireMoment(s: ConsoleState, momentId: string, now = Date.now(), focus: string[] = []): MomentResult {
   const a = s.automation;
   const m = a.moments.find((x) => x.id === momentId);
   if (!m) return { state: s, opened: [], closed: [], held: [], noRole: 0 };
@@ -206,11 +215,16 @@ export function fireMoment(s: ConsoleState, momentId: string, now = Date.now()):
   const lastApplied = { ...a.lastApplied };
   let noRole = 0;
   const channels = s.channels.map((ch) => {
-    if (!ch.role) {
+    if (!ch.role && !focus.includes(ch.id)) {
       noRole++;
       return ch;
     }
-    const opens = m.open.includes(ch.role), closes = m.close.includes(ch.role);
+    const role = (ch.role ?? 'host') as Role;
+    let opens = m.open.includes(role), closes = m.close.includes(role);
+    if (focus.length) {
+      if (focus.includes(ch.id)) { opens = true; closes = false; }
+      else if (SPOKEN.includes(role) && opens) { opens = false; closes = true; }
+    }
     if ((!opens && !closes) || ch.recallSafe) return ch;
     const last = a.lastApplied[ch.id];
     if (last && last.mute !== ch.mute) {
@@ -271,7 +285,7 @@ export function applySuggestedRoles(s: ConsoleState): { state: ConsoleState; cou
   let count = 0;
   const channels = s.channels.map((ch) => {
     if (ch.role) return ch;
-    const r = suggestRole(ch.name);
+    const r = suggestRole(ch.baseName ?? ch.name);
     if (!r) return ch;
     count++;
     return { ...ch, role: r };

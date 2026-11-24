@@ -58,13 +58,14 @@ const defs: ActionDef[] = [
     category: 'Show',
     args: [{ name: 'moment', label: 'Moment', kind: 'moment', default: 'song' }],
     run: (s, a) => {
-      const r = fireMoment(s, String(a.moment));
+      const focus = a.focus ? String(a.focus).split(',').filter(Boolean) : [];
+      const r = fireMoment(s, String(a.moment), Date.now(), focus);
       const name = s.automation.moments.find((m) => m.id === a.moment)?.name ?? String(a.moment);
       return {
         ...r.state,
         automation: {
           ...r.state.automation,
-          lastEvent: { at: Date.now(), moment: String(a.moment), text: `${name}: opened ${r.opened.length}, closed ${r.closed.length}`
+          lastEvent: { at: Date.now(), moment: String(a.moment), text: `${name}${a.leader ? ` led by ${a.leader}` : ''}: opened ${r.opened.length}, closed ${r.closed.length}`
             + (r.held.length ? `, held ${r.held.length} changed by hand` : '') + (a.source ? ` (${a.source})` : ' (button)') },
         },
       };

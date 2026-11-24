@@ -213,6 +213,16 @@ struct FakeProPresenter : juce::Thread
     }
 };
 
+void testPlanningCenter()
+{
+    std::cout << "Planning Center (read-only)" << std::endl;
+    check (PlanningCenterClient::isAllowedPath ("/services/v2/service_types"), "Services API paths allowed");
+    check (! PlanningCenterClient::isAllowedPath ("/people/v2/people") && ! PlanningCenterClient::isAllowedPath ("/services/v2/../people")
+               && ! PlanningCenterClient::isAllowedPath ("/services/v2/x\r\nHost: evil"),
+           "other Planning Center apps, path tricks and header injection refused");
+    check (PlanningCenterClient::authHeader ("abc", "xyz") == "Authorization: Basic YWJjOnh5eg==", "Personal Access Token sent as HTTP basic auth");
+}
+
 void testProPresenter()
 {
     std::cout << "ProPresenter follow" << std::endl;
@@ -482,6 +492,7 @@ int runSelfTest (const juce::StringArray& args)
     testMixer();
     testFades();
     testProPresenter();
+    testPlanningCenter();
     testTruePeak();
     testPluginHosting (pluginPath);
     testWebSocketRoundTrip();

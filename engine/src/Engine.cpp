@@ -47,6 +47,7 @@ Engine::Engine()
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
         if (! ppStatus.isVoid()) send (ppStatus, id);
+        send (obj ({ { "type", "pco.status" }, { "linked", planningCenter.hasCredentials() } }), id);
         for (auto& [url, data] : ppLatest) send (obj ({ { "type", "pp.update" }, { "url", url }, { "data", data } }), id);
     };
     propresenter.onStatus = [this] (const juce::String& state, const juce::String& message) {
@@ -181,6 +182,18 @@ void Engine::handleMessage (int clientId, const juce::String& text)
             send (obj ({ { "type", "insert.docked" }, { "slotId", juce::var() }, { "error", "The plugin GUI can only be docked inside the Merge app window" } }), clientId);
     }
     else if (type == "insert.undock") plugins.undock();
+    else if (type == "pco.credentials")
+    {
+        planningCenter.setCredentials (msg["appId"].toString(), msg["secret"].toString());
+        send (obj ({ { "type", "pco.status" }, { "linked", planningCenter.hasCredentials() } }));
+    }
+    else if (type == "pco.get")
+    {
+        const auto reqId = msg["id"];
+        planningCenter.get (msg["path"].toString(), [this, reqId, clientId] (int status, const juce::var& body) {
+            send (obj ({ { "type", "pco.response" }, { "id", reqId }, { "status", status }, { "body", body } }), clientId);
+        });
+    }
     else if (type == "pp.config")
         propresenter.configure ((bool) msg["enabled"], msg["host"].toString(), (int) msg["port"]);
     else if (type == "dock.bounds")

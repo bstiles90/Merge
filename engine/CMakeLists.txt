@@ -50,7 +50,8 @@ target_sources(MergeEngine PRIVATE
   src/SelfTest.cpp
   src/TruePeak.cpp
   src/ConsoleWindow.cpp
-  src/ProPresenter.cpp)
+  src/ProPresenter.cpp
+  src/PlanningCenter.cpp)
 if(APPLE)
   target_sources(MergeEngine PRIVATE src/MacSupport.mm)
 endif()

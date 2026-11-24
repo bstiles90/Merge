@@ -42,7 +42,8 @@ export function naturalPartner(id: ChannelId): ChannelId {
 }
 
 function copyLinked(from: Channel, to: Channel, options: StereoLink['options']): Channel {
-  let out = to;
+  // a stereo pair is one source: it always has one role, so show moments move both sides together
+  let out = from.role !== to.role ? { ...to, role: from.role } : to;
   for (const opt of Object.keys(LINKED_FIELDS) as LinkOption[]) {
     if (!options[opt]) continue;
     for (const f of LINKED_FIELDS[opt]) {
