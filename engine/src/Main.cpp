@@ -1,38 +1,13 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Engine.h"
+#include "ConsoleWindow.h"
 
 namespace merge { int runSelfTest (const juce::StringArray& args); }
-
-/** Small status window; the console UI itself is the React app talking over ws://. */
-class StatusWindow : public juce::DocumentWindow, private juce::Timer
-{
-public:
-    explicit StatusWindow (merge::Engine& e)
-        : DocumentWindow ("Merge Engine", juce::Colour (0xff111316), DocumentWindow::minimiseButton | DocumentWindow::closeButton), engine (e)
-    {
-        setUsingNativeTitleBar (true);
-        label.setJustificationType (juce::Justification::centredLeft);
-        label.setColour (juce::Label::textColourId, juce::Colours::white);
-        label.setFont (juce::FontOptions (14.0f));
-        label.setSize (520, 70);
-        setContentNonOwned (&label, true);
-        centreWithSize (520, 70);
-        setVisible (true);
-        startTimerHz (2);
-        timerCallback();
-    }
-    void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
-
-private:
-    void timerCallback() override { label.setText (engine.statusText(), juce::dontSendNotification); }
-    merge::Engine& engine;
-    juce::Label label;
-};
 
 class MergeEngineApp : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return "Merge Engine"; }
+    const juce::String getApplicationName() override { return "Merge"; }
     const juce::String getApplicationVersion() override { return MERGE_ENGINE_VERSION; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
@@ -57,13 +32,17 @@ public:
         engine = std::make_unique<merge::Engine>();
         if (! engine->start (opt))
         {
-            std::cerr << "Could not listen on port " << opt.port << " (another engine running?)" << std::endl;
+            std::cerr << "Could not listen on ports " << opt.port << "-" << opt.port + 9 << std::endl;
             setApplicationReturnValue (2);
             quit();
             return;
         }
-        std::cout << "Merge Engine " << MERGE_ENGINE_VERSION << " — " << engine->statusText() << std::endl;
-        if (! args.contains ("--headless")) window = std::make_unique<StatusWindow> (*engine);
+        std::cout << "Merge " << MERGE_ENGINE_VERSION << " — " << engine->statusText() << std::endl;
+        if (! args.contains ("--headless"))
+        {
+            const int ui = args.indexOf ("--ui-url"); // development: load the console from the Vite dev server
+            window = std::make_unique<merge::ConsoleWindow> (*engine, ui >= 0 ? args[ui + 1] : juce::String());
+        }
     }
 
     void shutdown() override
@@ -74,7 +53,7 @@ public:
 
 private:
     std::unique_ptr<merge::Engine> engine;
-    std::unique_ptr<StatusWindow> window;
+    std::unique_ptr<merge::ConsoleWindow> window;
 };
 
 START_JUCE_APPLICATION (MergeEngineApp)

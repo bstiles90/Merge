@@ -58,6 +58,8 @@ private:
     juce::var deviceInfo();
     void setDevice (const juce::var& msg);
     void startVirtual();
+    void handleShowMessage (int clientId, const juce::String& type, const juce::var& msg);
+    juce::File showFolder() const;
 
     juce::AudioDeviceManager devices;
     Mixer mix;
@@ -67,6 +69,7 @@ private:
     juce::var lastPlan;
     juce::File settingsFile;
     int meterTick = 0;
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 } // namespace merge

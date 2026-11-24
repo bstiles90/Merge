@@ -8,8 +8,8 @@ There are two audio engines behind the same console UI:
 
 - **Browser engine (Web Audio):** zero install, good for trying the workflow.
 - **Native engine ([`engine/`](engine/README.md), C++/JUCE):** real interfaces
-  (CoreAudio/ASIO/WASAPI) and **third-party VST3 / AU plugins**. Run `Merge Engine`,
-  then click **Connect engine** in the UI.
+  (CoreAudio/ASIO/WASAPI) and **third-party VST3 / AU plugins**, all in one app:
+  **Merge.app**, with the console built in (download it from the Releases page, below).
 
 The section below describes the browser prototype. It runs real audio through Web Audio so the
 workflow can be tested now. The console model and action system are written to carry
@@ -17,22 +17,18 @@ over unchanged to the native macOS/Windows engine (see Roadmap).
 
 ## Try it on a Mac (step by step)
 
-Everything is on the **Releases** page: **https://github.com/bstiles90/Merge/releases**
-(look for **Latest build**; no GitHub sign-in needed).
+1. Go to **https://github.com/bstiles90/Merge/releases** and open **Latest build** (no sign-in needed).
+2. Download **Merge-macOS.dmg**, open it, and drag **Merge** onto **Applications**.
+3. Open **Merge** from Applications. The first time (and once per new version) macOS blocks it:
+   **System Settings → Privacy & Security → Open Anyway**. Allow microphone access. That's how
+   Merge hears your audio interface or BlackHole.
 
-1. **Install Node.js.** Download the LTS installer from <https://nodejs.org> and run it (once).
-2. **Engine:** download **Merge-Engine-macOS.zip**, unzip it, and drag **Merge Engine.app**
-   into Applications. First launch: macOS blocks it → **System Settings → Privacy &
-   Security → Open Anyway**, then allow microphone access (that's your interface's inputs).
-3. **Console:** download **Source code (zip)** from the same release and unzip it. Open the
-   `mac` folder and double-click **Start Merge.command**. If macOS blocks it, right-click →
-   **Open**. A Terminal window installs things the first time, then the console opens in
-   your browser and Merge Engine starts.
-4. In the console, click **Connect engine**, then go to **I/O · Patch** to pick your
-   interface (or BlackHole) and scan plugins.
+That's it: **one native app**. The audio engine, plugin hosting and the console are all inside
+Merge.app, with no browser or Node.js needed. It reopens your last show automatically, and show
+files you save go to **Documents/Merge Shows**.
 
-To stop, close the Terminal window. Building the engine yourself instead: double-click
-**mac/Build Engine.command** (needs CMake from <https://cmake.org/download/>).
+Building it yourself instead: double-click **mac/Build Engine.command** (needs Node.js LTS and
+CMake).
 
 ## Run it (developers)
 

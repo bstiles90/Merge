@@ -362,3 +362,6 @@ button.go { background: #2b6b3c; border-color: #3b8a50; color: #fff; font-weight
 .tp-val.ok { color: #7fe0a0; }
 .tp-val.warn { color: #ffc53d; }
 .tp-val.bad { color: #ff7b7f; }
+.engine-on.native.offline { background: #3a3f46; border-color: #3a3f46; }
+button.confirm { background: var(--mute); border-color: var(--mute); color: #fff; }
+.notice-bar { padding: 4px 12px; background: #13261b; color: #9fe3b6; border-bottom: 1px solid #1f3b2a; }

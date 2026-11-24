@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include <iostream>
 
 namespace merge
 {
@@ -41,6 +42,7 @@ Engine::Engine()
     plugins.onInstancesChanged = [this] { if (! lastPlan.isVoid()) applyPlan (lastPlan); };
     ws.onMessage = [this] (int id, const juce::String& t) { handleMessage (id, t); };
     ws.onConnect = [this] (int id) {
+        std::cout << "[ws] UI client connected" << std::endl;
         send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION } }), id);
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
@@ -70,7 +72,10 @@ bool Engine::start (const Options& opt)
     }
     if (devices.getCurrentAudioDevice() == nullptr) startVirtual();
     startTimerHz (30);
-    return ws.start (opt.port);
+    // if another copy of Merge already uses the port, take the next free one (the window is told which)
+    for (int p = opt.port; p < opt.port + 10; ++p)
+        if (ws.start (p)) return true;
+    return false;
 }
 
 void Engine::startVirtual()
@@ -150,7 +155,60 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "device.list") send (deviceInfo(), clientId);
     else if (type == "device.set") setDevice (msg);
     else if (type == "loudness.reset") mix.loudness.reset();
+    else if (type.startsWith ("show.")) handleShowMessage (clientId, type, msg);
     else if (type == "ping") send (obj ({ { "type", "pong" }, { "t", msg["t"] } }), clientId);
+}
+
+juce::File Engine::showFolder() const
+{
+    auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Merge Shows");
+    dir.createDirectory();
+    return dir;
+}
+
+/** Show files on disk: autosave (reopen into the last show) and native Save As / Open dialogs,
+    which the embedded web view can't do itself. */
+void Engine::handleShowMessage (int clientId, const juce::String& type, const juce::var& msg)
+{
+    const auto appData = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge");
+    appData.createDirectory();
+    const auto autosave = appData.getChildFile ("current-show.merge.json");
+
+    if (type == "show.autosave")
+    {
+        // atomic: write a temp file then swap, so a crash mid-write never corrupts the show
+        juce::TemporaryFile tmp (autosave);
+        if (tmp.getFile().replaceWithText (msg["text"].toString()))
+            tmp.overwriteTargetFileWithTemporary();
+    }
+    else if (type == "show.loadAutosave")
+    {
+        send (obj ({ { "type", "show.autosave" }, { "text", autosave.existsAsFile() ? juce::var (autosave.loadFileAsString()) : juce::var() } }), clientId);
+    }
+    else if (type == "show.saveAs")
+    {
+        const auto text = msg["text"].toString();
+        const auto name = msg["name"].toString().isNotEmpty() ? msg["name"].toString() : juce::String ("Show");
+        chooser = std::make_unique<juce::FileChooser> ("Save show", showFolder().getChildFile (juce::File::createLegalFileName (name) + ".merge.json"), "*.json");
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [this, text, clientId] (const juce::FileChooser& fc) {
+                                  auto f = fc.getResult();
+                                  if (f == juce::File()) return;
+                                  if (! f.getFileName().endsWithIgnoreCase (".json")) f = f.withFileExtension (".merge.json");
+                                  const bool ok = f.replaceWithText (text);
+                                  send (obj ({ { "type", "show.saved" }, { "ok", ok }, { "path", f.getFullPathName() } }), clientId);
+                              });
+    }
+    else if (type == "show.open")
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Open show", showFolder(), "*.json");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this, clientId] (const juce::FileChooser& fc) {
+                                  const auto f = fc.getResult();
+                                  if (! f.existsAsFile()) return;
+                                  send (obj ({ { "type", "show.opened" }, { "text", f.loadFileAsString() }, { "path", f.getFullPathName() } }), clientId);
+                              });
+    }
 }
 
 juce::var Engine::deviceInfo()

@@ -55,6 +55,7 @@ bool WebSocketServer::isAllowedOrigin (const juce::String& origin)
     const auto host = u.getDomain().toLowerCase();
     const auto scheme = origin.upToFirstOccurrenceOf (":", false, false).toLowerCase();
     if (scheme == "file" || scheme == "juce" || origin == "null") return true; // embedded webview
+    if (host == "juce.backend") return true; // Merge's own embedded console (WebView2 uses https://juce.backend)
     return (scheme == "http" || scheme == "https") && (host == "localhost" || host == "127.0.0.1" || host == "[::1]");
 }
 
@@ -145,6 +146,7 @@ private:
             req += c;
         }
         juce::String key, origin, upgrade;
+        const auto requestLine = req.upToFirstOccurrenceOf ("\r\n", false, false);
         for (auto line : juce::StringArray::fromLines (req))
         {
             const auto name = line.upToFirstOccurrenceOf (":", false, false).trim().toLowerCase();
@@ -152,6 +154,24 @@ private:
             if (name == "sec-websocket-key") key = value;
             else if (name == "origin") origin = value;
             else if (name == "upgrade") upgrade = value.toLowerCase();
+        }
+        if (upgrade != "websocket" && requestLine.startsWith ("GET ") && server.onHttpGet)
+        {
+            // plain HTTP: serve a console UI file, then close
+            const auto path = requestLine.fromFirstOccurrenceOf ("GET ", false, false).upToFirstOccurrenceOf (" ", false, false);
+            if (auto r = server.onHttpGet (path))
+            {
+                const juce::String head = "HTTP/1.1 200 OK\r\nContent-Type: " + r->mimeType + "\r\nContent-Length: "
+                                          + juce::String ((juce::int64) r->body.getSize()) + "\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n";
+                writeAll (head.toRawUTF8(), head.length());
+                writeAll (r->body.getData(), (int) r->body.getSize());
+            }
+            else
+            {
+                const juce::String resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                writeAll (resp.toRawUTF8(), resp.length());
+            }
+            return false;
         }
         if (upgrade != "websocket" || key.isEmpty() || ! isAllowedOrigin (origin))
         {

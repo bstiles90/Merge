@@ -9,7 +9,8 @@ import { SetupView } from './SetupView';
 import { fmtTime, TimelineView } from './TimelineView';
 import { services } from '../core/services';
 import { bootEngine, useEngine } from './useEngine';
-import { useNative } from '../native/bridge';
+import { sendNative, startEmbedded, useNative } from '../native/bridge';
+import { EMBEDDED } from '../native/embedded';
 import { toggleNative } from './NativePanel';
 
 type Tab = 'mix' | 'timeline' | 'scenes' | 'setup' | 'io';
@@ -56,6 +57,7 @@ export function App() {
   const scene = s.scenes.find((x) => x.id === s.currentScene);
 
   useEffect(() => installHotkeys(), []);
+  useEffect(() => startEmbedded(), []);
 
   const start = async () => {
     setStarting(true);
@@ -69,7 +71,23 @@ export function App() {
     }
   };
 
+  const [confirmNew, setConfirmNew] = useState(false);
+  useEffect(() => {
+    if (!confirmNew) return;
+    const t = setTimeout(() => setConfirmNew(false), 3000);
+    return () => clearTimeout(t);
+  }, [confirmNew]);
+  useEffect(() => {
+    if (!native.notice) return;
+    const t = setTimeout(() => useNative.setState({ notice: undefined }), 4000);
+    return () => clearTimeout(t);
+  }, [native.notice]);
+
   const save = () => {
+    if (EMBEDDED) {
+      sendNative({ type: 'show.saveAs', name: s.showName, text: serializeShow(stateOnly(useConsole.getState())) });
+      return;
+    }
     const blob = new Blob([serializeShow(stateOnly(useConsole.getState()))], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -96,16 +114,25 @@ export function App() {
         <TransportMini />
         <div className="file-btns">
           <button onClick={save}>Save show</button>
-          <button onClick={() => fileRef.current?.click()}>Load</button>
+          <button onClick={() => (EMBEDDED ? sendNative({ type: 'show.open' }) : fileRef.current?.click())}>{EMBEDDED ? 'Open' : 'Load'}</button>
           <button
+            className={confirmNew ? 'confirm' : ''}
+            title="Start from the default show (unsaved changes are lost)"
             onClick={() => {
-              if (confirm('Reset to the default demo show? Unsaved changes are lost.')) s.loadShow(defaultState());
+              if (!confirmNew) return setConfirmNew(true);
+              setConfirmNew(false);
+              s.loadShow(defaultState());
+              useNative.setState({ showPath: undefined });
             }}
           >
-            New
+            {confirmNew ? 'Click again to reset' : 'New'}
           </button>
         </div>
-        {native.status === 'connected' ? (
+        {EMBEDDED ? (
+          <span className={'engine-on native' + (native.status === 'connected' ? '' : ' offline')} title={native.showPath ?? ''}>
+            {native.status === 'connected' ? `● ENGINE ${native.device ? `${native.device.sampleRate / 1000}k` : ''}` : '○ STARTING…'}
+          </span>
+        ) : native.status === 'connected' ? (
           <button className="engine-on native" onClick={toggleNative} title={`Native engine at ${native.url} — click to disconnect`}>
             ● NATIVE {native.device ? `${native.device.sampleRate / 1000}k` : ''}
           </button>
@@ -135,14 +162,15 @@ export function App() {
             try {
               s.loadShow(parseShow(await f.text()));
             } catch (er) {
-              alert(`Could not load show: ${er}`);
+              useNative.setState({ notice: `Could not load show: ${er}` });
             }
           }}
         />
       </header>
       {err && <div className="error-bar">Audio engine failed to start: {err}</div>}
-      {native.status === 'error' && <div className="error-bar">{native.error}</div>}
-      {!engine && native.status !== 'connected' && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> for the browser engine, or <b>Connect engine</b> for native audio with VST3/AU plugins.</div>}
+      {native.notice && <div className="notice-bar">{native.notice}</div>}
+      {!EMBEDDED && native.status === 'error' && <div className="error-bar">{native.error}</div>}
+      {!EMBEDDED && !engine && native.status !== 'connected' && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> for the browser engine, or <b>Connect engine</b> for native audio with VST3/AU plugins.</div>}
       <main className="content">
         {tab === 'mix' && <MixView />}
         {tab === 'timeline' && <TimelineView />}

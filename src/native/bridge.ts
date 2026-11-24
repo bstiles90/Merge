@@ -6,7 +6,8 @@
 import { create } from 'zustand';
 import { buildMixPlan } from '../core/plan';
 import { setNativePlugins, type PluginFormat } from '../core/plugins';
-import { stateOnly, useConsole } from '../core/store';
+import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
+import { EMBEDDED, EMBEDDED_URL } from './embedded';
 import type { ConsoleState, InsertSlot } from '../core/types';
 import type { LoudnessReading, MeterReading } from '../audio/engine';
 
@@ -58,6 +59,10 @@ interface NativeState {
   blacklisted: string[];
   pdc: number;
   inserts: Record<string, NativeInsert>;
+  /** show file on disk (embedded app) */
+  showPath?: string;
+  /** short status line, e.g. "Saved" */
+  notice?: string;
 }
 
 export const useNative = create<NativeState>(() => ({
@@ -191,10 +196,59 @@ function onMessage(m: any) {
     case 'insert.editor':
       setInsert(m.slotId, { editorOpen: m.open });
       break;
+    case 'show.autosave':
+      // embedded app start-up: reopen the last show, then begin autosaving
+      if (!autosaveReady) {
+        if (m.text) {
+          try {
+            useConsole.getState().loadShow(parseShow(m.text));
+          } catch (err) {
+            console.error('Could not restore the last show', err);
+          }
+        }
+        autosaveReady = true;
+      }
+      break;
+    case 'show.saved':
+      useNative.setState({ showPath: m.ok ? m.path : useNative.getState().showPath, notice: m.ok ? `Saved ${String(m.path).split(/[\\/]/).pop()}` : 'Save failed' });
+      break;
+    case 'show.opened':
+      try {
+        useConsole.getState().loadShow(parseShow(m.text));
+        useNative.setState({ showPath: m.path, notice: `Opened ${String(m.path).split(/[\\/]/).pop()}` });
+      } catch (err) {
+        useNative.setState({ notice: `Could not open show: ${err}` });
+      }
+      break;
     case 'error':
       useNative.setState({ error: m.message });
       break;
   }
+}
+
+// ---- show persistence in the embedded app --------------------------------
+let autosaveReady = false;
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleAutosave() {
+  if (!EMBEDDED || !autosaveReady) return;
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => sendNative({ type: 'show.autosave', text: serializeShow(stateOnly(useConsole.getState())) }), 1000);
+}
+
+/** Inside the Merge app: connect to our own engine, retrying until it answers. */
+export function startEmbedded() {
+  if (!EMBEDDED) return;
+  useNative.setState({ url: EMBEDDED_URL });
+  const attempt = () => {
+    if (useNative.getState().status === 'connected') return;
+    connectNative(EMBEDDED_URL).catch(() => setTimeout(attempt, 1000));
+  };
+  attempt();
+  useConsole.subscribe(scheduleAutosave);
+  // reconnect if the link ever drops
+  useNative.subscribe((st, prev) => {
+    if (prev.status === 'connected' && st.status !== 'connected') setTimeout(attempt, 1000);
+  });
 }
 
 export function connectNative(url = useNative.getState().url): Promise<void> {
@@ -205,6 +259,7 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
     ws = sock;
     sock.onopen = () => {
       useNative.setState({ status: 'connected' });
+      if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
       lastPlanJson = '';
       schedulePlan();
       unsubscribe = useConsole.subscribe(schedulePlan);

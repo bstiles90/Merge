@@ -1,6 +1,9 @@
-# Merge Engine (native)
+# Merge (native app)
 
-The native audio engine for Merge. Built in C++ with [JUCE 8](https://juce.com), it does:
+**Merge.app** is the whole console in one native app: this C++ engine
+([JUCE 8](https://juce.com)), with the React console bundled inside it and shown in the
+app's window. The window uses WebKit on macOS and WebView2 on Windows. It reopens the last
+show automatically and saves shows to *Documents/Merge Shows*. The engine does:
 
 - **Audio I/O:** CoreAudio (macOS), ASIO and WASAPI (Windows), ALSA (Linux).
   Dante Virtual Soundcard, Dante interfaces and the Waves SoundGrid driver show up as
@@ -29,29 +32,34 @@ mix plan; the engine renders it.
 
 ## Build
 
-You need CMake ≥ 3.22, a C++20 compiler and git. JUCE is fetched automatically.
+You need CMake >= 3.22, a C++20 compiler, git and Node.js. JUCE is fetched automatically.
 
 ```bash
+npm install && npm run build        # in the repo root: builds the console that gets bundled
 cd engine
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j
 ```
 
-- **macOS:** Xcode command-line tools. Output: `build/MergeEngine_artefacts/Release/Merge Engine.app`.
-- **Windows:** Visual Studio 2022. ASIO needs the Steinberg ASIO SDK (free, separate
-  licence): `-DMERGE_ASIO_SDK_DIR=C:/path/to/asiosdk`. Without it you get WASAPI/DirectSound.
-- **Linux:** `sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype-dev libgl-dev`.
+- **macOS:** Xcode command-line tools. Output: `build/MergeEngine_artefacts/Release/Merge.app`
+  (or just double-click `mac/Build Engine.command`).
+- **Windows:** Visual Studio 2022, plus the WebView2 SDK NuGet package
+  (`nuget install Microsoft.Web.WebView2 -Version 1.0.1901.177 -OutputDirectory C:/webview2`, then
+  configure with `-DJUCE_WEBVIEW2_PACKAGE_LOCATION=C:/webview2`). ASIO needs the Steinberg ASIO SDK
+  (free, separate licence): `-DMERGE_ASIO_SDK_DIR=C:/path/to/asiosdk`.
+- **Linux:** `sudo apt install libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype-dev libfontconfig1-dev libgl-dev libwebkit2gtk-4.1-dev libgtk-3-dev`.
 
 ## Run
 
 ```bash
-"build/MergeEngine_artefacts/Release/Merge Engine"            # status window
-"build/MergeEngine_artefacts/Release/Merge Engine" --headless  # no window
+open build/MergeEngine_artefacts/Release/Merge.app            # macOS: the app (console window)
+build/MergeEngine_artefacts/Release/Merge --headless          # engine only, no window (control from a browser)
 #   --port 18620   control port
 #   --virtual      don't open an audio device (virtual clock)
+#   --ui-url URL   development: load the console from the Vite dev server (npm run dev)
 ```
 
-Then in the console UI (`npm run dev` in the repo root), click **Connect engine**. Under
+In the app window (or, with `--headless`, a browser console via `npm run dev` → **Connect engine**), under
 **I/O · Patch**, pick your audio interface and click **Scan for new plugins**. Add plugins
 from any channel's, bus's or the main's insert slots; **Open plugin window** shows the
 plugin's own GUI.
@@ -59,7 +67,7 @@ plugin's own GUI.
 ## Self-test
 
 ```bash
-"build/MergeEngine_artefacts/Release/Merge Engine" --selftest \
+build/MergeEngine_artefacts/Release/Merge --selftest \
   --plugin "build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
 ```
 
@@ -81,4 +89,3 @@ samples of latency). On a headless Linux box, run it under `xvfb-run`.
   in native mode; use VST3s.
 - Out-of-process plugin sandboxing. Today a crashing plugin takes the engine down (scan
   crashes are already blacklisted on the next run).
-- Embedding the UI in the engine (JUCE `WebBrowserComponent`) for a single-app install.

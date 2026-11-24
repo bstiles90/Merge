@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { listPlugins, onPluginsChange, pluginsVersion } from '../core/plugins';
 import { connectNative, disconnectNative, sendNative, useNative } from '../native/bridge';
 import { getEngine } from '../audio/engine';
+import { EMBEDDED } from '../native/embedded';
 
 export function usePluginsVersion() {
   return useSyncExternalStore(onPluginsChange, pluginsVersion);
@@ -40,14 +41,18 @@ export function NativePanel() {
         <span>Native engine (VST3 / AU host)</span>
         <span className={'status-dot ' + n.status}>{n.status === 'connected' ? `v${n.version ?? '?'} connected` : n.status}</span>
       </div>
+      {EMBEDDED ? (
+        <p className="hint">Built into this app — always connected.</p>
+      ) : (
       <div className="row">
         <input value={n.url} onChange={(e) => useNative.setState({ url: e.target.value })} disabled={connected} style={{ flex: 1 }} />
         <button className={connected ? 'on' : ''} onClick={toggleNative}>
           {connected ? 'Disconnect' : n.status === 'connecting' ? 'Connecting…' : 'Connect'}
         </button>
       </div>
-      {n.error && <p className="error">{n.error}</p>}
-      {!connected && (
+      )}
+      {n.error && !EMBEDDED && <p className="error">{n.error}</p>}
+      {!connected && !EMBEDDED && (
         <p className="hint">
           Run <code>Merge Engine</code> (built from <code>engine/</code>) on this machine, then connect. The engine does the audio and plugin hosting; this UI stays the
           console. Only one engine renders at a time — the browser engine pauses while the native one is connected.

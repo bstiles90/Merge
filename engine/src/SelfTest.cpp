@@ -3,6 +3,7 @@
 // and the WebSocket control link. Exit code = number of failures.
 
 #include "Engine.h"
+#include "ConsoleWindow.h"
 #include <iostream>
 
 namespace merge
@@ -71,6 +72,24 @@ void testProtocolBasics()
     check (WebSocketServer::isAllowedOrigin ("http://localhost:5173"), "localhost origin allowed");
     check (WebSocketServer::isAllowedOrigin (""), "native client (no origin) allowed");
     check (! WebSocketServer::isAllowedOrigin ("https://evil.example.com"), "foreign website origin refused");
+    check (WebSocketServer::isAllowedOrigin ("juce://juce.backend") && WebSocketServer::isAllowedOrigin ("https://juce.backend"),
+           "embedded console origin allowed (macOS/Linux + Windows)");
+
+    std::cout << "Embedded console files" << std::endl;
+    juce::TemporaryFile tmpDir;
+    const auto ui = tmpDir.getFile();
+    ui.getChildFile ("assets").createDirectory();
+    ui.getChildFile ("index.html").replaceWithText ("<html>console</html>");
+    ui.getChildFile ("assets/app.js").replaceWithText ("console.log(1)");
+    ui.getParentDirectory().getChildFile ("secret.txt").replaceWithText ("nope");
+    auto root = loadUiResource (ui, "/");
+    check (root && root->mimeType == "text/html" && root->data.size() == 20, "\"/\" serves index.html");
+    auto js = loadUiResource (ui, "/assets/app.js?v=3");
+    check (js && js->mimeType == "text/javascript", "assets served with the right type (query stripped)");
+    check (! loadUiResource (ui, "/../secret.txt") && ! loadUiResource (ui, "/%2e%2e/secret.txt"), "paths outside the UI folder are refused");
+    check (! loadUiResource (ui, "/missing.js"), "missing file -> not found");
+    ui.deleteRecursively();
+    ui.getParentDirectory().getChildFile ("secret.txt").deleteFile();
 }
 
 void testMixer()

@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace merge
@@ -30,6 +31,11 @@ public:
     void sendTo (int clientId, const juce::String& text);
     void broadcast (const juce::String& text);
     int numClients() const;
+
+    /** Optional plain-HTTP GET handler on the same port (serves the console UI files).
+        Returns {mimeType, body}; nullopt -> 404. Called on the connection's thread. */
+    struct HttpResponse { juce::String mimeType; juce::MemoryBlock body; };
+    std::function<std::optional<HttpResponse> (const juce::String& path)> onHttpGet;
 
     MessageHandler onMessage;
     ConnectHandler onConnect;

@@ -2,9 +2,9 @@ name: engine
 
 on:
   push:
-    paths: ['engine/**', '.github/workflows/engine.yml']
+    paths: ['engine/**', 'src/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', '.github/workflows/engine.yml']
   pull_request:
-    paths: ['engine/**', '.github/workflows/engine.yml']
+    paths: ['engine/**', 'src/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', '.github/workflows/engine.yml']
   workflow_dispatch:
 
 jobs:
@@ -17,52 +17,93 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The console UI is bundled into the app, so build it first
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build console UI
+        run: |
+          npm ci
+          npm test
+          npm run build
+
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libxcomposite-dev libfreetype-dev libfontconfig1-dev libgl-dev pkg-config xvfb ninja-build
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libxcomposite-dev libfreetype-dev libfontconfig1-dev libgl-dev libwebkit2gtk-4.1-dev libgtk-3-dev pkg-config xvfb ninja-build
+
+      - name: WebView2 SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: nuget install Microsoft.Web.WebView2 -Version 1.0.1901.177 -OutputDirectory C:\webview2
 
       - name: Configure
-        run: cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release ${{ runner.os == 'Linux' && '-G Ninja' || '' }}
+        shell: bash
+        run: |
+          EXTRA=""
+          if [ "$RUNNER_OS" = "Linux" ]; then EXTRA="-G Ninja"; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="-DJUCE_WEBVIEW2_PACKAGE_LOCATION=C:/webview2"; fi
+          cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release $EXTRA
 
       - name: Build
         run: cmake --build engine/build --config Release --parallel 4
 
       - name: Self-test (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a "engine/build/MergeEngine_artefacts/Release/Merge Engine" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
+        run: xvfb-run -a engine/build/MergeEngine_artefacts/Release/Merge --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
 
       - name: Self-test (macOS)
         if: runner.os == 'macOS'
-        run: '"engine/build/MergeEngine_artefacts/Release/Merge Engine.app/Contents/MacOS/Merge Engine" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"'
+        run: engine/build/MergeEngine_artefacts/Release/Merge.app/Contents/MacOS/Merge --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
 
       - name: Self-test (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: '"engine/build/MergeEngine_artefacts/Release/Merge Engine.exe" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"'
+        run: engine/build/MergeEngine_artefacts/Release/Merge.exe --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
 
-      # Zip the .app with ditto so it keeps its executable bit and code signature
-      # (artifact zips otherwise strip permissions and the app won't open)
+      # Launch the real app on macOS: the embedded console must load and connect to the engine
+      - name: App launch check (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP=engine/build/MergeEngine_artefacts/Release/Merge.app
+          test -f "$APP/Contents/Resources/ui/index.html"
+          "$APP/Contents/MacOS/Merge" > app.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
+          screencapture -x app-screenshot.png || true
+          kill $PID || true
+          cat app.log
+          grep -q "UI client connected" app.log
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS' && always()
+        with:
+          name: macOS-app-screenshot
+          path: app-screenshot.png
+          if-no-files-found: ignore
+
+      # macOS: a .dmg (drag Merge into Applications). ditto/hdiutil keep the app's permissions and signature.
       - name: Package macOS app
         if: runner.os == 'macOS'
         run: |
-          mkdir -p dist
-          ditto -c -k --keepParent "engine/build/MergeEngine_artefacts/Release/Merge Engine.app" "dist/Merge Engine (macOS).zip"
+          mkdir -p dmg dist
+          ditto engine/build/MergeEngine_artefacts/Release/Merge.app dmg/Merge.app
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Merge" -srcfolder dmg -ov -format UDZO "dist/Merge-macOS.dmg"
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS'
         with:
-          name: Merge-Engine-macOS
+          name: Merge-macOS
           path: dist/
 
       - uses: actions/upload-artifact@v4
         if: runner.os != 'macOS'
         with:
-          name: merge-engine-${{ runner.os }}
-          path: |
-            engine/build/MergeEngine_artefacts/Release
-            engine/build/testplugin/MergeTestGain_artefacts/Release/VST3
+          name: merge-${{ runner.os }}
+          path: engine/build/MergeEngine_artefacts/Release
 
   # Publish a rolling "Latest build" pre-release (replaced on every successful push),
   # so builds can be downloaded from the Releases page without signing in.
@@ -80,9 +121,9 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p dist
-          cp "artifacts/Merge-Engine-macOS/Merge Engine (macOS).zip" "dist/Merge-Engine-macOS.zip"
-          (cd artifacts/merge-engine-Windows && zip -qr ../../dist/Merge-Engine-Windows.zip .)
-          (cd artifacts/merge-engine-Linux && zip -qr ../../dist/Merge-Engine-Linux.zip .)
+          cp artifacts/Merge-macOS/Merge-macOS.dmg dist/
+          (cd artifacts/merge-Windows && zip -qr ../../dist/Merge-Windows.zip .)
+          (cd artifacts/merge-Linux && zip -qr ../../dist/Merge-Linux.zip .)
           ls -l dist
 
       - name: Publish "Latest build"
@@ -92,16 +133,19 @@ jobs:
         run: |
           SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
           cat > notes.md <<NOTES
-          Automatic build of \`$GITHUB_REF_NAME\` at $SHORT. All self-tests passed on macOS, Windows and Linux.
+          Automatic build of \`$GITHUB_REF_NAME\` at $SHORT. All self-tests passed on macOS, Windows and Linux,
+          and the Mac app was launched and its console connected to the engine.
 
-          **To try Merge on a Mac**
-          1. Download **Merge-Engine-macOS.zip** below, unzip it and drag **Merge Engine.app** into Applications.
-             First launch: System Settings → Privacy & Security → **Open Anyway**, and allow microphone access.
-          2. Download **Source code (zip)** below (that's the console), unzip it, open the \`mac\` folder and
-             double-click **Start Merge.command** (needs Node.js LTS from nodejs.org).
-          3. In the console click **Connect engine**.
+          **Install on a Mac**
+          1. Download **Merge-macOS.dmg** below and open it.
+          2. Drag **Merge** onto **Applications**.
+          3. Open Merge from Applications. The first time, macOS blocks it: go to
+             **System Settings → Privacy & Security** and click **Open Anyway**. Allow microphone access
+             (that's how Merge hears your audio interface / BlackHole).
 
-          Unsigned test build: not notarized by Apple yet.
+          That's it: one app, no browser or Node.js needed. Your show reopens automatically next time.
+
+          *Test build, not signed by Apple, so each new version needs "Open Anyway" once.*
           NOTES
           gh release delete latest-build --yes --cleanup-tag || true
           gh release create latest-build dist/* \
