@@ -17,24 +17,22 @@ over unchanged to the native macOS/Windows engine (see Roadmap).
 
 ## Try it on a Mac (step by step)
 
-1. **Install Node.js.** Download the LTS installer from <https://nodejs.org> and run it.
-2. **Get the code.** On GitHub, switch to the `claude/live-audio-console-daw-9gm6h2`
-   branch and choose **Code → Download ZIP**, then unzip it. (Or use GitHub Desktop.)
-3. **Start the console.** In the `mac` folder, double-click **Start Merge.command**.
-   The first time, macOS may block it: right-click it → **Open** → **Open**.
-   A Terminal window installs things, then the console opens in your browser.
-   Click **Start audio** to hear the demo.
-4. **Optional: native engine (your audio interface + VST3/AU plugins).**
-   - Install CMake: download the macOS `.dmg` from <https://cmake.org/download/> and
-     drag it to Applications.
-   - Double-click **mac/Build Engine.command**. If asked, install Apple's Command Line
-     Tools, then run it again. The first build takes 5–15 minutes.
-   - Run **Start Merge.command** again. It now opens **Merge Engine** too. Allow
-     microphone access (that's your interface's inputs). In the console, click
-     **Connect engine**, then go to **I/O · Patch** to pick your interface and scan
-     plugins.
+Everything is on the **Releases** page: **https://github.com/bstiles90/Merge/releases**
+(look for **Latest build**; no GitHub sign-in needed).
 
-To stop, close the Terminal window.
+1. **Install Node.js.** Download the LTS installer from <https://nodejs.org> and run it (once).
+2. **Engine:** download **Merge-Engine-macOS.zip**, unzip it, and drag **Merge Engine.app**
+   into Applications. First launch: macOS blocks it → **System Settings → Privacy &
+   Security → Open Anyway**, then allow microphone access (that's your interface's inputs).
+3. **Console:** download **Source code (zip)** from the same release and unzip it. Open the
+   `mac` folder and double-click **Start Merge.command**. If macOS blocks it, right-click →
+   **Open**. A Terminal window installs things the first time, then the console opens in
+   your browser and Merge Engine starts.
+4. In the console, click **Connect engine**, then go to **I/O · Patch** to pick your
+   interface (or BlackHole) and scan plugins.
+
+To stop, close the Terminal window. Building the engine yourself instead: double-click
+**mac/Build Engine.command** (needs CMake from <https://cmake.org/download/>).
 
 ## Run it (developers)
 
