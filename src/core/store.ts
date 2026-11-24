@@ -1,3 +1,4 @@
+import { EMBEDDED } from '../native/embedded';
 import { mergeAutomation } from './moments';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
@@ -47,6 +48,8 @@ const withStereoLinks =
       get,
       api,
     );
+
+const AUTOSAVE_KEY = 'merge.autosave.v1';
 
 export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => ({
   ...loadAutosave(),
@@ -109,9 +112,10 @@ export function parseShow(text: string): ConsoleState {
   return { ...d, ...show, buses, channels, main: { ...d.main, ...show.main }, automation: mergeAutomation(show.automation), keyStates: {} };
 }
 
-const AUTOSAVE_KEY = 'merge.autosave.v1';
 
 function loadAutosave(): ConsoleState {
+  // inside the Merge app the engine's saved show is the one source of truth (it arrives once connected)
+  if (EMBEDDED) return defaultState();
   try {
     const text = localStorage.getItem(AUTOSAVE_KEY);
     if (text) return parseShow(text);

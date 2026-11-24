@@ -17,6 +17,9 @@ static void relaxWebViews (NSView* v)
             id prefs = [[v valueForKey: @"configuration"] valueForKey: @"preferences"];
             if ([prefs respondsToSelector: NSSelectorFromString (@"setInactiveSchedulingPolicy:")])
                 [prefs setValue: @2 forKey: @"inactiveSchedulingPolicy"];
+            // allow Safari's Web Inspector (Develop menu) to attach, for troubleshooting the console
+            if ([v respondsToSelector: NSSelectorFromString (@"setInspectable:")])
+                [v setValue: @YES forKey: @"inspectable"];
         }
         @catch (NSException*) {}
     }

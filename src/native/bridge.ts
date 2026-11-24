@@ -108,6 +108,8 @@ export function sendNative(msg: object) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
+const errText = (err: unknown) => (err instanceof Error ? `${err.message} @ ${(err.stack ?? '').split('\n').slice(0, 3).join(' | ')}` : String(err));
+
 /** Inside the app: write a line to the engine's log (console errors and start-up steps). */
 export function uiLog(text: string) {
   if (EMBEDDED) sendNative({ type: 'ui.log', text: text.slice(0, 500) });
@@ -131,7 +133,8 @@ export function pcoGet(path: string): Promise<{ status: number; body: any }> {
 let lastPpConfig = '';
 /** The engine follows ProPresenter; tell it where (only when the setting changes). */
 function sendPpConfig() {
-  const c = useConsole.getState().automation.propresenter;
+  const c = useConsole.getState().automation?.propresenter;
+  if (!c) return;
   const json = JSON.stringify(c);
   if (json === lastPpConfig) return;
   lastPpConfig = json;
@@ -143,7 +146,14 @@ function schedulePlan() {
   if (planTimer) return;
   planTimer = setTimeout(() => {
     planTimer = null;
-    const json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
+    let json: string;
+    try {
+      json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
+    } catch (err) {
+      uiLog(`building the mix failed: ${errText(err)}`);
+      return;
+    }
+    if (!lastPlanJson) uiLog(`first mix sent (${Math.round(json.length / 1024)} KB)`);
     if (json === lastPlanJson) return; // e.g. only UI-only state changed
     lastPlanJson = json;
     if (ws?.readyState === WebSocket.OPEN) ws.send(`{"type":"plan","plan":${json}}`);
@@ -249,6 +259,7 @@ function onMessage(m: any) {
       if (!autosaveReady) {
         if (m.text) {
           try {
+            uiLog(`saved show received (${Math.round(String(m.text).length / 1024)} KB)`);
             useConsole.getState().loadShow(parseShow(m.text));
             uiLog(`restored show "${useConsole.getState().showName}"`);
           } catch (err) {
@@ -326,7 +337,12 @@ export function startEmbedded() {
   if (!EMBEDDED) return;
   useNative.setState({ url: EMBEDDED_URL });
   window.addEventListener('error', (e) => uiLog(`error: ${e.message} (${e.filename}:${e.lineno})`));
-  window.addEventListener('unhandledrejection', (e) => uiLog(`unhandled: ${e.reason}`));
+  window.addEventListener('unhandledrejection', (e) => uiLog(`unhandled: ${errText(e.reason)}`));
+  const origError = console.error.bind(console);
+  console.error = (...a: unknown[]) => {
+    origError(...a);
+    uiLog(`console error: ${a.map((x) => (x instanceof Error ? errText(x) : String(x))).join(' ')}`);
+  };
   const attempt = () => {
     if (useNative.getState().status === 'connected') return;
     connectNative(EMBEDDED_URL).catch(() => setTimeout(attempt, 1000));
@@ -346,13 +362,22 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
     const sock = new WebSocket(url);
     ws = sock;
     sock.onopen = () => {
-      useNative.setState({ status: 'connected' });
-      if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
+      // each start-up step is guarded and logged: one failure must not stop the mix reaching the engine
+      const step = (name: string, fn: () => void) => {
+        try {
+          fn();
+        } catch (err) {
+          uiLog(`start-up step "${name}" failed: ${errText(err)}`);
+        }
+      };
+      step('status', () => useNative.setState({ status: 'connected' }));
+      step('load show', () => { if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' }); });
       lastPlanJson = '';
       lastPpConfig = '';
-      sendPpConfig();
-      schedulePlan();
-      unsubscribe = useConsole.subscribe(schedulePlan);
+      step('propresenter', sendPpConfig);
+      step('first mix', schedulePlan);
+      step('follow changes', () => { unsubscribe = useConsole.subscribe(schedulePlan); });
+      uiLog('console connected');
       resolve();
     };
     sock.onmessage = (e) => {
@@ -360,6 +385,7 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
         onMessage(JSON.parse(e.data));
       } catch (err) {
         console.error('Bad engine message', err);
+        uiLog(`error handling an engine message: ${errText(err)}`);
       }
     };
     sock.onerror = () => {
