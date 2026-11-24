@@ -1,4 +1,5 @@
 #pragma once
+#include <deque>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Plan.h"
@@ -7,6 +8,10 @@
 
 namespace merge
 {
+
+/** What the app's main thread is busy with (for the watchdog's log line). */
+void setActivity (const juce::String&);
+juce::String getActivity();
 
 /**
  * A plugin instance living in an insert slot. Owned via shared_ptr by the host
@@ -81,7 +86,12 @@ public:
 
     // ---- insert slots
     /** Create/remove instances so they match the plan; returns true if anything changed. */
+    /** Removes unwanted slots and queues new plugins to load. Never blocks: plugins load one at a
+        time afterwards (some open licence windows or stall while loading), so audio and the console
+        keep running. A plugin Merge got stuck on last time isn't loaded until the user retries it. */
     bool syncInserts (const std::vector<InsertSpec>& specs);
+    /** Clear "got stuck last time" for this slot's plugin and load it again. */
+    void retryInsert (const juce::String& slotId);
     std::shared_ptr<HostedInsert> find (const juce::String& slotId) const;
     bool setParam (const juce::String& slotId, const juce::String& paramId, float normalised);
     bool setState (const juce::String& slotId, const juce::String& base64);
@@ -126,6 +136,16 @@ private:
 
     juce::AudioPluginFormatManager formats;
     juce::KnownPluginList known;
+    // ---- deferred plugin loading
+    std::shared_ptr<int> aliveToken = std::make_shared<int> (0); // deferred callbacks check this
+    std::deque<juce::String> loadQueue;   // slot ids waiting to load, in order
+    bool loadInProgress = false;
+    juce::File loadingMarker, stuckFile;  // "loading now" (survives a hang) / plugins to hold back
+    juce::StringArray stuckPlugins;       // plugin ids Merge got stuck loading in an earlier run
+    void scheduleNextLoad();
+    void loadNext();
+    void saveStuck();
+
     struct ScanJob { juce::String format, id; };
     std::vector<ScanJob> scanQueue;
     size_t scanIndex = 0;

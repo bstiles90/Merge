@@ -4,6 +4,11 @@
 namespace merge
 {
 
+static juce::CriticalSection activityLock;
+static juce::String activity;
+void setActivity (const juce::String& a) { const juce::ScopedLock sl (activityLock); activity = a; }
+juce::String getActivity() { const juce::ScopedLock sl (activityLock); return activity; }
+
 // ======================================================================= HostedInsert
 HostedInsert::HostedInsert (std::unique_ptr<juce::AudioPluginInstance> inst, int stripCh, double sr, int block)
     : instance (std::move (inst)), stripChannels (stripCh)
@@ -190,6 +195,19 @@ PluginHost::PluginHost()
     dataDir.createDirectory();
     listFile = dataDir.getChildFile ("plugins.xml");
     if (auto xml = juce::parseXML (listFile)) known.recreateFromXml (*xml);
+    loadingMarker = dataDir.getChildFile ("loading-plugin.txt");
+    stuckFile = dataDir.getChildFile ("plugins-held-back.txt");
+    stuckPlugins.addLines (stuckFile.loadFileAsString());
+    stuckPlugins.removeEmptyStrings();
+    // the last run never finished loading this plugin (it hung or crashed Merge): hold it back
+    if (loadingMarker.existsAsFile())
+    {
+        const auto id = loadingMarker.loadFileAsString().upToFirstOccurrenceOf ("\n", false, false).trim();
+        if (id.isNotEmpty()) stuckPlugins.addIfNotAlreadyThere (id);
+        loadingMarker.deleteFile();
+        saveStuck();
+        std::cout << "[insert] last run got stuck loading " << id << ": held back until you retry it" << std::endl;
+    }
     startTimerHz (20);
 }
 
@@ -461,26 +479,70 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
             slots[s.slotId] = std::move (slot);
             continue;
         }
-        // Load asynchronously: licence checks (iLok/PACE, Waves, NI, UA...) can take seconds or open an
-        // activation window, and must never stall the engine. Plugins are always created and shown on
-        // the message thread, which is what copy-protection dialogs expect.
+        if (stuckPlugins.contains (s.pluginId))
+        {
+            std::cout << "[insert] held back " << desc->name << " (" << s.slotId << ")" << std::endl;
+            send (obj ({ { "type", "insert.error" }, { "slotId", s.slotId }, { "pluginId", s.pluginId }, { "retry", true },
+                         { "message", "Merge got stuck loading " + desc->name + " last time, so it wasn't loaded (audio passes through). "
+                                      "If it needs a licence or activation window, sort that out, then Retry." } }));
+            slots[s.slotId] = std::move (slot);
+            continue;
+        }
+        // Loaded later, one at a time: licence checks (iLok/PACE, Waves, NI, UA...) can take seconds,
+        // open an activation window or stall, and must never hold up audio or the console. Plugins
+        // are created on the message thread, which is what copy-protection dialogs expect.
         slot.loading = true;
-        const auto slotId = s.slotId, pluginId = s.pluginId, strip = s.strip;
-        const auto gen = slot.generation;
-        slots[slotId] = std::move (slot);
+        slots[s.slotId] = std::move (slot);
+        loadQueue.push_back (s.slotId);
+        send (obj ({ { "type", "insert.loading" }, { "slotId", s.slotId }, { "pluginId", s.pluginId } }));
+    }
+    scheduleNextLoad();
+    return changed;
+}
+
+void PluginHost::scheduleNextLoad()
+{
+    if (loadInProgress || loadQueue.empty()) return;
+    loadInProgress = true;
+    juce::MessageManager::callAsync ([this, alive = std::weak_ptr<int> (aliveToken)] {
+        if (alive.expired()) return;
+        loadNext();
+    });
+}
+
+void PluginHost::loadNext()
+{
+    // skip slots removed or replaced while queued
+    while (! loadQueue.empty())
+    {
+        const auto slotId = loadQueue.front();
+        loadQueue.pop_front();
+        auto it = slots.find (slotId);
+        if (it == slots.end() || ! it->second.loading || it->second.insert) continue;
+        const auto desc = findDescription (it->second.pluginId);
+        if (! desc) continue;
+        const auto pluginId = it->second.pluginId, strip = it->second.strip;
+        const auto gen = it->second.generation;
         std::cout << "[insert] loading " << desc->name << " (" << slotId << ")" << std::endl;
-        send (obj ({ { "type", "insert.loading" }, { "slotId", slotId }, { "pluginId", pluginId } }));
+        loadingMarker.replaceWithText (pluginId + "\n" + desc->name);
+        setActivity ("loading plugin " + desc->name);
         formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
-            [this, slotId, pluginId, strip, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
-                auto it = slots.find (slotId);
-                if (it == slots.end() || it->second.generation != gen) return; // slot removed/replaced meanwhile
-                auto& sl = it->second;
+            [this, slotId, pluginId, strip, gen, alive = std::weak_ptr<int> (aliveToken)] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
+                if (alive.expired()) return;
+                loadingMarker.deleteFile();
+                setActivity ({});
+                loadInProgress = false;
+                auto finished = [this] { scheduleNextLoad(); };
+                auto sit = slots.find (slotId);
+                if (sit == slots.end() || sit->second.generation != gen) { finished(); return; } // slot removed/replaced meanwhile
+                auto& sl = sit->second;
                 sl.loading = false;
                 if (! inst)
                 {
                     std::cout << "[insert] failed " << pluginId << ": " << err << std::endl;
                     send (obj ({ { "type", "insert.error" }, { "slotId", slotId }, { "pluginId", pluginId },
                                  { "message", err.isNotEmpty() ? err : juce::String ("Plugin failed to load (check its licence / authorisation)") } }));
+                    finished();
                     return;
                 }
                 const int stripChannels = strip.startsWith ("ch") ? 1 : 2;
@@ -492,9 +554,29 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
                              { "latency", sl.insert->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", sl.insert->getPluginChannels() },
                              { "params", sl.insert->describeParams() } }));
                 if (onInstancesChanged) onInstancesChanged();
+                finished();
             });
+        return; // one at a time: the next starts when this one finishes
     }
-    return changed;
+    loadInProgress = false;
+}
+
+void PluginHost::saveStuck()
+{
+    if (stuckPlugins.isEmpty()) stuckFile.deleteFile();
+    else stuckFile.replaceWithText (stuckPlugins.joinIntoString ("\n"));
+}
+
+void PluginHost::retryInsert (const juce::String& slotId)
+{
+    auto it = slots.find (slotId);
+    if (it == slots.end()) return;
+    stuckPlugins.removeString (it->second.pluginId);
+    saveStuck();
+    if (it->first == dockedSlot) undock();
+    it->second.editor.reset();
+    slots.erase (it);                       // re-created by the next sync
+    if (onInstancesChanged) onInstancesChanged();
 }
 
 int PluginHost::numLoading() const

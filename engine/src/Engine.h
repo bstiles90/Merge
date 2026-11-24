@@ -96,7 +96,13 @@ private:
                 const auto last = beat.load();
                 if (last == 0) continue;
                 const auto gap = juce::Time::getMillisecondCounter() - last;
-                if (gap > 3000 && ! stalled) { stalled = true; std::cout << "[stall] the app's main thread is busy: meters and faders are frozen" << std::endl; }
+                if (gap > 3000 && ! stalled)
+                {
+                    stalled = true;
+                    const auto what = getActivity();
+                    std::cout << "[stall] the app's main thread is busy" << (what.isNotEmpty() ? " (" + what + ")" : juce::String())
+                              << ": meters and faders are frozen" << std::endl;
+                }
                 if (gap < 1000 && stalled) { stalled = false; std::cout << "[stall] main thread responding again" << std::endl; }
             }
         }

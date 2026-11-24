@@ -172,6 +172,7 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "plugins.scan") plugins.startScan ((bool) msg["rescan"]);
     else if (type == "plugins.addFile") plugins.scanFileAsync (msg["path"]);
     else if (type == "plugins.skip") plugins.skipCurrentScan();
+    else if (type == "insert.retry") plugins.retryInsert (msg["slotId"]);
     else if (type == "log.reveal")
     {
        #if JUCE_MAC
