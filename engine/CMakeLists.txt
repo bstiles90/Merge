@@ -92,6 +92,14 @@ endif()
 add_custom_command(TARGET MergeEngine POST_BUILD
   COMMAND ${CMAKE_COMMAND} -DSRC=${MERGE_UI_DIST} -DDEST=${MERGE_UI_DEST} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyUi.cmake
   VERBATIM)
+if(APPLE)
+  # Adding the UI changes the bundle after the linker signed it, which macOS reports as
+  # "damaged". Re-sign the whole bundle (ad-hoc) so the signature covers the UI files.
+  add_custom_command(TARGET MergeEngine POST_BUILD
+    COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:MergeEngine>"
+    COMMAND codesign --verify --deep --strict "$<TARGET_BUNDLE_DIR:MergeEngine>"
+    VERBATIM)
+endif()
 
 if(MERGE_BUILD_TEST_PLUGIN)
   add_subdirectory(testplugin)

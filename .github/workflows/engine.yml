@@ -69,6 +69,8 @@ jobs:
         run: |
           APP=engine/build/MergeEngine_artefacts/Release/Merge.app
           test -f "$APP/Contents/Resources/ui/index.html"
+          # the signature must cover the whole bundle, or a downloaded copy shows "damaged"
+          codesign --verify --deep --strict --verbose=2 "$APP"
           "$APP/Contents/MacOS/Merge" > app.log 2>&1 &
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
@@ -92,6 +94,10 @@ jobs:
           ditto engine/build/MergeEngine_artefacts/Release/Merge.app dmg/Merge.app
           ln -s /Applications dmg/Applications
           hdiutil create -volname "Merge" -srcfolder dmg -ov -format UDZO "dist/Merge-macOS.dmg"
+          # check the app inside the finished .dmg still verifies
+          hdiutil attach -nobrowse -mountpoint /tmp/mergedmg "dist/Merge-macOS.dmg"
+          codesign --verify --deep --strict --verbose=2 /tmp/mergedmg/Merge.app
+          hdiutil detach /tmp/mergedmg
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS'
