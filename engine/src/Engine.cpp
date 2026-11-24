@@ -46,6 +46,17 @@ Engine::Engine()
         send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION } }), id);
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
+        if (! ppStatus.isVoid()) send (ppStatus, id);
+        for (auto& [url, data] : ppLatest) send (obj ({ { "type", "pp.update" }, { "url", url }, { "data", data } }), id);
+    };
+    propresenter.onStatus = [this] (const juce::String& state, const juce::String& message) {
+        ppStatus = obj ({ { "type", "pp.status" }, { "state", state }, { "message", message } });
+        if (state == "off") ppLatest.clear();
+        send (ppStatus);
+    };
+    propresenter.onUpdate = [this] (const juce::String& url, const juce::var& data) {
+        ppLatest[url] = data;
+        send (obj ({ { "type", "pp.update" }, { "url", url }, { "data", data } }));
     };
     settingsFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/audio-device.xml");
 }
@@ -170,6 +181,8 @@ void Engine::handleMessage (int clientId, const juce::String& text)
             send (obj ({ { "type", "insert.docked" }, { "slotId", juce::var() }, { "error", "The plugin GUI can only be docked inside the Merge app window" } }), clientId);
     }
     else if (type == "insert.undock") plugins.undock();
+    else if (type == "pp.config")
+        propresenter.configure ((bool) msg["enabled"], msg["host"].toString(), (int) msg["port"]);
     else if (type == "dock.bounds")
     {
         if (onDockBounds)

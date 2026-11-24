@@ -49,7 +49,8 @@ target_sources(MergeEngine PRIVATE
   src/WebSocketServer.cpp
   src/SelfTest.cpp
   src/TruePeak.cpp
-  src/ConsoleWindow.cpp)
+  src/ConsoleWindow.cpp
+  src/ProPresenter.cpp)
 if(APPLE)
   target_sources(MergeEngine PRIVATE src/MacSupport.mm)
 endif()

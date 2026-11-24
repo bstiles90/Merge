@@ -2,6 +2,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "Mixer.h"
 #include "PluginHost.h"
+#include "ProPresenter.h"
 #include "WebSocketServer.h"
 
 namespace merge
@@ -39,6 +40,7 @@ public:
     juce::String statusText() const;
     WebSocketServer& server() { return ws; }
     PluginHost& host() { return plugins; }
+    ProPresenterClient& proPresenter() { return propresenter; }
     Mixer& mixer() { return mix; }
 
     /** Entry point for UI messages (also used by the self-test without a socket). */
@@ -67,6 +69,9 @@ private:
     Mixer mix;
     PluginHost plugins;
     WebSocketServer ws;
+    ProPresenterClient propresenter;
+    juce::var ppStatus;                          // last ProPresenter connection status
+    std::map<juce::String, juce::var> ppLatest;  // last update per endpoint, replayed to new UI clients
     std::unique_ptr<VirtualDevice> virtualDevice;
     juce::var lastPlan;
     juce::File settingsFile;

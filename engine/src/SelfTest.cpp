@@ -133,6 +133,137 @@ void testMixer()
            juce::String (m.loudness.integrated.load(), 2) + " vs " + juce::String (expected, 2));
 }
 
+
+void testFades()
+{
+    std::cout << "Timed fades (show moments)" << std::endl;
+    Mixer m;
+    m.prepare (kSr, kBlock, 0, 4);
+    m.setPlan (parsePlan (tonePlan (1, "[]", "[]", 0.0f), kSr, nullptr, nullptr));
+    render (m, 50);
+    auto plan = tonePlan (1, "[]", "[]", 1.0f);
+    auto* c1 = plan["channels"][0].getDynamicObject();
+    c1->setProperty ("fadeId", 7.0);
+    c1->setProperty ("fadeMs", 1000.0);
+    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+    const int half = (int) (0.5 * kSr / kBlock);
+    auto p = render (m, half, 1);
+    check (near (p[0], 0.5 * kToneCentre, 0.012), "fade is halfway at half the fade time (S-curve)", juce::String (p[0] / kToneCentre, 3) + " of full");
+    p = render (m, half + 20, 5);
+    check (near (p[0], kToneCentre, 0.003), "fade arrives at the new level", juce::String (p[0] / kToneCentre, 3));
+    // a later plan with the same fade id but another target (a hand move) is not slowed down
+    plan = tonePlan (1, "[]", "[]", 0.0f);
+    plan["channels"][0].getDynamicObject()->setProperty ("fadeId", 7.0);
+    plan["channels"][0].getDynamicObject()->setProperty ("fadeMs", 1000.0);
+    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+    p = render (m, 20, 5);
+    check (p[0] < 1e-3f, "a hand move after the fade isn't slowed down", juce::String (p[0], 5));
+}
+
+/** A tiny stand-in for ProPresenter's API: streams updates, or (oldMode) refuses the stream
+    so the client must poll. */
+struct FakeProPresenter : juce::Thread
+{
+    juce::StreamingSocket listener;
+    int port = 0;
+    bool oldMode = false;
+    std::atomic<int> requests { 0 };
+    juce::String firstRequest;
+    FakeProPresenter (bool old) : juce::Thread ("FakePP"), oldMode (old)
+    {
+        for (int p = 50801; p < 50899 && ! port; ++p)
+            if (listener.createListener (p, "127.0.0.1")) port = p;
+        startThread();
+    }
+    ~FakeProPresenter() override { listener.close(); stopThread (2000); }
+    static void sendAll (juce::StreamingSocket& s, const juce::String& t) { s.write (t.toRawUTF8(), (int) t.getNumBytesAsUTF8()); }
+    static juce::String chunk (const juce::String& t) { return juce::String::toHexString ((int) t.getNumBytesAsUTF8()) + "\r\n" + t + "\r\n"; }
+    void run() override
+    {
+        while (! threadShouldExit())
+        {
+            std::unique_ptr<juce::StreamingSocket> c (listener.waitForNextConnection());
+            if (! c) break;
+            char buf[4096] {};
+            c->waitUntilReady (true, 2000);
+            juce::Thread::sleep (20); // let the whole request (headers + body) arrive
+            const int n = c->read (buf, sizeof (buf) - 1, false);
+            const juce::String req (buf, (size_t) juce::jmax (0, n));
+            if (requests++ == 0) firstRequest = req;
+            if (req.startsWith ("POST /v1/status/updates"))
+            {
+                if (oldMode) { sendAll (*c, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n"); continue; }
+                sendAll (*c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n");
+                const juce::String u1 = R"({"url":"presentation/slide_index","data":{"presentation_index":{"index":2,"presentation_id":{"uuid":"A","name":"Way Maker","index":0}}}})";
+                const juce::String u2 = R"({"url":"playlist/active","data":{"presentation":{"playlist":{"uuid":"P","name":"Sunday","index":0},"item":{"uuid":"I","name":"Sermon","index":4}}}})";
+                const auto all = u1 + "\r\n\r\n";
+                sendAll (*c, chunk (all.substring (0, 40)));  // an update split across two chunks
+                juce::Thread::sleep (30);
+                sendAll (*c, chunk (all.substring (40)));
+                sendAll (*c, chunk (u2 + "\r\n\r\n"));
+                while (! threadShouldExit() && c->isConnected()) juce::Thread::sleep (20); // keep the stream open
+            }
+            else if (req.startsWith ("GET /v1/playlist/active"))
+            {
+                const juce::String body = R"({"presentation":{"playlist":{"uuid":"P","name":"Sunday","index":0},"item":{"uuid":"I","name":"Prayer","index":5}}})";
+                sendAll (*c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (body.getNumBytesAsUTF8()) + "\r\nConnection: close\r\n\r\n" + body);
+            }
+            else sendAll (*c, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+        }
+    }
+};
+
+void testProPresenter()
+{
+    std::cout << "ProPresenter follow" << std::endl;
+    {
+        ProPresenterClient::ChunkDecoder d;
+        const char* a = "5\r\nhel"; const char* b = "lo\r\n3\r\n wo\r\n0\r\n\r\n";
+        juce::String got = d.feed (a, std::strlen (a));
+        got += d.feed (b, std::strlen (b));
+        check (got == "hello wo" && d.finished, "chunked transfer decoding (split across reads)", got.quoted());
+        juce::String buf = "{\"url\":\"a\",\"data\":1}\r\n\r\n{\"url\":\"b\",\"data\":2}\r\n\r\n{\"url\":\"c\"";
+        auto ups = ProPresenterClient::takeUpdates (buf);
+        check (ups.size() == 2 && ups[1]["url"] == "b" && buf.startsWith ("{\"url\":\"c\""), "updates split on blank lines; a partial one waits",
+               juce::String (ups.size()) + " / rest " + buf.quoted());
+    }
+    for (bool old : { false, true })
+    {
+        FakeProPresenter fake (old);
+        ProPresenterClient client;
+        std::map<juce::String, juce::var> seen;
+        juce::StringArray states;
+        client.onUpdate = [&] (const juce::String& url, const juce::var& data) { seen[url] = data; };
+        client.onStatus = [&] (const juce::String& st, const juce::String&) { states.addIfNotAlreadyThere (st); };
+        client.configure (true, "127.0.0.1", fake.port);
+        for (int i = 0; i < 300 && ! (seen.count ("playlist/active") && seen.count ("presentation/slide_index")); ++i) pump (10);
+        if (! old)
+        {
+            check (fake.firstRequest.startsWith ("POST /v1/status/updates") && fake.firstRequest.contains ("\"presentation/slide_index\""),
+                   "subscribes with one POST /v1/status/updates stream", fake.firstRequest.substring (0, 60).quoted());
+            check (states.contains ("connected") && ! states.contains ("error"), "reports connected (and stays connected)", states.joinIntoString (","));
+            check ((int) seen["presentation/slide_index"]["presentation_index"]["index"] == 2
+                       && seen["playlist/active"]["presentation"]["item"]["name"] == "Sermon",
+                   "streamed updates arrive (slide index, playlist item)");
+        }
+        else
+        {
+            check (states.contains ("polling"), "falls back to polling when the stream isn't offered", states.joinIntoString (","));
+            check (seen["playlist/active"]["presentation"]["item"]["name"] == "Prayer", "polled update arrives");
+        }
+        client.configure (false, {}, 0);
+        pump (50);
+    }
+    {
+        ProPresenterClient client;
+        juce::StringArray states;
+        client.onStatus = [&] (const juce::String& st, const juce::String&) { states.addIfNotAlreadyThere (st); };
+        client.configure (true, "127.0.0.1", 50999); // nothing listening
+        for (int i = 0; i < 300 && ! states.contains ("error"); ++i) pump (10);
+        check (states.contains ("error"), "unreachable ProPresenter reports an error (and keeps retrying)");
+    }
+}
+
 float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }
 
 void testTruePeak()
@@ -349,6 +480,8 @@ int runSelfTest (const juce::StringArray& args)
     std::cout << "Merge Engine self-test" << std::endl;
     testProtocolBasics();
     testMixer();
+    testFades();
+    testProPresenter();
     testTruePeak();
     testPluginHosting (pluginPath);
     testWebSocketRoundTrip();

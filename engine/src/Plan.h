@@ -43,6 +43,9 @@ struct ChannelPlan
     std::array<bool, kNumBuses> sendPre {};
     float cue = 0;
     bool cuePre = true;
+    // timed fade (show moments): a new fadeId ramps `post` to its new value over fadeMs
+    juce::int64 fadeId = 0;
+    float fadeMs = 0;
 };
 
 struct BusPlan

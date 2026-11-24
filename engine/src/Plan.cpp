@@ -65,6 +65,8 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
             p.pan = juce::jlimit (-1.0f, 1.0f, num (c, "pan", 0));
             p.post = num (c, "post", 0);
             p.mainGain = num (c, "main", 0);
+            p.fadeId = (juce::int64) (double) c.getProperty ("fadeId", 0.0);
+            p.fadeMs = juce::jlimit (0.0f, 30000.0f, num (c, "fadeMs", 0));
             if (auto* sends = c["sends"].getArray())
                 for (auto& s : *sends)
                 {

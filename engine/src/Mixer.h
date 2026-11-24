@@ -105,6 +105,14 @@ private:
         Delay delay, pdc;
         Smooth post, main, panL, panR, cue;
         std::array<Smooth, kNumBuses> sends;
+        // a timed fade in progress (show moments): `post` follows an S-curve from start to target
+        struct Fade
+        {
+            juce::int64 id = 0;
+            bool active = false;
+            float start = 0, target = 0, sendCoef = 0;
+            int total = 1, pos = 0;
+        } fade;
     };
     struct BusState
     {

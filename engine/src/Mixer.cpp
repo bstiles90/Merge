@@ -216,6 +216,20 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             auto& st = ch[(size_t) c];
             const auto& cp = plan->channels[(size_t) c];
             const float panAngle = (cp.pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+            // timed fade: starts when a plan brings a new fade id; any later change of the
+            // target (a hand move) cancels it and the normal ~10 ms smoothing takes over
+            if (cp.fadeId != 0 && cp.fadeId != st.fade.id)
+            {
+                st.fade.id = cp.fadeId;
+                st.fade.active = cp.fadeMs > 0 && std::abs (cp.post - st.post.cur) > 1.0e-6f;
+                st.fade.start = st.post.cur;
+                st.fade.target = cp.post;
+                st.fade.total = juce::jmax (1, (int) (cp.fadeMs * 0.001 * sampleRate));
+                st.fade.pos = 0;
+                st.fade.sendCoef = (float) (1.0 - std::exp (-1.0 / (juce::jmax (0.001, cp.fadeMs * 0.001 / 4.0) * sampleRate)));
+            }
+            if (st.fade.active && std::abs (cp.post - st.fade.target) > 1.0e-7f) st.fade.active = false;
+            const float ks = st.fade.active ? st.fade.sendCoef : k;
             st.post.set (cp.post);
             st.main.set (cp.mainGain);
             st.panL.set (std::cos (panAngle));
@@ -249,7 +263,17 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             {
                 const float s = x[i];
                 peak = juce::jmax (peak, std::abs (s));
-                const float post = st.post.next (k);
+                float post;
+                if (st.fade.active)
+                {
+                    // S-curve (raised cosine) from start to target over the fade time
+                    const float t = (float) ++st.fade.pos / (float) st.fade.total;
+                    const float shape = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * juce::jmin (1.0f, t));
+                    post = st.fade.start + (st.fade.target - st.fade.start) * shape;
+                    st.post.cur = post;
+                    if (st.fade.pos >= st.fade.total) { st.fade.active = false; st.post.cur = st.fade.target; }
+                }
+                else post = st.post.next (k);
                 const float pl = st.panL.next (k), pr = st.panR.next (k);
                 const float m = s * post * st.main.next (k);
                 mainL[i] += m * pl;
@@ -262,7 +286,7 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 }
                 for (int b = 0; b < kNumBuses; ++b)
                 {
-                    const float g = st.sends[(size_t) b].next (k);
+                    const float g = st.sends[(size_t) b].next (ks);
                     if (g == 0) continue;
                     // post sends are panned like the main mix; pre sends are mono (centre, unity)
                     busBuf.getWritePointer (b * 2)[i] += s * g * (cp.sendPre[(size_t) b] ? 1.0f : pl * juce::MathConstants<float>::sqrt2);
