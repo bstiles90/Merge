@@ -247,7 +247,10 @@ void Engine::timerCallback()
                  { "main", arr ({ round3 (mm.l.exchange (0)), round3 (mm.r.exchange (0)) }) },
                  { "mon", arr ({ round3 (mon.l.exchange (0)), round3 (mon.r.exchange (0)) }) },
                  { "loud", arr ({ lufs (mix.loudness.momentary), lufs (mix.loudness.shortTerm), lufs (mix.loudness.integrated) }) },
-                 { "pdc", mix.pdcSamples.load() } }));
+                 { "pdc", mix.pdcSamples.load() },
+                 // program limiter: [gain reduction dB, true peak L, true peak R (linear)], and its fixed latency
+                 { "lim", arr ({ round3 (mix.limiterGrDb.exchange (0)), round3 (mix.mainTruePeak[0].exchange (0)), round3 (mix.mainTruePeak[1].exchange (0)) }) },
+                 { "limLatency", mix.limiter.getLatency() } }));
 }
 
 } // namespace merge

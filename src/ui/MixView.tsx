@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { anySolo } from '../core/mix';
 import { useConsole } from '../core/store';
 import { getEngine } from '../audio/engine';
-import { sendNative } from '../native/bridge';
+import { readNativeLimiter, resetNativeTruePeakHold, sendNative, useNative } from '../native/bridge';
 import { Detail } from './Detail';
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
@@ -32,7 +32,9 @@ function MuteGroupMasters() {
 }
 
 function Loudness() {
-  const refs = { m: useRef<HTMLSpanElement>(null), s: useRef<HTMLSpanElement>(null), i: useRef<HTMLSpanElement>(null), bar: useRef<HTMLDivElement>(null) };
+  const refs = { m: useRef<HTMLSpanElement>(null), s: useRef<HTMLSpanElement>(null), i: useRef<HTMLSpanElement>(null), bar: useRef<HTMLDivElement>(null), tp: useRef<HTMLSpanElement>(null), gr: useRef<HTMLSpanElement>(null) };
+  const ceiling = useConsole((s) => s.main.limiter.ceilingDb);
+  const native = useNative((st) => st.status === 'connected');
   const target = useConsole((s) => s.loudnessTarget);
   const setTarget = (loudnessTarget: number) => useConsole.getState().update(() => ({ loudnessTarget }));
   useEffect(
@@ -46,12 +48,19 @@ function Loudness() {
           const off = isFinite(l.integrated) ? Math.abs(l.integrated - target) : 0;
           refs.i.current.className = 'lufs-val big ' + (off > 2 ? 'bad' : off > 1 ? 'warn' : 'ok');
         }
+        if (refs.tp.current && refs.gr.current) {
+          const lim = readNativeLimiter();
+          refs.tp.current.textContent = isFinite(lim.tpMaxDb) ? lim.tpMaxDb.toFixed(1) : '—';
+          refs.tp.current.className = 'tp-val ' + (lim.tpMaxDb > ceiling + 0.05 ? 'bad' : 'ok');
+          refs.gr.current.textContent = lim.grDb < -0.05 ? lim.grDb.toFixed(1) : '0.0';
+          refs.gr.current.className = 'tp-val ' + (lim.grDb < -3 ? 'warn' : '');
+        }
         if (refs.bar.current) {
           const pct = isFinite(l.shortTerm) ? Math.max(0, Math.min(100, ((l.shortTerm + 50) / 50) * 100)) : 0;
           refs.bar.current.style.width = `${pct}%`;
         }
       }),
-    [target],
+    [target, ceiling],
   );
   return (
     <div className="panel loudness">
@@ -69,8 +78,14 @@ function Loudness() {
         <div><span className="hint">M</span><span ref={refs.m} className="lufs-val">—</span></div>
         <div><span className="hint">S</span><span ref={refs.s} className="lufs-val">—</span></div>
         <div><span className="hint">I</span><span ref={refs.i} className="lufs-val big">—</span><span className="hint">LUFS</span></div>
-        <button className="link-btn" onClick={() => { getEngine()?.resetLoudness(); sendNative({ type: 'loudness.reset' }); }}>reset</button>
+        <button className="link-btn" onClick={() => { getEngine()?.resetLoudness(); sendNative({ type: 'loudness.reset' }); resetNativeTruePeakHold(); }}>reset</button>
       </div>
+      {native && (
+        <div className="lufs tp-row" title="True-peak max since reset (dBTP) and program limiter gain reduction">
+          <div><span className="hint">TP max</span><span ref={refs.tp} className="tp-val">—</span><span className="hint">dBTP</span></div>
+          <div><span className="hint">LIM</span><span ref={refs.gr} className="tp-val">0.0</span><span className="hint">dB</span></div>
+        </div>
+      )}
       <div className="lufs-bar">
         <div ref={refs.bar} className="lufs-fill" />
         <div className="lufs-target" style={{ left: `${((target + 50) / 50) * 100}%` }} />

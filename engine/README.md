@@ -10,7 +10,8 @@ The native audio engine for Merge. Built in C++ with [JUCE 8](https://juce.com),
     compressor with gain-reduction metering, 4 inserts, equal-power pan, 8 pre/post
     sends, cue
   - 8 buses
-  - main with lip-sync delay
+  - main with lip-sync delay and a **true-peak limiter** as the final stage (4× oversampled
+    BS.1770-style detection, 1.5 ms look-ahead, no overshoot, fixed latency; default −1 dBTP)
   - monitor/cue, talkback, output patch
   - BS.1770 / EBU R128 loudness
 - **Third-party plugin hosting:**
@@ -64,6 +65,8 @@ plugin's own GUI.
 
 It checks:
 - mixer levels, smoothing, sends, and R128 loudness against a reference tone
+- true-peak detection of inter-sample peaks, limiting to the ceiling, no overshoot on bursts,
+  transparency below the ceiling, on/off in the mixer
 - VST3 scan and instantiation, parameter control, state save/restore
 - plugin delay compensation and latency-preserving bypass
 - instance cleanup, and missing-plugin handling

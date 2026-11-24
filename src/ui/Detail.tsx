@@ -464,6 +464,19 @@ function MainDetail() {
         </div>
         <p className="hint">Use the delay to line program audio up with a delayed video path.</p>
       </div>
+      <div className="section">
+        <div className="section-title">
+          <Toggle small on={s.main.limiter.on} onClick={() => s.updateMain({ limiter: { ...s.main.limiter, on: !s.main.limiter.on } })}>TRUE-PEAK LIMITER</Toggle>
+        </div>
+        <div className="row">
+          <Knob label="Ceiling" value={s.main.limiter.ceilingDb} min={-6} max={0} step={0.1} defaultValue={-1} format={(v) => `${v.toFixed(1)} dBTP`} onChange={(ceilingDb) => s.updateMain({ limiter: { ...s.main.limiter, ceilingDb } })} color="#e5484d" />
+          <Knob label="Release" value={s.main.limiter.releaseMs} min={10} max={1000} log defaultValue={100} format={fmtMs} onChange={(releaseMs) => s.updateMain({ limiter: { ...s.main.limiter, releaseMs } })} color="#e5484d" />
+        </div>
+        <p className="hint">
+          Last stage on the program output, after inserts and the main fader: everything you hear, meter and stream is post-limiter. 4× oversampled true-peak
+          detection with 1.7 ms look-ahead (fixed latency, on or off). Runs in the native engine.
+        </p>
+      </div>
       <Inserts inserts={s.main.inserts} onChange={(inserts) => s.updateMain({ inserts })} />
     </div>
   );

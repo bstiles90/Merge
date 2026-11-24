@@ -357,3 +357,8 @@ button.go { background: #2b6b3c; border-color: #3b8a50; color: #fff; font-weight
 .native-param { display: grid; grid-template-columns: 110px 1fr 80px; gap: 6px; align-items: center; }
 .np-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-text { font-family: ui-monospace, Menlo, monospace; font-size: 10px; text-align: right; white-space: nowrap; overflow: hidden; }
+.tp-row { margin-top: 2px; }
+.tp-val { font-family: ui-monospace, Menlo, monospace; font-size: 14px; min-width: 40px; }
+.tp-val.ok { color: #7fe0a0; }
+.tp-val.warn { color: #ffc53d; }
+.tp-val.bad { color: #ff7b7f; }

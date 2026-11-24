@@ -1,6 +1,7 @@
 #pragma once
 #include "Plan.h"
 #include "PluginHost.h"
+#include "TruePeak.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <atomic>
 #include <cmath>
@@ -66,6 +67,9 @@ public:
     static constexpr int kMeterMain = kNumChannels + kNumBuses, kMeterMonitor = kMeterMain + 1, kNumMeters = kMeterMonitor + 1;
     std::array<PeakMeter, kNumMeters> meters;
     LoudnessMeter loudness;
+    TruePeakLimiter limiter;                 // program output, before loudness/meters/outputs
+    std::atomic<float> limiterGrDb { 0 };    // deepest reduction since last read (UI resets)
+    std::atomic<float> mainTruePeak[2] { { 0 }, { 0 } }; // linear, max since last read
     double getSampleRate() const { return sampleRate; }
     int getMaxBlock() const { return maxBlock; }
     std::atomic<int> pdcSamples { 0 }; // current channel latency compensation
@@ -127,6 +131,7 @@ private:
     std::array<BusState, kNumBuses> bus;
     std::array<Delay, 2> mainDelay;
     Smooth mainOut, monGain;
+    TruePeakDetector outTp[2];
 
     // scratch (allocated in prepare)
     juce::AudioBuffer<float> chanBuf;   // 1 per channel strip

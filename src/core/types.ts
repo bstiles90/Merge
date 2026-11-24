@@ -110,6 +110,8 @@ export interface Main {
   mute: boolean;
   delayMs: number;
   inserts: InsertSlot[];
+  /** true-peak limiter on the program output (native engine) */
+  limiter: { on: boolean; ceilingDb: number; releaseMs: number };
 }
 
 export interface Dca {

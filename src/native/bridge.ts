@@ -80,6 +80,14 @@ export const isNativeConnected = () => useNative.getState().status === 'connecte
 export const readNativeMeters = () => meters;
 export const readNativeLoudness = () => loudness;
 
+/** Program limiter readings: current gain reduction (dB) and true-peak max hold (dBTP) since reset. */
+let limiter = { grDb: 0, tpDb: -Infinity, tpMaxDb: -Infinity, latency: 0 };
+let grHoldAt = 0;
+export const readNativeLimiter = () => limiter;
+export function resetNativeTruePeakHold() {
+  limiter = { ...limiter, tpMaxDb: -Infinity };
+}
+
 export function sendNative(msg: object) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
@@ -152,6 +160,15 @@ function onMessage(m: any) {
       const f = (x: number | null) => (x === null || x === undefined ? -Infinity : x);
       loudness = { momentary: f(m.loud[0]), shortTerm: f(m.loud[1]), integrated: f(m.loud[2]), peak: [m.main[0], m.main[1]] };
       if (m.pdc !== useNative.getState().pdc) useNative.setState({ pdc: m.pdc });
+      if (m.lim) {
+        const toDb = (g: number) => (g > 0 ? 20 * Math.log10(g) : -Infinity);
+        const tpDb = toDb(Math.max(m.lim[1], m.lim[2]));
+        // hold the deepest gain reduction for ~1 s so brief peaks are readable
+        const now = performance.now();
+        const holding = now - grHoldAt < 1000 && limiter.grDb <= m.lim[0];
+        if (!holding) grHoldAt = now;
+        limiter = { grDb: holding ? limiter.grDb : m.lim[0], tpDb, tpMaxDb: Math.max(limiter.tpMaxDb, tpDb), latency: m.limLatency ?? 0 };
+      }
       break;
     }
     case 'insert.loading':

@@ -40,7 +40,8 @@ target_sources(MergeEngine PRIVATE
   src/Plan.cpp
   src/PluginHost.cpp
   src/WebSocketServer.cpp
-  src/SelfTest.cpp)
+  src/SelfTest.cpp
+  src/TruePeak.cpp)
 
 target_compile_definitions(MergeEngine PRIVATE
   JUCE_PLUGINHOST_VST3=1

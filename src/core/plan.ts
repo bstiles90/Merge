@@ -53,7 +53,7 @@ export function buildMixPlan(s: ConsoleState) {
         inserts: inserts(b.inserts),
       };
     }),
-    main: { out: r(computeMainGain(s)), delayMs: s.main.delayMs, inserts: inserts(s.main.inserts) },
+    main: { out: r(computeMainGain(s)), delayMs: s.main.delayMs, inserts: inserts(s.main.inserts), limiter: s.main.limiter },
     monitor: {
       source: solo ? 'cue' : s.monitor.source,
       gain: r(computeMonitorGain(s) * (s.talkback.active ? dbToGain(-20) : 1)),

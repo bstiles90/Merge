@@ -45,7 +45,8 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
       "cue": 0, "cuePre": true }
   ],
   "buses": [{ "id": "bus1", "out": 1, "cuePre": 0, "cuePost": 0, "delayMs": 0, "inserts": [] }],
-  "main": { "out": 1, "delayMs": 0, "inserts": [] },
+  "main": { "out": 1, "delayMs": 0, "inserts": [],
+            "limiter": { "on": true, "ceilingDb": -1.0, "releaseMs": 100 } },   // true-peak limiter, last stage
   "monitor": { "source": "main|cue|busN", "gain": 1 },
   "outputs": [{ "src": "monitor|main|busN", "side": 0 }, null],   // index = physical output
   "talkback": { "gain": 0, "input": 3, "dest": ["bus1"] }
@@ -58,7 +59,7 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 |---|---|
 | `hello` | `engine, version` |
 | `device` | `virtual, deviceType, inputDevice, outputDevice, sampleRate, bufferSize, latencyMs, inputs[], outputs[], sampleRates[], bufferSizes[], types[{name, inputs[], outputs[]}]` |
-| `meters` (30 Hz) | `ch[[peak, grDb]×32], bus[[l,r]×8], main[l,r], mon[l,r], loud[momentary, shortTerm, integrated] (LUFS or null), pdc` (samples) |
+| `meters` (30 Hz) | `ch[[peak, grDb]×32], bus[[l,r]×8], main[l,r], mon[l,r], loud[momentary, shortTerm, integrated] (LUFS or null), pdc` (samples), `lim[grDb, truePeakL, truePeakR]` (program limiter; true peaks linear, max since last message), `limLatency` (samples) |
 | `plugins` | `list[{id, name, vendor, format, category, version, file}], scanning, blacklisted[]` |
 | `plugins.scan` | `progress, file, format` |
 | `insert.loading` | `slotId, pluginId` — instantiating asynchronously (licence check / activation dialog may be showing) |
