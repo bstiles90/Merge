@@ -75,8 +75,8 @@ jobs:
           PLUGIN_ID=$("$APP/Contents/MacOS/Merge" --print-plugin-ids | grep "Merge Test Gain" | cut -f1 | head -1)
           echo "test plugin id: $PLUGIN_ID"
           test -n "$PLUGIN_ID"
-          mkdir -p "$HOME/Library/Application Support/Merge"
-          python3 engine/ci/make_dock_test_show.py "$PLUGIN_ID" "$HOME/Library/Application Support/Merge/current-show.merge.json"
+          mkdir -p "$HOME/Library/Merge"  # Merge's data folder on macOS
+          python3 engine/ci/make_dock_test_show.py "$PLUGIN_ID" "$HOME/Library/Merge/current-show.merge.json"
           "$APP/Contents/MacOS/Merge" > app.log 2>&1 &
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done

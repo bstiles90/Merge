@@ -216,7 +216,7 @@ function onMessage(m: any) {
             console.error('Could not restore the last show', err);
             uiLog(`could not restore the last show: ${err}`);
           }
-        }
+        } else uiLog('no saved show found: starting with the default show');
         autosaveReady = true;
       }
       break;
