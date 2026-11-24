@@ -2,7 +2,7 @@
 // and ProPresenter rules decide which moment the service is in.
 
 import { useState } from 'react';
-import { contextFromProPresenter, decideMoment, emptyContext, ROLES, applySuggestedRoles, suggestRole, type Moment, type Role, type Rule, type RuleField, type ShowContext } from '../core/moments';
+import { contextFromProPresenter, decideMoment, DEFAULT_MOMENTS, emptyContext, ROLES, applySuggestedRoles, suggestRole, type Moment, type Role, type Rule, type RuleField, type ShowContext } from '../core/moments';
 import { newId } from '../core/defaults';
 import { useConsole } from '../core/store';
 import { useNative } from '../native/bridge';
@@ -216,7 +216,16 @@ function MomentsPanel() {
   });
   return (
     <div className="panel">
-      <div className="panel-title">Moments</div>
+      <div className="panel-title row between">
+        <span>Moments</span>
+        <button
+          className="link-btn"
+          title="Put the moments' open/close settings and fade times back to the defaults (learned levels are kept)"
+          onClick={() => update((s) => ({ automation: { ...s.automation, moments: DEFAULT_MOMENTS.map((m) => ({ ...m })) } }))}
+        >
+          reset to defaults
+        </button>
+      </div>
       <p className="hint">
         What each moment does to each role. Levels aren't set here: Merge learns them. When a moment ends, it remembers where your open channels sat, and uses those
         levels next time.

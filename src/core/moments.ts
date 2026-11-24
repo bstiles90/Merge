@@ -60,15 +60,20 @@ export interface Moment {
 const ALL: Role[] = ['speaker', 'host', 'leadVocal', 'bvs', 'band', 'keys', 'playback', 'audience'];
 const except = (...r: Role[]) => ALL.filter((x) => !r.includes(x));
 
+// Defaults for our services: the band usually stays under the spoken moments (Welcome, Prayer,
+// Communion, Sending) at a lower level. Each moment learns its own levels, so the band-under
+// level is learned separately from the song level. Either the pastor or the host may speak,
+// so spoken moments open both.
 export const DEFAULT_MOMENTS: Moment[] = [
   { id: 'song', name: 'Song', open: ['leadVocal', 'bvs', 'band', 'keys', 'audience'], close: ['speaker', 'host', 'playback'], fadeMs: 1500, enabled: true },
   { id: 'chorus', name: 'Chorus', open: ['leadVocal', 'bvs', 'band', 'keys', 'audience'], close: ['speaker', 'host', 'playback'], inherits: 'song', trims: { bvs: 2 }, fadeMs: 800, enabled: false },
   { id: 'bridge', name: 'Bridge / Tag', open: ['leadVocal', 'bvs', 'band', 'keys', 'audience'], close: ['speaker', 'host', 'playback'], inherits: 'song', trims: {}, fadeMs: 800, enabled: false },
-  { id: 'speech', name: 'Sermon / Speech', open: ['speaker'], close: except('speaker'), fadeMs: 2000, enabled: true },
-  { id: 'prayer', name: 'Prayer', open: ['speaker', 'keys'], close: ['leadVocal', 'bvs', 'band', 'playback', 'audience', 'host'], inherits: 'speech', fadeMs: 2500, enabled: true },
+  { id: 'host', name: 'Welcome / Host', open: ['host', 'band', 'keys'], close: ['speaker', 'bvs', 'playback', 'audience'], fadeMs: 1500, enabled: true },
+  { id: 'prayer', name: 'Prayer / Communion', open: ['speaker', 'host', 'band', 'keys'], close: ['bvs', 'playback', 'audience'], fadeMs: 2000, enabled: true },
+  { id: 'speech', name: 'Message', open: ['speaker'], close: except('speaker'), fadeMs: 2000, enabled: true },
+  { id: 'sending', name: 'Sending / Benediction', open: ['speaker', 'host', 'band', 'keys', 'audience'], close: ['bvs', 'playback'], fadeMs: 2000, enabled: true },
   { id: 'video', name: 'Video / Playback', open: ['playback'], close: except('playback'), fadeMs: 1000, enabled: true },
-  { id: 'host', name: 'Announcements / Host', open: ['host'], close: except('host'), fadeMs: 1500, enabled: true },
-  { id: 'walk', name: 'Walk-in / Walk-out', open: ['playback'], close: except('playback'), fadeMs: 3000, enabled: true },
+  { id: 'walk', name: 'Walk-in / House music', open: ['playback'], close: except('playback'), fadeMs: 3000, enabled: true },
 ];
 
 export type RuleField = 'item' | 'presentation' | 'group' | 'song' | 'media';
@@ -94,6 +99,8 @@ export const DEFAULT_RULES: Rule[] = [
   { id: 'r1', field: 'item', match: 'Message', moment: 'speech', enabled: true },
   { id: 'r2', field: 'item', match: 'Sermon', moment: 'speech', enabled: true },
   { id: 'r3', field: 'item', match: 'Prayer', moment: 'prayer', enabled: true },
+  { id: 'r16', field: 'item', match: 'Sending', moment: 'sending', enabled: true },
+  { id: 'r17', field: 'item', match: 'Benediction', moment: 'sending', enabled: true },
   { id: 'r13', field: 'item', match: 'Communion', moment: 'prayer', enabled: true },
   { id: 'r14', field: 'item', match: 'Loop', moment: 'walk', enabled: true },
   { id: 'r15', field: 'item', match: 'Prelude', moment: 'walk', enabled: true },
@@ -339,7 +346,9 @@ export function noteTag(notes: string, moments: Moment[]): Moment | undefined {
   const m = /merge\s*:\s*([^\n\r;]+)/i.exec(notes);
   if (!m) return undefined;
   const want = m[1].trim().toLowerCase();
-  return moments.find((x) => x.id.toLowerCase() === want || x.name.toLowerCase() === want || x.name.toLowerCase().startsWith(want));
+  const alias: Record<string, string> = { sermon: 'speech', speech: 'speech', band: 'song', announcements: 'host', communion: 'prayer', benediction: 'sending', house: 'walk', 'house music': 'walk', playback: 'video' };
+  const byWord = (n: string) => n.toLowerCase().split(/\s*\/\s*/).some((part) => part === want || part.startsWith(want));
+  return moments.find((x) => x.id === alias[want]) ?? moments.find((x) => x.id.toLowerCase() === want || x.name.toLowerCase() === want || byWord(x.name));
 }
 
 export interface Decision {

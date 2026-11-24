@@ -47,6 +47,16 @@ describe('roles', () => {
 describe('moments', () => {
   const base = () => show([['Pastor', 'speaker'], ['Lead', 'leadVocal'], ['Kick', 'band'], ['Tracks', 'playback']]);
 
+  it('the band stays under Welcome, Prayer/Communion and Sending; the congregation is heard at Sending', () => {
+    const s0 = show([['Pastor', 'speaker'], ['Host', 'host'], ['Kick', 'band'], ['Keys', 'keys'], ['BV', 'bvs'], ['Aud', 'audience'], ['Spotify', 'playback']]);
+    const open = (id: string) => fireMoment(s0, id).state.channels.slice(0, 7).map((c) => (c.mute ? 0 : 1)).join('');
+    //                           P H K Ky B A S
+    expect(open('host')).toBe('0111000');
+    expect(open('prayer')).toBe('1111000');
+    expect(open('sending')).toBe('1111010');
+    expect(open('walk')).toBe('0000001');
+  });
+
   it('Sermon opens the speaker and closes the band, vocals and playback', () => {
     const r = fireMoment(base(), 'speech');
     const s = r.state;
@@ -186,6 +196,7 @@ describe('ProPresenter rules', () => {
     expect(item('Message')).toBe('speech');
     expect(item('Forever YHWH', song)).toBe('song');
     expect(item('Communion')).toBe('prayer');
+    expect(item('Sending')).toBe('sending');
   });
 
   it('nothing recognisable → no change', () => {

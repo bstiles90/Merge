@@ -51,10 +51,11 @@ editable on the Show page, checked top to bottom, first match wins):
 |---|---|
 | *(off by default)* Slide group **Chorus** / **Bridge** / **Tag** | Chorus / Bridge-Tag |
 | Any song presentation (has Verse / Chorus / Pre-chorus / Bridge / Refrain groups) | Song |
-| Playlist item contains **Message** / **Sermon** | Sermon / Speech |
-| Playlist item contains **Prayer** / **Communion** | Prayer |
+| Playlist item contains **Message** / **Sermon** | Message |
+| Playlist item contains **Prayer** / **Communion** | Prayer / Communion |
+| Playlist item contains **Sending** / **Benediction** | Sending / Benediction |
 | Playlist item contains **Loop** (e.g. Announcement Loop) or **Prelude** | Walk-in / Walk-out |
-| Playlist item contains **Welcome** / **Announcement** | Announcements / Host |
+| Playlist item contains **Welcome** / **Announcement** | Welcome / Host |
 | Playlist item contains **Video**, or matches **Walk\*** | Video / Walk-in |
 | *(off by default)* Media is playing | Video / Playback (motion backgrounds would trigger it) |
 | Nothing matches (countdown, blank) | no change |
@@ -114,11 +115,16 @@ leader):
 |---|---|---|
 | Song | Lead vocal, BVs, band, keys, audience | Speaker, host, playback |
 | Chorus / Bridge-Tag *(off by default)* | as Song; starts from Song's levels + a trim (e.g. BVs +2 dB) | as Song |
-| Sermon / Speech | Speaker | everything else |
-| Prayer | Speaker, keys | the rest |
+| Welcome / Host | Host, band + keys underneath | Speaker, BVs, playback, audience |
+| Prayer / Communion | Speaker **and** host (either may lead), band + keys underneath | BVs, playback, audience |
+| Message | Speaker | everything else |
+| Sending / Benediction | Speaker and host, band + keys underneath, **audience** (congregation reads along) | BVs, playback |
 | Video / Playback | Playback | everything else |
-| Announcements / Host | Host | everything else |
-| Walk-in / Walk-out | Playback | everything else |
+| Walk-in / House music | Playback (Spotify) | everything else |
+
+*(Lead vocal is left alone in the spoken moments: the worship leader sometimes speaks.)*
+The band-under level is learned per moment, separately from the song level: pull the band
+down once during Welcome and Merge remembers it for every Welcome after.
 
 Each role in a moment can be set to **open**, **close** or **leave alone**, and each moment
 has its own fade time. Moments can be switched off.
