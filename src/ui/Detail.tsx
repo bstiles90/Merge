@@ -3,14 +3,14 @@ import { defaultParams, getPlugin, listPlugins } from '../core/plugins';
 import { newId, PALETTE } from '../core/defaults';
 import { useConsole } from '../core/store';
 import type { Channel, InsertSlot, SourceKind } from '../core/types';
-import { fmtDb, fmtHz, fmtMs, Knob, Toggle } from './controls';
-import { EqCurve } from './EqCurve';
+import { fmtMs, Knob, Toggle } from './controls';
+import { ChannelPanel } from './ChannelPanel';
 import { useEngineInputs } from './useEngine';
 import { sendNative, useNative } from '../native/bridge';
 import { usePluginsVersion } from './NativePanel';
 import { createLink, linkInfo, naturalPartner, removeLink, setLinkOption, type LinkOption } from '../core/links';
 
-const MAX_INSERTS = 4;
+const MAX_INSERTS = 8;
 
 export function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
@@ -163,7 +163,7 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
   );
 }
 
-function SourcePicker({ ch }: { ch: Channel }) {
+export function SourcePicker({ ch }: { ch: Channel }) {
   const s = useConsole();
   const inputs = useEngineInputs();
   const set = (patch: Partial<Channel['source']>) => s.updateChannel(ch.id, { source: { ...ch.source, ...patch } });
@@ -212,7 +212,7 @@ const LINK_OPTION_LABELS: [LinkOption, string][] = [
   ['processing', 'HPF/Gate/EQ/Dyn'],
 ];
 
-function LinkSection({ ch }: { ch: Channel }) {
+export function LinkSection({ ch }: { ch: Channel }) {
   const s = useConsole();
   const info = linkInfo(s, ch.id);
   const partnerId = info?.partner ?? naturalPartner(ch.id);
@@ -250,158 +250,6 @@ function LinkSection({ ch }: { ch: Channel }) {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function ChannelDetail({ ch }: { ch: Channel }) {
-  const s = useConsole();
-  const up = (p: Partial<Channel>) => s.updateChannel(ch.id, p);
-  const band = (i: number, p: Partial<Channel['eq']['bands'][number]>) =>
-    up({ eq: { ...ch.eq, bands: ch.eq.bands.map((b, j) => (j === i ? { ...b, ...p } : b)) } });
-  return (
-    <div className="detail">
-      <div className="detail-head" style={{ borderColor: ch.color }}>
-        <input className="name-input" value={ch.name} onChange={(e) => up({ name: e.target.value })} />
-        <span className="hint">{ch.id.toUpperCase()}</span>
-        <ColorPicker value={ch.color} onChange={(color) => up({ color })} />
-      </div>
-
-      <div className="section">
-        <div className="section-title">Input</div>
-        <SourcePicker ch={ch} />
-        <div className="row">
-          <Knob label="Gain" value={ch.gainDb} min={-24} max={48} defaultValue={0} format={fmtDb} onChange={(gainDb) => up({ gainDb })} />
-          <Knob label="Delay" value={ch.delayMs} min={0} max={500} defaultValue={0} format={fmtMs} onChange={(delayMs) => up({ delayMs })} />
-          <div className="col">
-            <Toggle on={ch.phaseInvert} onClick={() => up({ phaseInvert: !ch.phaseInvert })} small>Ø</Toggle>
-            <Toggle kind="rec" on={ch.recArm} onClick={() => up({ recArm: !ch.recArm })} small>REC</Toggle>
-          </div>
-          <div className="col">
-            <Toggle on={ch.inputMode === 'playback'} onClick={() => up({ inputMode: ch.inputMode === 'live' ? 'playback' : 'live' })} small title="Virtual soundcheck: feed this channel from its recorded track">
-              {ch.inputMode === 'live' ? 'LIVE' : 'PLAYBK'}
-            </Toggle>
-            <Toggle kind="safe" on={ch.recallSafe} onClick={() => up({ recallSafe: !ch.recallSafe })} small title="Recall safe: scenes won't change this channel">
-              SAFE
-            </Toggle>
-          </div>
-        </div>
-      </div>
-
-      <LinkSection ch={ch} />
-
-      <div className="section">
-        <div className="section-title">
-          <Toggle small on={ch.hpf.on} onClick={() => up({ hpf: { ...ch.hpf, on: !ch.hpf.on } })}>HPF</Toggle>
-          <Toggle small on={ch.gate.on} onClick={() => up({ gate: { ...ch.gate, on: !ch.gate.on } })}>GATE</Toggle>
-        </div>
-        <div className="row">
-          <Knob label="HPF" value={ch.hpf.freq} min={20} max={600} log defaultValue={80} format={fmtHz} onChange={(freq) => up({ hpf: { ...ch.hpf, freq } })} />
-          <Knob label="Thresh" value={ch.gate.threshold} min={-80} max={0} defaultValue={-50} format={fmtDb} onChange={(threshold) => up({ gate: { ...ch.gate, threshold } })} color="#46a758" />
-          <Knob label="Range" value={ch.gate.rangeDb} min={0} max={80} defaultValue={40} format={fmtDb} onChange={(rangeDb) => up({ gate: { ...ch.gate, rangeDb } })} color="#46a758" />
-          <Knob label="Release" value={ch.gate.release} min={10} max={2000} log defaultValue={150} format={fmtMs} onChange={(release) => up({ gate: { ...ch.gate, release } })} color="#46a758" />
-        </div>
-      </div>
-
-      <div className="section">
-        <div className="section-title">
-          <Toggle small on={ch.eq.on} onClick={() => up({ eq: { ...ch.eq, on: !ch.eq.on } })}>EQ</Toggle>
-          <button className="link-btn" onClick={() => up({ eq: { ...ch.eq, bands: ch.eq.bands.map((b) => ({ ...b, gainDb: 0 })) } })}>flat</button>
-        </div>
-        <EqCurve eq={ch.eq} hpf={ch.hpf} />
-        <div className="eq-bands">
-          {ch.eq.bands.map((b, i) => (
-            <div key={i} className="eq-band">
-              <Knob size={30} label={['LOW', 'LO-MID', 'HI-MID', 'HIGH'][i]} value={b.gainDb} min={-15} max={15} defaultValue={0} format={fmtDb} onChange={(gainDb) => band(i, { gainDb })} color="#ffc53d" />
-              <Knob size={26} value={b.freq} min={20} max={20000} log format={fmtHz} onChange={(freq) => band(i, { freq })} color="#ffc53d" />
-              {b.type === 'peaking' && <Knob size={22} value={b.q} min={0.2} max={10} log defaultValue={1} format={(v) => `Q${v.toFixed(1)}`} onChange={(q) => band(i, { q })} color="#ffc53d" />}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="section">
-        <div className="section-title">
-          <Toggle small on={ch.comp.on} onClick={() => up({ comp: { ...ch.comp, on: !ch.comp.on } })}>COMP</Toggle>
-        </div>
-        <div className="row">
-          <Knob label="Thresh" value={ch.comp.threshold} min={-60} max={0} defaultValue={-18} format={fmtDb} onChange={(threshold) => up({ comp: { ...ch.comp, threshold } })} color="#f76b15" />
-          <Knob label="Ratio" value={ch.comp.ratio} min={1} max={20} log defaultValue={3} format={(v) => `${v.toFixed(1)}:1`} onChange={(ratio) => up({ comp: { ...ch.comp, ratio } })} color="#f76b15" />
-          <Knob label="Attack" value={ch.comp.attack} min={0.5} max={200} log defaultValue={10} format={fmtMs} onChange={(attack) => up({ comp: { ...ch.comp, attack } })} color="#f76b15" />
-          <Knob label="Release" value={ch.comp.release} min={10} max={1000} log defaultValue={120} format={fmtMs} onChange={(release) => up({ comp: { ...ch.comp, release } })} color="#f76b15" />
-          <Knob label="Makeup" value={ch.comp.makeupDb} min={0} max={24} defaultValue={0} format={fmtDb} onChange={(makeupDb) => up({ comp: { ...ch.comp, makeupDb } })} color="#f76b15" />
-        </div>
-      </div>
-
-      <Inserts inserts={ch.inserts} onChange={(inserts) => up({ inserts })} />
-
-      <div className="section">
-        <div className="section-title">Sends</div>
-        <div className="sends">
-          {s.buses.map((b) => {
-            if (b.type === 'mixminus') {
-              const included = ch.mainAssign && b.mixMinusExclude !== ch.id;
-              return (
-                <div key={b.id} className="send mm">
-                  <span className="send-name">{b.name}</span>
-                  <span className="hint">{included ? 'auto (main mix)' : 'excluded'}</span>
-                </div>
-              );
-            }
-            const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
-            const setSend = (p: Partial<typeof snd>) => up({ sends: { ...ch.sends, [b.id]: { ...snd, ...p } } });
-            return (
-              <div key={b.id} className={'send' + (snd.on ? ' on' : '')}>
-                <Toggle small on={snd.on} onClick={() => setSend({ on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 })}>
-                  {b.name}
-                </Toggle>
-                <input
-                  type="range"
-                  min={-60}
-                  max={10}
-                  step={0.5}
-                  value={isFinite(snd.levelDb) ? snd.levelDb : -60}
-                  onChange={(e) => setSend({ levelDb: Number(e.target.value) <= -60 ? -Infinity : Number(e.target.value), on: true })}
-                />
-                <span className="send-db">{isFinite(snd.levelDb) ? fmtDb(snd.levelDb) : '-∞'}</span>
-                <Toggle small on={snd.pre} onClick={() => setSend({ pre: !snd.pre })}>PRE</Toggle>
-              </div>
-            );
-          })}
-        </div>
-        <div className="row">
-          <Toggle on={ch.mainAssign} onClick={() => up({ mainAssign: !ch.mainAssign })} small>MAIN LR</Toggle>
-        </div>
-      </div>
-
-      <div className="section">
-        <div className="section-title">Groups</div>
-        <div className="chips">
-          {s.dcas.map((d) => (
-            <button
-              key={d.id}
-              className={'chip' + (ch.dcas.includes(d.id) ? ' on' : '')}
-              style={ch.dcas.includes(d.id) ? { background: d.color } : undefined}
-              onClick={() => up({ dcas: ch.dcas.includes(d.id) ? ch.dcas.filter((x) => x !== d.id) : [...ch.dcas, d.id] })}
-            >
-              {d.name}
-            </button>
-          ))}
-        </div>
-        <div className="chips">
-          {s.muteGroups.map((g) => (
-            <button
-              key={g.id}
-              className={'chip mg' + (ch.muteGroups.includes(g.id) ? ' on' : '')}
-              onClick={() =>
-                up({ muteGroups: ch.muteGroups.includes(g.id) ? ch.muteGroups.filter((x) => x !== g.id) : [...ch.muteGroups, g.id] })
-              }
-            >
-              {g.name}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -529,7 +377,7 @@ export function Detail() {
   const sel = useConsole((s) => s.selected);
   const ch = useConsole((s) => (sel?.kind === 'channel' ? s.channels.find((c) => c.id === sel.id) : undefined));
   if (!sel) return <div className="detail empty">Select a strip</div>;
-  if (sel.kind === 'channel' && ch) return <ChannelDetail ch={ch} />;
+  if (sel.kind === 'channel' && ch) return <ChannelPanel ch={ch} />;
   if (sel.kind === 'bus') return <BusDetail id={sel.id} />;
   if (sel.kind === 'dca') return <DcaDetail id={sel.id} />;
   if (sel.kind === 'main') return <MainDetail />;

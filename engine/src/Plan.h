@@ -10,7 +10,7 @@ namespace merge
 
 constexpr int kNumChannels = 32;
 constexpr int kNumBuses = 8;
-constexpr int kMaxInserts = 4;
+constexpr int kMaxInserts = 8;
 
 class HostedInsert;
 using IirCoefs = juce::dsp::IIR::Coefficients<float>;

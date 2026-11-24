@@ -401,3 +401,58 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .mini-tag.safe { background: #12a594; }
 .solo-flash { background: var(--solo); border-color: var(--solo); color: #222; font-weight: 800; animation: blink 1s steps(2) infinite; }
 .link-opts { display: flex; flex-wrap: wrap; gap: 3px; }
+
+/* 8-slot rack in the strip */
+.sec-rack { height: 90px; gap: 1px; }
+.rack-slot { height: 10px; line-height: 10px; font-size: 8px; }
+
+/* ---------------- selected-channel panel (tabs) */
+.chpanel { gap: 6px; padding-top: 6px; }
+.chp-head { display: flex; align-items: center; gap: 8px; border-left: 4px solid; padding-left: 8px; }
+.chp-num { min-width: 26px; text-align: center; font-weight: 800; border-radius: 4px; padding: 2px 4px; color: #fff; text-shadow: 0 1px 1px #0008; }
+.chp-head .name-input { flex: 1; width: auto; }
+.chp-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; background: #0d0f11; padding: 3px; border-radius: 6px; position: sticky; top: 0; z-index: 2; }
+.chp-tab { position: relative; padding: 7px 0; font-weight: 800; font-size: 11px; letter-spacing: 0.5px; background: transparent; border-color: transparent; color: var(--dim); }
+.chp-tab.on { background: var(--panel2); border-color: var(--line); color: var(--text); }
+.chp-badge { position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: #46a758; }
+.chp-badge.count { width: auto; height: auto; padding: 0 3px; font-size: 8px; line-height: 11px; border-radius: 6px; background: #6e56cf; color: #fff; }
+.chp-content { flex: 1; }
+.tab-body { display: flex; flex-direction: column; gap: 8px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.tab-body .section { background: #16191d; }
+.in-row { display: flex; align-items: flex-end; justify-content: space-around; padding: 6px 0; }
+.knob-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; }
+.eq-graph { width: 100%; height: 190px; background: #0b0d0f; border-radius: 6px; touch-action: none; display: block; }
+.eq-grid { stroke: #1d2227; stroke-width: 1; }
+.eq-zero { stroke: #3a4048; stroke-width: 1; }
+.eq-axis { fill: #5d6670; font-size: 8px; font-family: ui-monospace, Menlo, monospace; }
+.eq-band-curve { fill: none; stroke-width: 1; opacity: 0.35; }
+.eq-total { fill: none; stroke: #ffc53d; stroke-width: 2; }
+.eq-total.off { stroke: #555; }
+.eq-fill { fill: #ffc53d14; }
+.eq-handle { cursor: grab; }
+.eq-handle circle { stroke: #0b0d0f; stroke-width: 2; }
+.eq-handle.active circle { stroke: #fff; }
+.eq-handle.off circle { opacity: 0.35; }
+.eq-handle text { fill: #111; font-size: 10px; font-weight: 800; pointer-events: none; }
+.eq-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.eq-table th { text-align: left; color: var(--dim); font-weight: 600; font-size: 10px; padding: 2px 4px; }
+.eq-table td { padding: 3px 4px; border-top: 1px solid var(--line); }
+.eq-table tr { cursor: pointer; }
+.eq-table tr.active td { background: #ffffff08; }
+.eq-table select { padding: 2px 4px; font-size: 11px; }
+.band-dot { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center; border-radius: 50%; color: #111; font-weight: 800; font-size: 10px; }
+.dragnum { display: inline-block; min-width: 54px; padding: 2px 6px; border-radius: 3px; background: #0d0f11; font-family: ui-monospace, Menlo, monospace; cursor: ns-resize; touch-action: none; user-select: none; }
+.dragnum:hover { background: #1b1f24; }
+.dragnum-edit { width: 64px; padding: 2px 4px; font-family: ui-monospace, Menlo, monospace; }
+.dyn-block { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.dyn-block:last-child { border-bottom: none; }
+.dyn-top { align-items: stretch; justify-content: center; gap: 14px; }
+.dyn-graph { width: 150px; height: 150px; background: #0b0d0f; border-radius: 6px; }
+.dyn-curve { fill: none; stroke: #f76b15; stroke-width: 2; }
+.dyn-curve.off { stroke: #555; }
+.dyn-thresh { stroke: #f76b1566; stroke-dasharray: 3 3; }
+.gr-meter { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.gr-track { width: 14px; flex: 1; background: #0b0d0f; border-radius: 3px; overflow: hidden; position: relative; }
+.gr-fill { position: absolute; top: 0; left: 0; right: 0; background: #f0a020; height: 0; }
+.gr-val { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #f0a020; }
+.sends-big .send { grid-template-columns: 110px 1fr 44px 36px; }

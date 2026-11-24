@@ -78,7 +78,7 @@ function ProcSection({ ch }: { ch: Channel }) {
 }
 
 function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?: () => void }) {
-  const slots = Array.from({ length: 4 }, (_, i) => inserts?.[i]);
+  const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
   return (
     <div className="sec sec-rack">
       {inserts &&

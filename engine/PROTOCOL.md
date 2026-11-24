@@ -37,7 +37,7 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
       "gate": { "on": false, "threshold": -50, "rangeDb": 40, "attack": 1, "release": 150 },
       "eq": { "on": true, "bands": [{ "type": "lowshelf|peaking|highshelf", "freq": 100, "gainDb": 0, "q": 0.7 }] },
       "comp": { "on": false, "threshold": -18, "ratio": 3, "attack": 10, "release": 120, "makeupDb": 0 },
-      "inserts": [{ "id": "slot", "pluginId": "vst3:…", "bypass": false }],
+      "inserts": [{ "id": "slot", "pluginId": "vst3:…", "bypass": false }],   // up to 8
       "pan": 0,          // -1..1, equal power
       "post": 0.5,       // fader × DCAs × mutes (linear)
       "main": 1,         // assigned to main
