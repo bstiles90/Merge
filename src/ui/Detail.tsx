@@ -35,7 +35,13 @@ function NativeInsertEditor({ ins }: { ins: InsertSlot }) {
         </span>
       </div>
     );
-  if (n.error) return <div className="plugin-editor"><span className="error">{n.error}</span></div>;
+  if (n.error)
+    return (
+      <div className="plugin-editor">
+        <span className="error">{n.error}</span>
+        {n.retry && <button onClick={() => sendNative({ type: 'insert.retry', slotId: ins.id })}>Retry</button>}
+      </div>
+    );
   const shown = n.params.filter((p) => !filter || p.name.toLowerCase().includes(filter.toLowerCase())).slice(0, 40);
   const set = (id: string, value: number) => {
     sendNative({ type: 'insert.param', slotId: ins.id, id, value });

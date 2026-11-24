@@ -30,6 +30,8 @@ export interface NativeInsert {
   hasEditor?: boolean;
   editorOpen?: boolean;
   error?: string;
+  /** held back because Merge got stuck loading it last time: offer Retry */
+  retry?: boolean;
   params: NativeParam[];
 }
 
@@ -216,6 +218,7 @@ function onMessage(m: any) {
       break;
     }
     case 'insert.loading':
+      setInsert(m.slotId, { error: undefined, retry: false });
       setInsert(m.slotId, { loading: true, error: undefined });
       break;
     case 'insert.ready': {
@@ -236,7 +239,7 @@ function onMessage(m: any) {
       patchSlot(m.slotId, { state: m.state });
       break;
     case 'insert.error':
-      setInsert(m.slotId, { loading: false, error: m.message });
+      setInsert(m.slotId, { loading: false, error: m.message, retry: !!m.retry });
       break;
     case 'insert.editor':
       setInsert(m.slotId, { editorOpen: m.open });
