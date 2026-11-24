@@ -1,4 +1,10 @@
 #include <fstream>
+#include <mutex>
+#if defined (__APPLE__) || defined (__linux__)
+ #include <csignal>
+ #include <sys/stat.h>
+ #include <unistd.h>
+#endif
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Engine.h"
 #include "ConsoleWindow.h"
@@ -7,22 +13,54 @@
 namespace merge { int runSelfTest (const juce::StringArray& args); }
 
 
+#if JUCE_MAC
+namespace merge { juce::String macMicrophonePermission(); } // MacSupport.mm
+#endif
+
 namespace
 {
-/** Copies everything written to std::cout/cerr into a log file, so the log exists even when the
-    app is opened from Finder (where the console output goes nowhere). */
+/** Writes everything logged to the log file, and also to the original console output when that is
+    a terminal or a file. Thread-safe (the engine logs from several threads). */
 struct TeeBuf : std::streambuf
 {
-    TeeBuf (std::streambuf* a, std::streambuf* b) : first (a), second (b) {}
+    TeeBuf (std::streambuf* fileBuf, std::streambuf* consoleBuf) : file (fileBuf), console (consoleBuf) {}
     int overflow (int c) override
     {
-        if (c == EOF) return !EOF;
-        const auto r1 = first->sputc ((char) c), r2 = second->sputc ((char) c);
-        return r1 == EOF || r2 == EOF ? EOF : c;
+        if (c == EOF) return 0;
+        const std::lock_guard<std::mutex> g (lock());
+        file->sputc ((char) c);
+        if (console != nullptr) console->sputc ((char) c);
+        return c; // never fail the stream: logging must not break the app
     }
-    int sync() override { const int a = first->pubsync(), b = second->pubsync(); return a == 0 && b == 0 ? 0 : -1; }
-    std::streambuf *first, *second;
+    int sync() override
+    {
+        const std::lock_guard<std::mutex> g (lock());
+        file->pubsync();
+        if (console != nullptr) console->pubsync();
+        return 0;
+    }
+    static std::mutex& lock() { static std::mutex m; return m; }
+    std::streambuf *file, *console;
 };
+
+/** Where the app's console output goes: a terminal / file is safe to write to; when opened from
+    Finder it can be a pipe nobody reads, and writing to it can block the app. */
+juce::String consoleKind (int fd)
+{
+   #if JUCE_MAC || JUCE_LINUX
+    struct stat st {};
+    if (fstat (fd, &st) != 0) return "closed";
+    if (isatty (fd)) return "terminal";
+    if (S_ISREG (st.st_mode)) return "file";
+    if (S_ISFIFO (st.st_mode)) return "pipe";
+    if (S_ISSOCK (st.st_mode)) return "socket";
+    if (S_ISCHR (st.st_mode)) return "device";
+    return "other";
+   #else
+    juce::ignoreUnused (fd);
+    return "none";
+   #endif
+}
 
 juce::File logFolder()
 {
@@ -43,12 +81,22 @@ void startLogFile()
     if (log.existsAsFile()) log.moveFileTo (dir.getChildFile ("merge-previous.log"));
     file.open (log.getFullPathName().toStdString(), std::ios::out | std::ios::trunc);
     if (! file.is_open()) return;
-    outTee = std::make_unique<TeeBuf> (std::cout.rdbuf(), file.rdbuf());
-    errTee = std::make_unique<TeeBuf> (std::cerr.rdbuf(), file.rdbuf());
+   #if JUCE_MAC || JUCE_LINUX
+    signal (SIGPIPE, SIG_IGN); // a closed console pipe must never kill the app
+   #endif
+    const auto out = consoleKind (1);
+    const bool echo = out == "terminal" || out == "file";
+    outTee = std::make_unique<TeeBuf> (file.rdbuf(), echo ? std::cout.rdbuf() : nullptr);
+    errTee = std::make_unique<TeeBuf> (file.rdbuf(), echo ? std::cerr.rdbuf() : nullptr);
     std::cout.rdbuf (outTee.get());
     std::cerr.rdbuf (errTee.get());
     std::cout << "Merge " << MERGE_ENGINE_VERSION << " started " << juce::Time::getCurrentTime().toString (true, true) << " ("
               << juce::SystemStats::getOperatingSystemName() << ")" << std::endl;
+    std::cout << "launch: console output is " << out << (echo ? " (logging there too)" : " (log file only)")
+              << ", working folder " << juce::File::getCurrentWorkingDirectory().getFullPathName() << std::endl;
+   #if JUCE_MAC
+    std::cout << "macOS microphone permission for Merge: " << merge::macMicrophonePermission() << std::endl;
+   #endif
 }
 } // namespace
 

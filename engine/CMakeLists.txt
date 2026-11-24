@@ -54,6 +54,7 @@ target_sources(MergeEngine PRIVATE
   src/PlanningCenter.cpp)
 if(APPLE)
   target_sources(MergeEngine PRIVATE src/MacSupport.mm)
+  target_link_libraries(MergeEngine PRIVATE "-framework AVFoundation")
 endif()
 
 target_compile_definitions(MergeEngine PRIVATE

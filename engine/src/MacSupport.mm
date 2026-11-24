@@ -2,6 +2,8 @@
 // would otherwise "App Nap" it and throttle the web view's timers, delaying console updates.
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+#import <AVFoundation/AVFoundation.h>
+#include <juce_core/juce_core.h>
 
 namespace merge
 {
@@ -40,6 +42,21 @@ void macKeepAwake (void* windowNSView)
     }
     if (windowNSView != nullptr)
         relaxWebViews ((NSView*) windowNSView);
+}
+
+juce::String macMicrophonePermission()
+{
+    if (@available (macOS 10.14, *))
+    {
+        switch ([AVCaptureDevice authorizationStatusForMediaType: AVMediaTypeAudio])
+        {
+            case AVAuthorizationStatusAuthorized:    return "allowed";
+            case AVAuthorizationStatusDenied:        return "DENIED (System Settings > Privacy & Security > Microphone)";
+            case AVAuthorizationStatusRestricted:    return "restricted";
+            case AVAuthorizationStatusNotDetermined: return "not asked yet";
+        }
+    }
+    return "unknown";
 }
 
 } // namespace merge
