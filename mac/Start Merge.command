@@ -16,12 +16,13 @@ if [ ! -d node_modules ]; then
 fi
 
 ENGINE="engine/build/MergeEngine_artefacts/Release/Merge Engine.app"
+[ -d "$ENGINE" ] || ENGINE="/Applications/Merge Engine.app"   # downloaded copy
 if [ -d "$ENGINE" ]; then
   echo "Starting Merge Engine (native audio + plugins)…"
   open "$ENGINE"
 else
   echo "Native engine not built yet — the console will use the browser engine."
-  echo "(Double-click 'Build Engine.command' to build it.)"
+  echo "(Download it from GitHub Actions into Applications, or double-click 'Build Engine.command'.)"
 fi
 
 (sleep 3; open "http://localhost:5173") &

@@ -42,7 +42,22 @@ jobs:
         shell: bash
         run: '"engine/build/MergeEngine_artefacts/Release/Merge Engine.exe" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"'
 
+      # Zip the .app with ditto so it keeps its executable bit and code signature
+      # (artifact zips otherwise strip permissions and the app won't open)
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "engine/build/MergeEngine_artefacts/Release/Merge Engine.app" "dist/Merge Engine (macOS).zip"
+
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: Merge-Engine-macOS
+          path: dist/
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os != 'macOS'
         with:
           name: merge-engine-${{ runner.os }}
           path: |
