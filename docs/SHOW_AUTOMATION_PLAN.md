@@ -53,7 +53,7 @@ editable on the Show page, checked top to bottom, first match wins):
 | Any song presentation (has Verse / Chorus / Pre-chorus / Bridge / Refrain groups) | Song |
 | Playlist item contains **Message** / **Sermon** | Sermon / Speech |
 | Playlist item contains **Prayer** / **Communion** | Prayer |
-| Playlist item contains **Loop** (e.g. Announcement Loop) | Walk-in / Walk-out |
+| Playlist item contains **Loop** (e.g. Announcement Loop) or **Prelude** | Walk-in / Walk-out |
 | Playlist item contains **Welcome** / **Announcement** | Announcements / Host |
 | Playlist item contains **Video**, or matches **Walk\*** | Video / Walk-in |
 | *(off by default)* Media is playing | Video / Playback (motion backgrounds would trigger it) |
@@ -62,6 +62,11 @@ editable on the Show page, checked top to bottom, first match wins):
 - Songs are checked before playlist-item names, so a song titled "Welcome Holy Spirit" is
   still a song. (At our church, playlist item titles are synced from Planning Center element
   titles: "Message", "Welcome", song titles.)
+- **Prelude with a live band entry** (our church: house music from Spotify, then the band
+  kicks in before service): the Prelude presentation gets a second slide, "Band", whose notes
+  say `merge: Song`. The ProPresenter operator clicks it when the band starts: Spotify fades
+  out and the band opens. Later option: detect the band starting by signal on DI channels
+  (keys, bass, tracks) that don't pick up the room.
 - Matching: contains (case doesn't matter), or a pattern with `*` wildcards. Rule fields:
   playlist item, presentation name, slide group, "any song", "media playing".
 - A **rule tester** on the Show page tries the rules without ProPresenter.

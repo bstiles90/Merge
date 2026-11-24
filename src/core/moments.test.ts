@@ -177,6 +177,9 @@ describe('ProPresenter rules', () => {
     const item = (name: string, groups: [string, number][] = [['Slides', 2]]) => decideMoment(contextFromProPresenter(raw(name, groups, 0)), a)?.moment.id;
     const song: [string, number][] = [['Intro', 1], ['Verse 1', 2], ['Chorus 1', 2], ['Turnaround', 1], ['Refrain', 1], ['Bridge', 2], ['Ending', 1]];
     expect(item('Announcement Loop')).toBe('walk');
+    expect(item('Prelude')).toBe('walk'); // house music first...
+    // ...then the ProPresenter operator clicks the Prelude's "Band" slide (notes: merge: Song)
+    expect(decideMoment(contextFromProPresenter(raw('Prelude', [['House Music', 1], ['Band', 1]], 1, { 1: 'merge: Song' })), a)?.moment.id).toBe('song');
     expect(item('Welcome')).toBe('host');
     expect(item('Here I Am To Worship', song)).toBe('song');
     expect(item('Prayer + Giving Moment')).toBe('prayer');
