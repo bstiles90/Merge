@@ -73,8 +73,11 @@ juce::File logFolder()
 
 void startLogFile()
 {
-    static std::ofstream file;
-    static std::unique_ptr<TeeBuf> outTee, errTee;
+    // deliberately never destroyed: std::cout is flushed during exit, after function statics are gone,
+    // and it must still have a valid buffer then (destroying these crashed Merge on quit)
+    static auto& file = *new std::ofstream();
+    static TeeBuf* outTee = nullptr;
+    static TeeBuf* errTee = nullptr;
     const auto dir = logFolder();
     dir.createDirectory();
     const auto log = dir.getChildFile ("merge.log");
@@ -86,10 +89,10 @@ void startLogFile()
    #endif
     const auto out = consoleKind (1);
     const bool echo = out == "terminal" || out == "file";
-    outTee = std::make_unique<TeeBuf> (file.rdbuf(), echo ? std::cout.rdbuf() : nullptr);
-    errTee = std::make_unique<TeeBuf> (file.rdbuf(), echo ? std::cerr.rdbuf() : nullptr);
-    std::cout.rdbuf (outTee.get());
-    std::cerr.rdbuf (errTee.get());
+    outTee = new TeeBuf (file.rdbuf(), echo ? std::cout.rdbuf() : nullptr);
+    errTee = new TeeBuf (file.rdbuf(), echo ? std::cerr.rdbuf() : nullptr);
+    std::cout.rdbuf (outTee);
+    std::cerr.rdbuf (errTee);
     std::cout << "Merge " << MERGE_ENGINE_VERSION << " started " << juce::Time::getCurrentTime().toString (true, true) << " ("
               << juce::SystemStats::getOperatingSystemName() << ")" << std::endl;
     std::cout << "launch: console output is " << out << (echo ? " (logging there too)" : " (log file only)")
