@@ -543,3 +543,6 @@ button.go.small { padding: 1px 10px; margin-left: 4px; }
 .bus-outputs { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 3px 14px; }
 .bus-out-row .rg-num { width: 18px; text-align: right; }
 .bus-out-row .bus-name { width: 130px; }
+.sec-src.pickable { position: relative; cursor: pointer; }
+.sec-src.pickable:hover { outline: 1px solid var(--accent); border-radius: 3px; }
+.sec-src .src-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
