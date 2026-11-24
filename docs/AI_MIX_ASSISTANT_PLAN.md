@@ -153,6 +153,59 @@ copyright). Merge only analyses files the user provides, and the AI only reads
 - Best results come from both: Claude's knowledge decides what to change and in what
   order; the reference sets exactly how much.
 
+## 2c. What counts as "good": targets, not rules
+
+The analyzer **describes**; it never judges. "+4 dB at 3 kHz on the lead vocal" is a fact.
+Whether that's a problem depends entirely on what we're aiming for, so every judgement is
+made against a target.
+
+**Hard limits (objectively wrong, using your numbers):** clipping / true-peak overs, program
+loudness far from the target (−11 LUFS), phase problems that collapse in mono, a channel
+suddenly far louder or quieter than it was (usually a mistake). Everything else is taste.
+
+**Where targets come from (strongest first):**
+1. **House sound:** your own best mixes. Mark a recorded service as "this was great" and
+   Merge measures it into a per-instrument profile. "Good" then means "close to what you
+   said was good". If your mixes always have a bright, forward vocal, that's the target,
+   and removing it would be the mistake.
+2. **Reference songs** chosen per style ("this one for the big anthems").
+3. **House rules:** a short plain-English list the AI reads before every decision, editable
+   any time. E.g. "Lead vocal stays forward and bright; the 3 kHz presence is intentional",
+   "Don't touch the drum bus compression", "Keys sit under the guitars".
+4. **General style knowledge:** weakest. Used only when there's nothing else, and the AI
+   says so.
+
+**Targets are ranges, not points:** per instrument and per band, learned from the spread
+across your good mixes (e.g. "lead vocal 3 kHz area: +2 to +5 dB"). Inside the range,
+nothing is flagged.
+
+**Context:** the same number means different things on different sources (a 3 kHz lift
+helps a lead vocal cut in a dense section; on an acoustic it may be harsh). The AI weighs
+what the source is, what else lives in that band, and the song section.
+
+**Ask before assuming:** outside the range, the AI asks first, especially early on:
+"Lead vocal has +4 dB at 3 kHz, above your house sound. Intentional? **Keep it** /
+**Bring it in line**". *Keep it* widens the target, and one click turns it into a house rule,
+so it stops asking about things you've already decided.
+
+### Reference tags: teaching it your vocabulary
+When adding a reference (song or your own mix), tag what you like and don't, in your own
+words: "Love the vocal: upfront, bright, never harsh. Pads huge and wide. Kick a bit much."
+Tags are stored next to the measurements, per instrument. Across several references Merge
+learns what *your* words mean in numbers. E.g. your "bright, never harsh" might be "+3 to
++5 dB around 3 kHz with nothing poking out at 6–8 kHz". So "make the vocal brighter" turns
+into a measurable target that comes from songs you chose. A "don't like" tag ("kick a bit
+much") excludes that part of the reference from the target.
+
+### Optional later experiment: a second opinion from an audio-capable model
+Some other providers' models (e.g. some ChatGPT models) can listen to an audio file and
+describe it. They give impressions ("bright, airy, big reverb"), not reliable measurements,
+so they can't be the source of truth. They could add a "second opinion" description to a
+reference, shown next to your tags and the measurements, and we could check whether it
+agrees with what was measured. It would mean another account, key and bill, plus uploading
+the reference audio to that provider (check their terms). The planner interface allows it,
+but it's not part of the core plan.
+
 ## 3. Live-show safety (non-negotiable)
 
 1. **Propose → review → apply** by default. Changes appear as a diff ("Vocal EQ +1.8 dB @
@@ -183,7 +236,9 @@ copyright). Merge only analyses files the user provides, and the AI only reads
 **Phase 1: Ears (no AI yet)**
 - Engine analysis features plus an **Analyzer** page: spectrum vs reference overlay,
   masking heat-map, loudness/dynamics readouts
-- Reference library: drop a song, save a style profile
+- Reference library: drop a song, save a style profile, add your **reference tags**
+- **House sound:** mark your best recorded services as "good" to build per-instrument
+  target ranges; **house rules** list
 - **"Match to reference"** button for the main bus (match EQ + loudness target) using the
   solvers. Valuable by itself.
 
@@ -206,6 +261,8 @@ copyright). Merge only analyses files the user provides, and the AI only reads
 **Phase 5: Learns your taste**
 - Remember accepted and rejected suggestions; build *your* style profiles from your best
   mixes. "Make it sound like last Easter."
+- "Keep it" answers widen the house-sound ranges and become house rules; tags across
+  references build your personal vocabulary ("bright", "warm", "upfront" → numbers)
 
 ## 5. How we'll know it works
 - **Test set:** recorded multitracks (our own recorder) plus reference profiles. Score
