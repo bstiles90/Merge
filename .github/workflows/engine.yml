@@ -21,7 +21,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libxcomposite-dev libfreetype-dev libgl-dev xvfb ninja-build
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev libxcomposite-dev libfreetype-dev libfontconfig1-dev libgl-dev pkg-config xvfb ninja-build
 
       - name: Configure
         run: cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release ${{ runner.os == 'Linux' && '-G Ninja' || '' }}
