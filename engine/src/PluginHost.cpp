@@ -242,6 +242,9 @@ void PluginHost::startScan (bool rescanAll)
     for (auto* f : formats.getFormats())
     {
         if (! f->canScanForPlugins()) continue;
+        // scanning chosen folders: skip formats that aren't folder-based (Audio Units are
+        // system-registered components, so a folder means nothing to them)
+        if (scanFolders && f->getDefaultLocationsToSearch().getNumPaths() == 0) continue;
         const auto paths = scanFolders ? *scanFolders : f->getDefaultLocationsToSearch();
         for (auto& id : f->searchPathsForPlugins (paths, true, true))
         {
