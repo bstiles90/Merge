@@ -22,6 +22,8 @@ export interface NativeParam {
 }
 
 export interface NativeInsert {
+  /** instantiating: licence check / activation dialog may be in progress */
+  loading?: boolean;
   name?: string;
   latency?: number;
   hasEditor?: boolean;
@@ -152,8 +154,11 @@ function onMessage(m: any) {
       if (m.pdc !== useNative.getState().pdc) useNative.setState({ pdc: m.pdc });
       break;
     }
+    case 'insert.loading':
+      setInsert(m.slotId, { loading: true, error: undefined });
+      break;
     case 'insert.ready': {
-      setInsert(m.slotId, { name: m.name, latency: m.latency, hasEditor: m.hasEditor, params: m.params, error: undefined });
+      setInsert(m.slotId, { loading: false, name: m.name, latency: m.latency, hasEditor: m.hasEditor, params: m.params, error: undefined });
       const slot = findSlot(stateOnly(useConsole.getState()), m.slotId);
       if (slot?.state) sendNative({ type: 'insert.setState', slotId: m.slotId, state: slot.state });
       if (slot && slot.pluginName !== m.name) patchSlot(m.slotId, { pluginName: m.name });
@@ -170,7 +175,7 @@ function onMessage(m: any) {
       patchSlot(m.slotId, { state: m.state });
       break;
     case 'insert.error':
-      setInsert(m.slotId, { error: m.message });
+      setInsert(m.slotId, { loading: false, error: m.message });
       break;
     case 'insert.editor':
       setInsert(m.slotId, { editorOpen: m.open });

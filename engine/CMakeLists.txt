@@ -18,7 +18,20 @@ juce_add_gui_app(MergeEngine
   PRODUCT_NAME "Merge Engine"
   COMPANY_NAME "Merge"
   BUNDLE_ID "audio.merge.engine"
-  VERSION ${PROJECT_VERSION})
+  VERSION ${PROJECT_VERSION}
+  # Audio-interface inputs on macOS need the microphone permission
+  MICROPHONE_PERMISSION_ENABLED TRUE
+  MICROPHONE_PERMISSION_TEXT "Merge Engine needs access to your audio interface inputs."
+  # Hosting third-party plugins (incl. iLok/PACE, Waves, NI, UA protected ones) from a signed,
+  # notarized app: allow loading code signed by other vendors, and the JIT / executable-memory
+  # exceptions some copy protection needs. The App Sandbox must stay off (iLok service, USB keys).
+  HARDENED_RUNTIME_ENABLED TRUE
+  HARDENED_RUNTIME_OPTIONS
+    com.apple.security.cs.disable-library-validation
+    com.apple.security.cs.allow-jit
+    com.apple.security.cs.allow-unsigned-executable-memory
+    com.apple.security.device.audio-input
+  APP_SANDBOX_ENABLED FALSE)
 
 target_sources(MergeEngine PRIVATE
   src/Main.cpp

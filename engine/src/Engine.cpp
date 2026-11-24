@@ -38,6 +38,7 @@ void VirtualDevice::run()
 Engine::Engine()
 {
     plugins.send = [this] (const juce::var& m) { send (m); };
+    plugins.onInstancesChanged = [this] { if (! lastPlan.isVoid()) applyPlan (lastPlan); };
     ws.onMessage = [this] (int id, const juce::String& t) { handleMessage (id, t); };
     ws.onConnect = [this] (int id) {
         send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION } }), id);
@@ -124,7 +125,7 @@ void Engine::send (const juce::var& msg, int clientId)
     else ws.broadcast (text);
 }
 
-void Engine::applyPlan (const juce::var& planJson)
+void Engine::applyPlan (juce::var planJson)
 {
     lastPlan = planJson;
     std::vector<InsertSpec> specs;

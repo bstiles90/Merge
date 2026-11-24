@@ -61,6 +61,7 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 | `meters` (30 Hz) | `ch[[peak, grDb]×32], bus[[l,r]×8], main[l,r], mon[l,r], loud[momentary, shortTerm, integrated] (LUFS or null), pdc` (samples) |
 | `plugins` | `list[{id, name, vendor, format, category, version, file}], scanning, blacklisted[]` |
 | `plugins.scan` | `progress, file, format` |
+| `insert.loading` | `slotId, pluginId` — instantiating asynchronously (licence check / activation dialog may be showing) |
 | `insert.ready` | `slotId, pluginId, name, latency, hasEditor, channels, params[{id, name, value, text, label, steps}]` |
 | `insert.params` | `slotId, params[…]` — changed values (plugin GUI moves, automation, restores) |
 | `insert.state` | `slotId, state` — base64, sent at most once a second while it changes; store it in the show |

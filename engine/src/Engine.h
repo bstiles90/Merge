@@ -53,7 +53,7 @@ private:
     void timerCallback() override;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
-    void applyPlan (const juce::var& planJson);
+    void applyPlan (juce::var planJson); // by value: callers pass lastPlan itself, and var self-assignment frees it
     void send (const juce::var& msg, int clientId = 0);
     juce::var deviceInfo();
     void setDevice (const juce::var& msg);

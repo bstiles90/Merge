@@ -26,7 +26,14 @@ function NativeInsertEditor({ ins }: { ins: InsertSlot }) {
   const connected = useNative((st) => st.status === 'connected');
   const [filter, setFilter] = useState('');
   if (!connected) return <div className="plugin-editor"><span className="hint">Connect the native engine (I/O page) to load this plugin.</span></div>;
-  if (!n) return <div className="plugin-editor"><span className="hint">Loading…</span></div>;
+  if (!n || n.loading)
+    return (
+      <div className="plugin-editor">
+        <span className="hint">
+          Loading{n?.loading ? ' — checking licence' : '…'}. If the plugin needs activation (iLok, Waves, NI…), its window opens on the engine computer.
+        </span>
+      </div>
+    );
   if (n.error) return <div className="plugin-editor"><span className="error">{n.error}</span></div>;
   const shown = n.params.filter((p) => !filter || p.name.toLowerCase().includes(filter.toLowerCase())).slice(0, 40);
   const set = (id: string, value: number) => {
@@ -80,13 +87,14 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
         const desc = getPlugin(ins.pluginId);
         const isNative = !ins.pluginId.startsWith('builtin.');
         const err = errors[ins.id]?.error;
+        const loading = errors[ins.id]?.loading;
         return (
           <div key={ins.id} className={'insert' + (ins.bypass ? ' bypassed' : '') + (err ? ' error' : '')}>
             <div className="insert-row">
               <span className="insert-idx">{i + 1}</span>
               <button className="insert-name" onClick={() => setOpen(open === ins.id ? null : ins.id)}>
                 {desc?.name ?? ins.pluginName ?? ins.pluginId}
-                <span className="hint"> {desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : isNative ? 'VST3 · not loaded' : 'missing'}</span>
+                <span className="hint"> {loading ? 'loading…' : desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : isNative ? 'VST3 · not loaded' : 'missing'}</span>
               </button>
               <Toggle small on={ins.bypass} onClick={() => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))}>
                 BYP

@@ -20,6 +20,8 @@ The native audio engine for Merge. Built in C++ with [JUCE 8](https://juce.com),
   - parameters, saved state (stored in the show file)
   - plugin delay compensation across channels, kept when a plugin is bypassed
 
+Licensed plugins (iLok/PACE, Waves, NI, UA…) need nothing special from the host beyond the right macOS entitlements and non-blocking loading. See [LICENSING.md](LICENSING.md) for the details and a test checklist.
+
 The console UI (the React app in the repo root) connects over a localhost WebSocket.
 See [PROTOCOL.md](PROTOCOL.md). The UI resolves all console logic and sends a compiled
 mix plan; the engine renders it.

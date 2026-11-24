@@ -128,6 +128,10 @@ void testPluginHosting (const juce::String& pluginPath)
     };
     const juce::String ins = "[{\"id\":\"slot1\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]";
     e.handleMessage (0, planMsg (tonePlan (2, ins)));
+    bool sawLoading = false;
+    for (auto& v : sent) sawLoading = sawLoading || v["type"] == "insert.loading";
+    check (sawLoading, "plugin loads asynchronously (licence checks can't stall the engine)");
+    for (int i = 0; i < 200 && e.host().numLoading() > 0; ++i) pump (10);
 
     juce::var ready;
     for (auto& v : sent) if (v["type"] == "insert.ready") ready = v;
@@ -174,6 +178,7 @@ void testPluginHosting (const juce::String& pluginPath)
     // missing plugin reports an error instead of failing the plan
     sent.clear();
     e.handleMessage (0, planMsg (tonePlan (1, R"([{"id":"slotX","pluginId":"vst3:not-installed","bypass":false}])")));
+    pump (50);
     bool err = false;
     for (auto& v : sent) err = err || (v["type"] == "insert.error" && v["slotId"] == "slotX");
     check (err, "missing plugin reported as insert.error");

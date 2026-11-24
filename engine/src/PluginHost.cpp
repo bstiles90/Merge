@@ -315,11 +315,16 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         auto existing = slots.find (s.slotId);
         if (existing != slots.end())
         {
+            existing->second.bypass = s.bypass;
             if (existing->second.insert) existing->second.insert->bypass = s.bypass;
             continue;
         }
         changed = true;
-        Slot slot { s.pluginId, s.strip, nullptr, nullptr, 0 };
+        Slot slot;
+        slot.pluginId = s.pluginId;
+        slot.strip = s.strip;
+        slot.bypass = s.bypass;
+        slot.generation = nextGeneration++;
         const auto desc = findDescription (s.pluginId);
         if (! desc)
         {
@@ -329,24 +334,44 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
             slots[s.slotId] = std::move (slot);
             continue;
         }
-        juce::String err;
-        auto inst = formats.createPluginInstance (*desc, sampleRate, maxBlock, err);
-        if (! inst)
-        {
-            send (obj ({ { "type", "insert.error" }, { "slotId", s.slotId }, { "pluginId", s.pluginId }, { "message", err } }));
-            slots[s.slotId] = std::move (slot);
-            continue;
-        }
-        const int stripChannels = s.strip.startsWith ("ch") ? 1 : 2;
-        slot.insert = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
-        slot.insert->bypass = s.bypass;
-        auto& p = slot.insert->plugin();
-        send (obj ({ { "type", "insert.ready" }, { "slotId", s.slotId }, { "pluginId", s.pluginId }, { "name", p.getName() },
-                     { "latency", slot.insert->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", slot.insert->getPluginChannels() },
-                     { "params", slot.insert->describeParams() } }));
-        slots[s.slotId] = std::move (slot);
+        // Load asynchronously: licence checks (iLok/PACE, Waves, NI, UA...) can take seconds or open an
+        // activation window, and must never stall the engine. Plugins are always created and shown on
+        // the message thread, which is what copy-protection dialogs expect.
+        slot.loading = true;
+        const auto slotId = s.slotId, pluginId = s.pluginId, strip = s.strip;
+        const auto gen = slot.generation;
+        slots[slotId] = std::move (slot);
+        send (obj ({ { "type", "insert.loading" }, { "slotId", slotId }, { "pluginId", pluginId } }));
+        formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
+            [this, slotId, pluginId, strip, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
+                auto it = slots.find (slotId);
+                if (it == slots.end() || it->second.generation != gen) return; // slot removed/replaced meanwhile
+                auto& sl = it->second;
+                sl.loading = false;
+                if (! inst)
+                {
+                    send (obj ({ { "type", "insert.error" }, { "slotId", slotId }, { "pluginId", pluginId },
+                                 { "message", err.isNotEmpty() ? err : juce::String ("Plugin failed to load (check its licence / authorisation)") } }));
+                    return;
+                }
+                const int stripChannels = strip.startsWith ("ch") ? 1 : 2;
+                sl.insert = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
+                sl.insert->bypass = sl.bypass;
+                auto& p = sl.insert->plugin();
+                send (obj ({ { "type", "insert.ready" }, { "slotId", slotId }, { "pluginId", pluginId }, { "name", p.getName() },
+                             { "latency", sl.insert->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", sl.insert->getPluginChannels() },
+                             { "params", sl.insert->describeParams() } }));
+                if (onInstancesChanged) onInstancesChanged();
+            });
     }
     return changed;
+}
+
+int PluginHost::numLoading() const
+{
+    int n = 0;
+    for (auto& [id, s] : slots) n += s.loading ? 1 : 0;
+    return n;
 }
 
 std::shared_ptr<HostedInsert> PluginHost::find (const juce::String& slotId) const
@@ -397,6 +422,12 @@ void PluginHost::openEditor (const juce::String& slotId)
     if (it == slots.end() || ! it->second.insert) return;
     auto& slot = it->second;
     if (slot.editor) { slot.editor->toFront (true); return; }
+    if (juce::Desktop::getInstance().getDisplays().getPrimaryDisplay() == nullptr)
+    {
+        // e.g. a headless machine or a lost display connection: never crash the audio engine over a window
+        send (obj ({ { "type", "error" }, { "message", "No display available to show the plugin window on the engine computer" } }));
+        return;
+    }
     auto& p = slot.insert->plugin();
     auto* ed = p.hasEditor() ? p.createEditorIfNeeded() : nullptr;
     if (! ed) ed = new juce::GenericAudioProcessorEditor (p);

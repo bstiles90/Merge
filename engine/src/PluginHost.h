@@ -80,6 +80,10 @@ public:
 
     /** Outgoing messages to the UI. */
     std::function<void (const juce::var&)> send;
+    /** Called when an asynchronously loading plugin becomes ready (the engine re-applies the plan). */
+    std::function<void()> onInstancesChanged;
+    /** Number of plugins still loading (licence checks, activation dialogs). */
+    int numLoading() const;
 
     juce::KnownPluginList& getKnownList() { return known; }
     static juce::String pluginIdFor (const juce::PluginDescription&);
@@ -97,7 +101,11 @@ private:
         std::shared_ptr<HostedInsert> insert;
         std::unique_ptr<juce::DocumentWindow> editor;
         int lastStateSent = 0;
+        uint64_t generation = 0; // distinguishes a re-created slot from a stale async load
+        bool loading = false;
+        bool bypass = false;
     };
+    uint64_t nextGeneration = 1;
 
     juce::AudioPluginFormatManager formats;
     juce::KnownPluginList known;
