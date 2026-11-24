@@ -130,11 +130,10 @@ describe('scenes', () => {
 });
 
 describe('show files', () => {
-  it('older shows without the limiter get the default', () => {
+  it('older shows get defaults for fields added later', () => {
     const s = defaultState();
-    const { limiter: _l, ...oldMain } = s.main;
-    const text = serializeShow({ ...s, main: oldMain as typeof s.main });
-    expect(parseShow(text).main.limiter).toEqual({ on: true, ceilingDb: -1, releaseMs: 100 });
+    const { truePeakCeiling: _t, ...old } = s;
+    expect(parseShow(serializeShow(old as typeof s)).truePeakCeiling).toBe(-1);
   });
 
   it('round-trip keeps -inf faders', () => {

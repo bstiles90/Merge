@@ -102,7 +102,7 @@ float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }
 
 void testTruePeak()
 {
-    std::cout << "True-peak limiter" << std::endl;
+    std::cout << "True-peak metering" << std::endl;
     // fs/4 sine at 45 deg phase: every sample is +-0.707 (-3 dBFS) but the waveform peaks at 1.0 (0 dBTP)
     auto isp = [] (int i, float amp) { return amp * (float) std::sin (juce::MathConstants<double>::halfPi * i + juce::MathConstants<double>::pi / 4); };
     TruePeakDetector det;
@@ -116,64 +116,17 @@ void testTruePeak()
     check (near (dbOf (samplePeak), -3.01, 0.05) && near (dbOf (tp), 0.0, 0.3), "detector finds inter-sample peak a sample meter misses",
            "sample " + juce::String (dbOf (samplePeak), 2) + " dBFS, true " + juce::String (dbOf (tp), 2) + " dBTP");
 
-    const float ceiling = juce::Decibels::decibelsToGain (-1.0f);
-    auto runLimiter = [&] (std::function<float (int)> sig, int len, bool enabled, float& outTp, float& gr, std::vector<float>* out = nullptr) {
-        TruePeakLimiter lim;
-        lim.prepare (kSr);
-        TruePeakDetector meter;
-        outTp = 0;
-        gr = 0;
-        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
-        for (int start = 0; start < len; start += kBlock)
-        {
-            for (int i = 0; i < kBlock; ++i) l[(size_t) i] = r[(size_t) i] = sig (start + i);
-            lim.process (l.data(), r.data(), kBlock, enabled, ceiling, 100.0f);
-            gr = juce::jmin (gr, lim.takeGainReductionDb());
-            for (int i = 0; i < kBlock; ++i)
-            {
-                outTp = juce::jmax (outTp, meter.process (l[(size_t) i]));
-                if (out) out->push_back (l[(size_t) i]);
-            }
-        }
-        return lim.getLatency();
-    };
-
-    float outTp, gr;
-    runLimiter ([&] (int i) { return isp (i, 1.0f); }, 48000, true, outTp, gr);
-    check (dbOf (outTp) <= -0.95f && dbOf (outTp) >= -1.6f, "limits true peak to the -1 dBTP ceiling (samples were only -3 dBFS)",
-           juce::String (dbOf (outTp), 2) + " dBTP out, GR " + juce::String (gr, 2) + " dB");
-
-    // sudden loud burst after silence: look-ahead must catch the very first peak
-    runLimiter ([&] (int i) { return i < 24000 ? 0.0f : 2.0f * (float) std::sin (juce::MathConstants<double>::twoPi * 997.0 * i / kSr); }, 48000, true, outTp, gr);
-    check (dbOf (outTp) <= -0.95f, "no overshoot on a sudden +6 dBFS burst (look-ahead)", juce::String (dbOf (outTp), 2) + " dBTP");
-
-    // transparent below the ceiling: output == input delayed by the fixed latency
-    std::vector<float> out;
-    auto quiet = [] (int i) { return 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 440.0 * i / kSr); };
-    const int lat = runLimiter (quiet, 9600, true, outTp, gr, &out);
-    float maxDiff = 0;
-    for (int i = lat; i < (int) out.size(); ++i) maxDiff = juce::jmax (maxDiff, std::abs (out[(size_t) i] - quiet (i - lat)));
-    check (maxDiff < 1e-5f && gr == 0.0f, "transparent below the ceiling (pure delay)", "latency " + juce::String (lat) + " samples = " + juce::String (1000.0 * lat / kSr, 2) + " ms");
-
-    // in the mixer: a hot program is held under the ceiling; with the limiter off it isn't
+    // in the mixer: the program true-peak meter reads the final output, and nothing limits it
     Mixer m;
     m.prepare (kSr, kBlock, 0, 4);
-    auto hot = [] (bool on) {
-        auto plan = tonePlan (1);
-        plan["channels"][0].getDynamicObject()->setProperty ("gain", 16.0); // tone -18 dBFS +24 dB -> ~+3 dBFS
-        auto* lim = new juce::DynamicObject();
-        lim->setProperty ("on", on);
-        lim->setProperty ("ceilingDb", -1.0);
-        plan["main"].getDynamicObject()->setProperty ("limiter", juce::var (lim));
-        return plan;
-    };
-    m.setPlan (parsePlan (hot (true), kSr, nullptr, nullptr));
+    auto plan = tonePlan (1);
+    plan["channels"][0].getDynamicObject()->setProperty ("gain", 16.0); // tone -18 dBFS +24 dB -> ~+3 dBFS
+    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
     auto p = render (m, 300);
-    check (dbOf (m.mainTruePeak[0].exchange (0)) <= -0.9f && p[0] <= ceiling, "mixer: hot program held under -1 dBTP",
-           "sample peak " + juce::String (dbOf (p[0]), 2) + " dBFS, GR " + juce::String (m.limiterGrDb.exchange (0), 1) + " dB");
-    m.setPlan (parsePlan (hot (false), kSr, nullptr, nullptr));
-    p = render (m, 300);
-    check (dbOf (p[0]) > 2.0f, "mixer: limiter off passes the hot signal (switch works)", juce::String (dbOf (p[0]), 2) + " dBFS");
+    const float meterTp = m.mainTruePeak[0].exchange (0);
+    check (dbOf (p[0]) > 2.5f, "program is not limited by the engine (left to master-bus plugins)", juce::String (dbOf (p[0]), 2) + " dBFS");
+    check (dbOf (meterTp) >= dbOf (p[0]) - 0.05f && dbOf (meterTp) < dbOf (p[0]) + 0.5f, "program true-peak meter reads the final output",
+           juce::String (dbOf (meterTp), 2) + " dBTP vs sample peak " + juce::String (dbOf (p[0]), 2));
 }
 
 void testPluginHosting (const juce::String& pluginPath)

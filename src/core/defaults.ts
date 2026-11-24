@@ -197,7 +197,7 @@ export function defaultState(): ConsoleState {
     showName: 'Untitled Show',
     channels,
     buses,
-    main: { faderDb: 0, mute: false, delayMs: 0, inserts: [], limiter: { on: true, ceilingDb: -1, releaseMs: 100 } },
+    main: { faderDb: 0, mute: false, delayMs: 0, inserts: [] },
     dcas,
     muteGroups,
     layers: defaultLayers(),
@@ -230,5 +230,6 @@ export function defaultState(): ConsoleState {
     markers: [],
     transport: { playing: false, recording: false, position: 0, recordProgram: true },
     loudnessTarget: -11,
+    truePeakCeiling: -1,
   };
 }

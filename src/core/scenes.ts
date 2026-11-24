@@ -41,8 +41,8 @@ export function applyScene(s: ConsoleState, scene: Scene): ConsoleState {
       return { ...saved, solo: cur.solo, recallSafe: cur.recallSafe };
     });
   }
-  // scenes stored before newer main fields existed (e.g. the limiter) keep the current values
-  if (scope.main) next.main = { ...s.main, ...snap.main, limiter: snap.main.limiter ?? s.main.limiter };
+  // scenes stored before newer main fields existed keep the current values
+  if (scope.main) next.main = { ...s.main, ...snap.main };
   if (scope.dcas) next.dcas = snap.dcas;
   if (scope.muteGroups) next.muteGroups = snap.muteGroups;
   return next;

@@ -77,7 +77,7 @@ export function parseShow(text: string): ConsoleState {
   const obj = JSON.parse(text, (_key, v) => (v === '-inf' ? -Infinity : v));
   if (obj?.format !== 'merge-show') throw new Error('Not a Merge show file');
   const d = defaultState();
-  // fill in fields added since the show was saved (e.g. the program limiter)
+  // fill in fields added since the show was saved
   return { ...d, ...obj.show, main: { ...d.main, ...obj.show.main }, keyStates: {} };
 }
 

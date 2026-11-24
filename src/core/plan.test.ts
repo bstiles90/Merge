@@ -34,12 +34,6 @@ describe('mix plan for the native engine', () => {
     expect(buildMixPlan(on).monitor.gain).toBeCloseTo(buildMixPlan(s).monitor.gain * dbToGain(-20), 6);
   });
 
-  it('passes the program limiter settings through', () => {
-    const s = defaultState();
-    s.main.limiter = { on: true, ceilingDb: -1.5, releaseMs: 200 };
-    expect(buildMixPlan(s).main.limiter).toEqual({ on: true, ceilingDb: -1.5, releaseMs: 200 });
-  });
-
   it('lists inserts without heavy plugin state', () => {
     const s = defaultState();
     s.channels[0].inserts = [{ id: 'i1', pluginId: 'vst3:x', bypass: false, params: {}, state: 'AAAA'.repeat(1000) }];

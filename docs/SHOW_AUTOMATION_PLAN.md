@@ -155,9 +155,10 @@ structure is right, the same template works week after week.
   the same volume there, with slightly less dynamic range), while Facebook, embedded players
   and many church streaming platforms don't normalise at all, so a hotter master holds up.
   At −11, a **true-peak limiter** (ceiling around −1 dBTP) on the main output matters,
-  because streaming codecs (AAC/Opus) create overs from inter-sample peaks. **Done:** the
-  native engine has one as the last stage of the program output (default −1 dBTP), with
-  TP-max and gain-reduction readouts in the console.
+  because streaming codecs (AAC/Opus) create overs from inter-sample peaks. The limiting
+  is done by **master-bus plugins** in the main inserts (this church's chain). Merge
+  **meters** the final program true peak (4× oversampled) and turns the TP readout red
+  above the delivery spec (default −1 dBTP), so a chain that lets peaks through is caught.
 - **Lip-sync.** A main-output delay lines the audio up with the video path. It's already in
   the console; set it once.
 

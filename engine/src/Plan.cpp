@@ -132,10 +132,6 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double sr,
     const auto main = json["main"];
     plan->main.out = num (main, "out", 1);
     plan->main.delayMs = num (main, "delayMs", 0);
-    const auto lim = main["limiter"];
-    plan->main.limiterOn = flag (lim, "on", true);
-    plan->main.limiterCeiling = juce::Decibels::decibelsToGain (juce::jlimit (-12.0f, 0.0f, num (lim, "ceilingDb", -1.0f)));
-    plan->main.limiterReleaseMs = juce::jlimit (5.0f, 2000.0f, num (lim, "releaseMs", 100.0f));
     plan->main.inserts = parseInserts (main["inserts"], "main", resolve, insertsOut);
 
     const auto mon = json["monitor"];

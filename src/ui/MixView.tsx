@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { anySolo } from '../core/mix';
 import { useConsole } from '../core/store';
 import { getEngine } from '../audio/engine';
-import { readNativeLimiter, resetNativeTruePeakHold, sendNative, useNative } from '../native/bridge';
+import { readNativeTruePeak, resetNativeTruePeakHold, sendNative, useNative } from '../native/bridge';
 import { Detail } from './Detail';
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
@@ -32,8 +32,8 @@ function MuteGroupMasters() {
 }
 
 function Loudness() {
-  const refs = { m: useRef<HTMLSpanElement>(null), s: useRef<HTMLSpanElement>(null), i: useRef<HTMLSpanElement>(null), bar: useRef<HTMLDivElement>(null), tp: useRef<HTMLSpanElement>(null), gr: useRef<HTMLSpanElement>(null) };
-  const ceiling = useConsole((s) => s.main.limiter.ceilingDb);
+  const refs = { m: useRef<HTMLSpanElement>(null), s: useRef<HTMLSpanElement>(null), i: useRef<HTMLSpanElement>(null), bar: useRef<HTMLDivElement>(null), tp: useRef<HTMLSpanElement>(null) };
+  const ceiling = useConsole((s) => s.truePeakCeiling);
   const native = useNative((st) => st.status === 'connected');
   const target = useConsole((s) => s.loudnessTarget);
   const setTarget = (loudnessTarget: number) => useConsole.getState().update(() => ({ loudnessTarget }));
@@ -48,12 +48,10 @@ function Loudness() {
           const off = isFinite(l.integrated) ? Math.abs(l.integrated - target) : 0;
           refs.i.current.className = 'lufs-val big ' + (off > 2 ? 'bad' : off > 1 ? 'warn' : 'ok');
         }
-        if (refs.tp.current && refs.gr.current) {
-          const lim = readNativeLimiter();
-          refs.tp.current.textContent = isFinite(lim.tpMaxDb) ? lim.tpMaxDb.toFixed(1) : '—';
-          refs.tp.current.className = 'tp-val ' + (lim.tpMaxDb > ceiling + 0.05 ? 'bad' : 'ok');
-          refs.gr.current.textContent = lim.grDb < -0.05 ? lim.grDb.toFixed(1) : '0.0';
-          refs.gr.current.className = 'tp-val ' + (lim.grDb < -3 ? 'warn' : '');
+        if (refs.tp.current) {
+          const tp = readNativeTruePeak();
+          refs.tp.current.textContent = isFinite(tp.tpMaxDb) ? tp.tpMaxDb.toFixed(1) : '—';
+          refs.tp.current.className = 'tp-val ' + (tp.tpMaxDb > ceiling + 0.05 ? 'bad' : 'ok');
         }
         if (refs.bar.current) {
           const pct = isFinite(l.shortTerm) ? Math.max(0, Math.min(100, ((l.shortTerm + 50) / 50) * 100)) : 0;
@@ -81,9 +79,14 @@ function Loudness() {
         <button className="link-btn" onClick={() => { getEngine()?.resetLoudness(); sendNative({ type: 'loudness.reset' }); resetNativeTruePeakHold(); }}>reset</button>
       </div>
       {native && (
-        <div className="lufs tp-row" title="True-peak max since reset (dBTP) and program limiter gain reduction">
+        <div className="lufs tp-row" title="Program true-peak max since reset (4× oversampled). Turns red above your delivery spec — check the master limiter plugin.">
           <div><span className="hint">TP max</span><span ref={refs.tp} className="tp-val">—</span><span className="hint">dBTP</span></div>
-          <div><span className="hint">LIM</span><span ref={refs.gr} className="tp-val">0.0</span><span className="hint">dB</span></div>
+          <div>
+            <span className="hint">spec</span>
+            <select value={ceiling} onChange={(e) => useConsole.getState().update(() => ({ truePeakCeiling: Number(e.target.value) }))}>
+              {[0, -0.5, -1, -1.5, -2].map((v) => <option key={v} value={v}>{v.toFixed(1)} dBTP</option>)}
+            </select>
+          </div>
         </div>
       )}
       <div className="lufs-bar">

@@ -66,9 +66,6 @@ struct MainPlan
 {
     float out = 1;
     float delayMs = 0;
-    bool limiterOn = true;          // true-peak limiter on the program output
-    float limiterCeiling = 0.891f;  // linear (-1 dBTP)
-    float limiterReleaseMs = 100;
     std::vector<InsertRef> inserts;
 };
 

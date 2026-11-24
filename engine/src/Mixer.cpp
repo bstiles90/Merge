@@ -98,7 +98,6 @@ void Mixer::prepare (double sr, int block, int, int)
     cueBuf.setSize (2, maxBlock);
     monBuf.setSize (2, maxBlock);
     loudness.prepare (sr);
-    limiter.prepare (sr);
     outTp[0].reset();
     outTp[1].reset();
     applied = nullptr; // re-apply coefficients
@@ -381,10 +380,7 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 pl = juce::jmax (pl, std::abs (mainL[i]));
                 pr = juce::jmax (pr, std::abs (mainR[i]));
             }
-            // true-peak limiter: everything downstream (meters, loudness, outputs, monitor) is post-limiter
-            limiter.process (mainL, mainR, n, plan->main.limiterOn, plan->main.limiterCeiling, plan->main.limiterReleaseMs);
-            const float gr = limiter.takeGainReductionDb();
-            if (gr < limiterGrDb.load (std::memory_order_relaxed)) limiterGrDb.store (gr, std::memory_order_relaxed);
+            // true-peak metering of the final program (after inserts, delay and fader)
             float tpl = 0, tpr = 0;
             pl = pr = 0;
             for (int i = 0; i < n; ++i)

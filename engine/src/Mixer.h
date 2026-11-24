@@ -67,8 +67,8 @@ public:
     static constexpr int kMeterMain = kNumChannels + kNumBuses, kMeterMonitor = kMeterMain + 1, kNumMeters = kMeterMonitor + 1;
     std::array<PeakMeter, kNumMeters> meters;
     LoudnessMeter loudness;
-    TruePeakLimiter limiter;                 // program output, before loudness/meters/outputs
-    std::atomic<float> limiterGrDb { 0 };    // deepest reduction since last read (UI resets)
+    // true-peak meter on the final program output (metering only: no processing, no latency).
+    // Limiting is left to the master-bus plugin chain (main inserts).
     std::atomic<float> mainTruePeak[2] { { 0 }, { 0 } }; // linear, max since last read
     double getSampleRate() const { return sampleRate; }
     int getMaxBlock() const { return maxBlock; }

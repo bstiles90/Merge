@@ -110,8 +110,6 @@ export interface Main {
   mute: boolean;
   delayMs: number;
   inserts: InsertSlot[];
-  /** true-peak limiter on the program output (native engine) */
-  limiter: { on: boolean; ceilingDb: number; releaseMs: number };
 }
 
 export interface Dca {
@@ -272,4 +270,6 @@ export interface ConsoleState {
   transport: TransportState;
   /** program loudness target (integrated LUFS) for the meter and, later, auto-mastering */
   loudnessTarget: number;
+  /** delivery spec for the program true peak (dBTP); the TP meter warns above it */
+  truePeakCeiling: number;
 }
