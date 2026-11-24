@@ -5,6 +5,7 @@ import { anySolo } from '../core/mix';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { MixView } from './MixView';
 import { ShowView } from './ShowView';
+import { RoutingView } from './RoutingView';
 import { startShowFollow } from '../native/showFollow';
 import { PatchView } from './PatchView';
 import { ScenesView } from './ScenesView';
@@ -16,10 +17,11 @@ import { sendNative, startEmbedded, useNative } from '../native/bridge';
 import { EMBEDDED } from '../native/embedded';
 import { toggleNative } from './NativePanel';
 
-type Tab = 'mix' | 'show' | 'timeline' | 'scenes' | 'setup' | 'io';
+type Tab = 'mix' | 'show' | 'routing' | 'timeline' | 'scenes' | 'setup' | 'io';
 const TABS: [Tab, string][] = [
   ['mix', 'Mix'],
   ['show', 'Show'],
+  ['routing', 'Routing'],
   ['timeline', 'Record / Timeline'],
   ['scenes', 'Scenes'],
   ['setup', 'Layers · Keys · Groups'],
@@ -184,6 +186,7 @@ export function App() {
       <main className="content">
         {tab === 'mix' && <MixView />}
         {tab === 'show' && <ShowView />}
+        {tab === 'routing' && <RoutingView />}
         {tab === 'timeline' && <TimelineView />}
         {tab === 'scenes' && <ScenesView />}
         {tab === 'setup' && <SetupView />}

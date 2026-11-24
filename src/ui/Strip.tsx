@@ -123,6 +123,10 @@ function SendsSection({ ch }: { ch?: Channel }) {
     <div className="sec sec-sends">
       {ch &&
         s.buses.map((b: Bus, i) => {
+          const sd = ch.sends[b.id];
+          // 64 buses: the strip shows the sends this channel actually uses (SENDS tab adds more)
+          if (b.type !== 'mixminus' && !(sd?.on || isFinite(sd?.levelDb ?? -Infinity))) return null;
+          if (b.type === 'mixminus' && i >= 8) return null;
           if (b.type === 'mixminus')
             return <MiniBar key={b.id} label={`${i + 1}`} db={0} on={ch.mainAssign && b.mixMinusExclude !== ch.id} auto onChange={() => {}} onToggle={() => {}} />;
           const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };

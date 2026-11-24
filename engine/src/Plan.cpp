@@ -74,6 +74,7 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
                     if (b < 0 || b >= kNumBuses) continue;
                     p.sendGain[(size_t) b] = num (s, "gain", 0);
                     p.sendPre[(size_t) b] = flag (s, "pre", false);
+                    p.sendRoute[(size_t) b] = flag (s, "route", false);
                 }
             p.cue = num (c, "cue", 0);
             p.cuePre = flag (c, "cuePre", true);
@@ -91,7 +92,31 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
             p.cuePost = num (b, "cuePost", 0);
             p.delayMs = num (b, "delayMs", 0);
             p.inserts = parseInserts (b["inserts"], b["id"].toString(), resolve, insertsOut);
+            const auto to = b["to"].toString();
+            p.to = to == "main" ? -2 : to.startsWith ("bus") ? busIndex (to) : -1;
+            if (p.to >= kNumBuses || p.to == i) p.to = -1;
         }
+
+    // processing order (sources before the bus they feed); anything missing or looping is
+    // appended in index order and its bus-to-bus link dropped, so a bad plan can't hang the mixer
+    {
+        std::array<bool, kNumBuses> placed {};
+        int n = 0;
+        if (auto* order = json["busOrder"].getArray())
+            for (auto& id : *order)
+            {
+                const int b = busIndex (id.toString());
+                if (b < 0 || b >= kNumBuses || placed[(size_t) b]) continue;
+                placed[(size_t) b] = true;
+                plan->busOrder[(size_t) n++] = b;
+            }
+        for (int b = 0; b < kNumBuses; ++b)
+            if (! placed[(size_t) b]) plan->busOrder[(size_t) n++] = b;
+        std::array<int, kNumBuses> pos {};
+        for (int k = 0; k < kNumBuses; ++k) pos[(size_t) plan->busOrder[(size_t) k]] = k;
+        for (int b = 0; b < kNumBuses; ++b)
+            if (const int t = plan->buses[(size_t) b].to; t >= 0 && pos[(size_t) t] <= pos[(size_t) b]) plan->buses[(size_t) b].to = -1;
+    }
 
     const auto main = json["main"];
     plan->main.out = num (main, "out", 1);

@@ -11,7 +11,8 @@ import type {
 } from './types';
 
 export const NUM_CHANNELS = 32;
-export const NUM_BUSES = 8;
+/** Every bus can be a group, an aux/FX send or a feed: routing decides (like Logic's 64 buses). */
+export const NUM_BUSES = 64;
 export const NUM_DCAS = 8;
 export const NUM_MUTE_GROUPS = 8;
 export const LAYER_SLOTS = 16;
@@ -43,6 +44,7 @@ export function makeChannel(n: number): Channel {
     mute: false,
     solo: false,
     mainAssign: true,
+    routes: [],
     sends: {},
     dcas: [],
     muteGroups: [],
@@ -55,7 +57,7 @@ export function makeChannel(n: number): Channel {
 export function makeBus(n: number): Bus {
   return {
     id: `bus${n}`,
-    name: `Aux ${n}`,
+    name: `Bus ${n}`,
     color: PALETTE[5],
     type: 'aux',
     faderDb: 0,
@@ -65,6 +67,7 @@ export function makeBus(n: number): Bus {
     inserts: [],
     muteGroups: [],
     recallSafe: false,
+    output: 'main',
   };
 }
 
@@ -94,6 +97,7 @@ export function defaultLayers(): Layer[] {
     { id: 'L3', name: 'Inputs 17-32', color: PALETTE[8], slots: pad(range(17, 32).map(ch)) },
     { id: 'L4', name: 'Buses', color: PALETTE[5], slots: pad([...range(1, 8).map(bus), null, null, null, null, null, null, null, { kind: 'main' }]) },
     { id: 'L5', name: 'DCAs', color: PALETTE[7], slots: pad([...range(1, 8).map(dca), null, null, null, null, null, null, null, { kind: 'main' }]) },
+    { id: 'L6', name: 'Buses 9-24', color: PALETTE[5], slots: pad(range(9, 24).map(bus)) },
   ];
 }
 
@@ -169,6 +173,8 @@ export function defaultState(): ConsoleState {
   muteGroups[1].name = 'Audience';
   muteGroups[2].name = 'Playback';
 
+  // buses 1-8 of the demo are feeds (IEM, mix-minus, stage) that go to outputs, not Main LR
+  for (const b of buses.slice(0, 8)) b.output = 'none';
   buses[0].name = 'Host IEM';
   buses[6].name = 'Remote N-1';
   buses[6].type = 'mixminus';

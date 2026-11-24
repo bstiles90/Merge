@@ -11,7 +11,7 @@ const LINKED_FIELDS: Record<LinkOption, (keyof Channel)[]> = {
   mute: ['mute'],
   solo: ['solo'],
   sends: ['sends'],
-  groups: ['dcas', 'muteGroups', 'mainAssign'],
+  groups: ['dcas', 'muteGroups', 'mainAssign', 'routes'],
   input: ['gainDb', 'delayMs'],
 };
 

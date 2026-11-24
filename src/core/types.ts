@@ -52,6 +52,8 @@ export interface Channel {
   mute: boolean;
   solo: boolean;
   mainAssign: boolean;
+  /** output assignment to buses (groups): follows the fader and pan, no send level */
+  routes?: BusId[];
   sends: Record<BusId, Send>;
   dcas: DcaId[];
   muteGroups: MuteGroupId[];
@@ -80,6 +82,8 @@ export interface Bus {
   inserts: InsertSlot[];
   muteGroups: MuteGroupId[];
   recallSafe: boolean;
+  /** where the bus goes after its fader: Main LR, another bus, or nowhere (physical outputs only) */
+  output?: 'main' | 'none' | BusId;
 }
 
 export interface Main {
