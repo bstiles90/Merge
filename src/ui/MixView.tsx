@@ -31,10 +31,10 @@ function MuteGroupMasters() {
   );
 }
 
-const lufsTarget = -23; // EBU R128; switch to -24 for ATSC A/85
 function Loudness() {
   const refs = { m: useRef<HTMLSpanElement>(null), s: useRef<HTMLSpanElement>(null), i: useRef<HTMLSpanElement>(null), bar: useRef<HTMLDivElement>(null) };
-  const [target, setTarget] = useState(lufsTarget);
+  const target = useConsole((s) => s.loudnessTarget);
+  const setTarget = (loudnessTarget: number) => useConsole.getState().update(() => ({ loudnessTarget }));
   useEffect(
     () =>
       registerLoudness((l) => {
@@ -58,10 +58,11 @@ function Loudness() {
       <div className="panel-title row between">
         <span>Program loudness</span>
         <select value={target} onChange={(e) => setTarget(Number(e.target.value))}>
+          <option value={-11}>Stream, hot (-11)</option>
+          <option value={-14}>YouTube ref (-14)</option>
+          <option value={-16}>Streaming (-16)</option>
           <option value={-23}>EBU R128 (-23)</option>
           <option value={-24}>ATSC A/85 (-24)</option>
-          <option value={-16}>Streaming (-16)</option>
-          <option value={-14}>Streaming (-14)</option>
         </select>
       </div>
       <div className="lufs">

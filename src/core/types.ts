@@ -268,4 +268,6 @@ export interface ConsoleState {
   clips: Clip[];
   markers: Marker[];
   transport: TransportState;
+  /** program loudness target (integrated LUFS) for the meter and, later, auto-mastering */
+  loudnessTarget: number;
 }

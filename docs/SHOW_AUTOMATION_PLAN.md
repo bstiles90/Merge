@@ -149,9 +149,13 @@ structure is right, the same template works week after week.
 - **PA and stage bleed.** Mics hear the PA and the room. Analysis has to tell a source's own
   sound apart from bleed (in-ears and DI'd instruments help), and gates/expanders on drum
   and vocal mics can tidy it up.
-- **Streaming loudness and limiting.** A target integrated loudness for the platform (e.g.
-  around −14 to −16 LUFS for YouTube/Facebook-style streams), with a true-peak limiter on
-  the main output.
+- **Streaming loudness and limiting.** The target is a show setting, **default −11 LUFS
+  integrated** (what this church masters to today). Loudness on streaming platforms is
+  inconsistent: YouTube lists −14 but only turns *down* louder content (so −11 plays at
+  the same volume there, with slightly less dynamic range), while Facebook, embedded players
+  and many church streaming platforms don't normalise at all, so a hotter master holds up.
+  At −11, a **true-peak limiter** (ceiling around −1 dBTP) on the main output matters,
+  because streaming codecs (AAC/Opus) create overs from inter-sample peaks.
 - **Lip-sync.** A main-output delay lines the audio up with the video path. It's already in
   the console; set it once.
 

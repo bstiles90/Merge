@@ -229,5 +229,6 @@ export function defaultState(): ConsoleState {
     clips: [],
     markers: [],
     transport: { playing: false, recording: false, position: 0, recordProgram: true },
+    loudnessTarget: -11,
   };
 }
