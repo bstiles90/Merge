@@ -382,14 +382,21 @@ void testPluginHosting (const juce::String& pluginPath)
         juce::File (pluginPath).copyDirectoryTo (copy);
         for (auto& f : copy.findChildFiles (juce::File::findFiles, true, "moduleinfo.json")) f.deleteFile();
         const auto t0 = juce::Time::getMillisecondCounter();
-        int ticks = 0;
+        juce::uint32 longestGap = 0, last = t0;
         e.host().startScanIn (juce::FileSearchPath (dir.getFullPathName()), true);
-        for (int i = 0; i < 1500 && e.host().isScanning(); ++i) { pump (20); ++ticks; }
+        for (int i = 0; i < 1500 && e.host().isScanning(); ++i)
+        {
+            pump (20);
+            const auto now = juce::Time::getMillisecondCounter();
+            longestGap = juce::jmax (longestGap, now - last);
+            last = now;
+        }
         setEnv ("MERGE_TEST_PLUGIN_HANG", nullptr);
         setEnv ("MERGE_SCAN_TIMEOUT_MS", nullptr);
         const auto secs = (juce::Time::getMillisecondCounter() - t0) / 1000.0;
         check (! e.host().isScanning() && secs < 15, "scan finishes even when a plugin hangs while loading", juce::String (secs, 1) + " s");
-        check (ticks > 100, "the app stays responsive during the scan (plugins load in a helper process)", juce::String (ticks) + " UI ticks");
+        check (longestGap < 1000, "the app stays responsive during the scan (plugins load in a helper process)",
+               "longest pause " + juce::String ((int) longestGap) + " ms");
         check (e.host().getKnownList().getBlacklistedFiles().contains (copy.getFullPathName()), "the hanging plugin is skipped and listed");
         dir.deleteRecursively();
     }
