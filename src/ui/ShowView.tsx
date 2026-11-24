@@ -214,7 +214,7 @@ function PlanningCenterPanel() {
         <>
           <p className="hint">
             <b>{pco.planTitle || 'Plan'}</b> {pco.planDates} · loaded {new Date(pco.loadedAt).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
-            {pco.micNote ? ' · mics read from your production note' : ' · no mic note found: set mics below'}
+            {pco.micNote ? ' · mics read from your Production note' : ' · no Production note with mic lines found: set mics below'}
           </p>
           <div className="pco-mics">
             <div className="hint">Mics this week</div>
@@ -233,6 +233,12 @@ function PlanningCenterPanel() {
               <button onClick={() => update((s) => ({ channels: clearLabels(s.channels) }))}>Clear labels</button>
             </div>
           </div>
+          {pco.micNote && (
+            <details open>
+              <summary className="hint">Production note (from Planning Center)</summary>
+              <div className="pco-note">{pco.micNote.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')}</div>
+            </details>
+          )}
           <details>
             <summary className="hint">Service order ({pco.items.length} items)</summary>
             <table className="list">

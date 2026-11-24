@@ -164,6 +164,10 @@ added: the earliest source wins, in trust order Ableton → ProPresenter → Pla
   preferred). Anything missing is set on Merge's mic screen at line check. **Label strips**
   names them "HH1 · Sarah" for the week (Clear labels puts the mic names back; matching always
   uses the mic's own name).
+- **The weekly Production note lives in Planning Center** (a plan note category, ideally in
+  the plan template so its outline appears every week): a MICS section (`HH1 - Sarah`) that
+  Merge reads, plus free notes (guest vocalist, special moments) that Merge shows on the Show
+  page at line check.
 - **Moments led by a person:** ProPresenter's item title (synced from Planning Center) finds the
   plan item, its Person note finds the leader, and the mic list finds their channel. Then, of the
   speaking mics (speaker / host), only the leader's opens; the band still stays under. Their
