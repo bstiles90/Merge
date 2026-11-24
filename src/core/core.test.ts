@@ -10,7 +10,7 @@ import {
   faderPosToDb,
 } from './mix';
 import { applyScene, takeSnapshot } from './scenes';
-import { addToPage, moveSlot } from './layers';
+import { addToPage, deletePage, moveSlot } from './layers';
 import { parseShow, serializeShow } from './store';
 
 describe('fader taper', () => {
@@ -83,6 +83,17 @@ describe('pages', () => {
     expect(addToPage(slots, ch(1))).toBe(slots);
   });
 
+  it('split banks: page keys act on the focused bank only', () => {
+    let s = runAction(defaultState(), { type: 'view.banks.toggle', args: {} });
+    s = { ...s, focusBank: 'B' };
+    s = runAction(s, { type: 'layer.select', args: { id: 'L4' } });
+    expect(s.currentLayerB).toBe('L4');
+    expect(s.currentLayer).toBe('L1');
+    s = runAction(s, { type: 'layer.next', args: {} });
+    expect(s.currentLayerB).toBe('L5');
+    s = { ...s, ...deletePage(s, 'L5') };
+    expect(s.currentLayerB).toBe('L4');
+  });
   it('next/prev wrap around', () => {
     let s = defaultState();
     s = runAction(s, { type: 'layer.prev', args: {} });

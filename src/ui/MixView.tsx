@@ -5,7 +5,7 @@ import { getEngine } from '../audio/engine';
 import { Detail } from './Detail';
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
-import { FaderBank, PageKeys } from './Pages';
+import { FaderBank, FaderHeight, PageKeys } from './Pages';
 import { KeyEditor, UserKeyGrid } from './UserKeys';
 
 
@@ -117,15 +117,34 @@ function Monitor() {
   );
 }
 
+/** Strip height that isn't fader travel: header, tags, groups, pan, buttons, readout, mute, padding. */
+const STRIP_OVERHEAD = 218;
+
 export function MixView() {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editPages, setEditPages] = useState(false);
+  const split = useConsole((s) => s.bankLayout === 'split');
+  // Faders grow to fill the height the window gives the bank row.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [rowH, setRowH] = useState(440);
+  useEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setRowH(entry.contentRect.height));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const overhead = STRIP_OVERHEAD + (split ? 22 : 0) + (editPages ? 28 : 0);
+  const faderH = Math.round(Math.max(150, Math.min(700, rowH - overhead)));
   return (
     <div className="mix">
       <div className="mix-left">
-        <div className="bank-row">
-          <PageKeys editing={editPages} setEditing={setEditPages} />
-          <FaderBank editing={editPages} />
+        <div className="bank-row" ref={rowRef}>
+          <FaderHeight.Provider value={faderH}>
+            <PageKeys editing={editPages} setEditing={setEditPages} />
+            <FaderBank editing={editPages} bank="A" />
+            {split && <FaderBank editing={editPages} bank="B" />}
+          </FaderHeight.Provider>
         </div>
         <div className="surface">
           <MuteGroupMasters />

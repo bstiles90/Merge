@@ -3,8 +3,8 @@ import { useConsole } from '../core/store';
 import type { StripRef } from '../core/types';
 import { Fader, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
+import { useFaderHeight } from './Pages';
 
-const FADER_H = 230;
 
 export function sameRef(a: StripRef | null, b: StripRef | null) {
   if (!a || !b) return false;
@@ -14,6 +14,7 @@ export function sameRef(a: StripRef | null, b: StripRef | null) {
 
 export function Strip({ refr, index }: { refr: StripRef | null; index: number }) {
   const s = useConsole();
+  const FADER_H = useFaderHeight();
   if (!refr) return <div className="strip empty"><div className="strip-num">{index + 1}</div></div>;
 
   const selected = sameRef(s.selected, refr);

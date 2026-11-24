@@ -4,6 +4,7 @@ import { LAYER_SLOTS, newId } from '../core/defaults';
 import { useConsole } from '../core/store';
 import type { Layer } from '../core/types';
 import { StripRefSelect } from './Pages';
+import { deletePage } from '../core/layers';
 import { KeyEditor } from './UserKeys';
 
 
@@ -51,7 +52,7 @@ function LayerEditor() {
               disabled={s.layers.length <= 1}
               onClick={() => {
                 const rest = s.layers.filter((l) => l.id !== layer.id);
-                s.update((st) => ({ layers: rest, currentLayer: st.currentLayer === layer.id ? rest[0].id : st.currentLayer }));
+                s.update((st) => deletePage(st, layer.id));
                 setSel(rest[0].id);
               }}
             >

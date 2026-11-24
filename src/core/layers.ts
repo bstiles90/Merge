@@ -1,4 +1,4 @@
-import type { StripRef } from './types';
+import type { ConsoleState, StripRef } from './types';
 
 /**
  * Move a strip from one fader slot to another on a page. Dropping on an empty slot
@@ -28,4 +28,26 @@ export function addToPage(slots: (StripRef | null)[], ref: StripRef): (StripRef 
   const out = slots.slice();
   out[i] = ref;
   return out;
+}
+
+/** Page in the bank that page keys currently act on. */
+export function focusedLayerId(s: Pick<ConsoleState, 'bankLayout' | 'focusBank' | 'currentLayer' | 'currentLayerB'>): string {
+  return s.bankLayout === 'split' && s.focusBank === 'B' ? s.currentLayerB : s.currentLayer;
+}
+
+export function setFocusedLayer(s: ConsoleState, id: string): ConsoleState {
+  return s.bankLayout === 'split' && s.focusBank === 'B' ? { ...s, currentLayerB: id } : { ...s, currentLayer: id };
+}
+
+/** Remove a page, moving either bank off it if it was showing. */
+export function deletePage(s: ConsoleState, id: string): Partial<ConsoleState> {
+  const idx = s.layers.findIndex((l) => l.id === id);
+  const layers = s.layers.filter((l) => l.id !== id);
+  if (!layers.length) return {};
+  const fallback = layers[Math.max(0, idx - 1)].id;
+  return {
+    layers,
+    currentLayer: s.currentLayer === id ? fallback : s.currentLayer,
+    currentLayerB: s.currentLayerB === id ? fallback : s.currentLayerB,
+  };
 }

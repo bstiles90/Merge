@@ -242,7 +242,14 @@ export interface ConsoleState {
   dcas: Dca[];
   muteGroups: MuteGroup[];
   layers: Layer[];
+  /** page shown in bank A (and the only bank in single-bank view) */
   currentLayer: string;
+  /** view option: one fader bank, or two independent banks (A | B) */
+  bankLayout: 'single' | 'split';
+  /** page shown in bank B in split view */
+  currentLayerB: string;
+  /** which bank page keys / Page Next/Prev / number keys act on */
+  focusBank: 'A' | 'B';
   selected: StripRef | null;
   userKeys: UserKey[];
   /** keys currently in the "on" state (latch LED / momentary held) */

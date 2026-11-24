@@ -5,6 +5,7 @@
 
 import { applyScene, takeSnapshot } from './scenes';
 import { newId } from './defaults';
+import { focusedLayerId, setFocusedLayer } from './layers';
 import { services } from './services';
 import type { ActionCall, Bus, Channel, ConsoleState } from './types';
 
@@ -44,9 +45,9 @@ const sceneStep = (s: ConsoleState, dir: 1 | -1): ConsoleState => {
 };
 
 const layerStep = (s: ConsoleState, dir: 1 | -1): ConsoleState => {
-  const idx = s.layers.findIndex((l) => l.id === s.currentLayer);
+  const idx = s.layers.findIndex((l) => l.id === focusedLayerId(s));
   const next = s.layers[(idx + dir + s.layers.length) % s.layers.length];
-  return next ? { ...s, currentLayer: next.id } : s;
+  return next ? setFocusedLayer(s, next.id) : s;
 };
 
 const defs: ActionDef[] = [
@@ -193,8 +194,24 @@ const defs: ActionDef[] = [
     label: 'Select page',
     category: 'Layer',
     args: [{ name: 'id', label: 'Layer', kind: 'layer' }],
-    run: (s, a) => ({ ...s, currentLayer: a.id }),
-    isOn: (s, a) => s.currentLayer === a.id,
+    run: (s, a) => setFocusedLayer(s, a.id),
+    isOn: (s, a) => focusedLayerId(s) === a.id,
+  },
+  {
+    type: 'view.banks.toggle',
+    label: 'Toggle 1 / 2 fader banks',
+    category: 'Layer',
+    args: [],
+    run: (s) => ({ ...s, bankLayout: s.bankLayout === 'split' ? 'single' : 'split', focusBank: 'A' }),
+    isOn: (s) => s.bankLayout === 'split',
+  },
+  {
+    type: 'view.bank.focus',
+    label: 'Page keys target bank A / B (toggle)',
+    category: 'Layer',
+    args: [],
+    run: (s) => ({ ...s, focusBank: s.focusBank === 'A' ? 'B' : 'A' }),
+    isOn: (s) => s.bankLayout === 'split' && s.focusBank === 'B',
   },
   {
     type: 'layer.next',
