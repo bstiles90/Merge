@@ -49,15 +49,18 @@ editable on the Show page, checked top to bottom, first match wins):
 
 | When ProPresenter shows… | Moment |
 |---|---|
-| Playlist item contains **Sermon** / **Message** | Sermon / Speech |
+| *(off by default)* Slide group **Chorus** / **Bridge** / **Tag** | Chorus / Bridge-Tag |
+| Any song presentation (has Verse / Chorus / Pre-chorus / Bridge / Refrain groups) | Song |
+| Playlist item contains **Message** / **Sermon** | Sermon / Speech |
 | Playlist item contains **Prayer** | Prayer |
-| Playlist item contains **Announcement** / **Welcome** | Announcements / Host |
+| Playlist item contains **Welcome** / **Announcement** | Announcements / Host |
 | Playlist item contains **Video**, or matches **Walk\*** | Video / Walk-in |
 | *(off by default)* Media is playing | Video / Playback (motion backgrounds would trigger it) |
-| *(off by default)* Slide group **Chorus** / **Bridge** / **Tag** | Chorus / Bridge-Tag |
-| Any song presentation (has Verse/Chorus/Bridge… groups) | Song |
 | Nothing matches (countdown, blank) | no change |
 
+- Songs are checked before playlist-item names, so a song titled "Welcome Holy Spirit" is
+  still a song. (At our church, playlist item titles are synced from Planning Center element
+  titles: "Message", "Welcome", song titles.)
 - Matching: contains (case doesn't matter), or a pattern with `*` wildcards. Rule fields:
   playlist item, presentation name, slide group, "any song", "media playing".
 - A **rule tester** on the Show page tries the rules without ProPresenter.

@@ -169,7 +169,7 @@ function RulesPanel() {
 function RuleTester() {
   const a = useConsole((s) => s.automation);
   const dispatch = useConsole((s) => s.dispatch);
-  const [t, setT] = useState<ShowContext>({ ...emptyContext(), isSong: true });
+  const [t, setT] = useState<ShowContext>(emptyContext());
   const d = decideMoment(t, a);
   const f = (k: keyof ShowContext) => (e: React.ChangeEvent<HTMLInputElement>) => setT({ ...t, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   return (

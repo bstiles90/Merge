@@ -83,20 +83,22 @@ export interface Rule {
   enabled: boolean;
 }
 
-/** Checked top to bottom; the first match wins. Slide notes `merge: <moment>` beat every rule. */
+/** Checked top to bottom; the first match wins. Slide notes `merge: <moment>` beat every rule.
+ *  Songs (recognised by their slide groups) come before the playlist-item name rules, so a song
+ *  titled "Welcome Holy Spirit" or "Message of the Cross" is still a song. */
 export const DEFAULT_RULES: Rule[] = [
-  { id: 'r1', field: 'item', match: 'Sermon', moment: 'speech', enabled: true },
-  { id: 'r2', field: 'item', match: 'Message', moment: 'speech', enabled: true },
-  { id: 'r3', field: 'item', match: 'Prayer', moment: 'prayer', enabled: true },
-  { id: 'r4', field: 'item', match: 'Announcement', moment: 'host', enabled: true },
-  { id: 'r5', field: 'item', match: 'Welcome', moment: 'host', enabled: true },
-  { id: 'r6', field: 'item', match: 'Video', moment: 'video', enabled: true },
-  { id: 'r7', field: 'item', match: 'Walk*', moment: 'walk', enabled: true },
-  { id: 'r8', field: 'media', match: '', moment: 'video', enabled: false },
   { id: 'r9', field: 'group', match: 'Chorus', moment: 'chorus', enabled: false },
   { id: 'r10', field: 'group', match: 'Bridge', moment: 'bridge', enabled: false },
   { id: 'r11', field: 'group', match: 'Tag', moment: 'bridge', enabled: false },
   { id: 'r12', field: 'song', match: '', moment: 'song', enabled: true },
+  { id: 'r1', field: 'item', match: 'Message', moment: 'speech', enabled: true },
+  { id: 'r2', field: 'item', match: 'Sermon', moment: 'speech', enabled: true },
+  { id: 'r3', field: 'item', match: 'Prayer', moment: 'prayer', enabled: true },
+  { id: 'r5', field: 'item', match: 'Welcome', moment: 'host', enabled: true },
+  { id: 'r4', field: 'item', match: 'Announcement', moment: 'host', enabled: true },
+  { id: 'r6', field: 'item', match: 'Video', moment: 'video', enabled: true },
+  { id: 'r7', field: 'item', match: 'Walk*', moment: 'walk', enabled: true },
+  { id: 'r8', field: 'media', match: '', moment: 'video', enabled: false },
 ];
 
 export interface ChannelMix {
@@ -283,7 +285,7 @@ export interface ShowContext {
 
 export const emptyContext = (): ShowContext => ({ presentation: '', item: '', playlist: '', group: '', notes: '', isSong: false, mediaLive: false });
 
-const SONG_GROUP = /^(verse|chorus|pre[- ]?chorus|bridge|tag|refrain|intro|outro|interlude|turnaround|instrumental|ending|vamp)\b/i;
+const SONG_GROUP = /^(verse|chorus|pre[- ]?chorus|bridge|refrain)\b/i;
 
 /** Raw ProPresenter API data (by endpoint) → ShowContext. */
 export function contextFromProPresenter(raw: Record<string, any>): ShowContext {

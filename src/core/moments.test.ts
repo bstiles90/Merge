@@ -167,6 +167,12 @@ describe('ProPresenter rules', () => {
     expect(noteTag('Merge:sermon', a.moments)?.id).toBe('speech');
   });
 
+  it('a song whose title contains a rule word is still a song', () => {
+    expect(decideMoment(contextFromProPresenter(raw('Welcome Holy Spirit', [['Verse 1', 2], ['Chorus', 2]], 0)), a)?.moment.id).toBe('song');
+    expect(decideMoment(contextFromProPresenter(raw('Welcome', [['Slides', 3]], 0)), a)?.moment.id).toBe('host');
+    expect(decideMoment(contextFromProPresenter(raw('Message', [['Intro', 1], ['Point 1', 3]], 0)), a)?.moment.id).toBe('speech');
+  });
+
   it('nothing recognisable → no change', () => {
     expect(decideMoment(contextFromProPresenter(raw('Countdown', [['Group', 1]], 0)), a)).toBeUndefined();
   });
