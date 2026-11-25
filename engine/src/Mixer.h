@@ -103,6 +103,8 @@ private:
         float b[7] {}; // pink noise
         float syll = 0, syllTarget = 0; int syllLeft = 0; float lp = 0;
         Delay delay, pdc;
+        /** delay compensation for send taps earlier in the chain: [0] input, [k] after k plugins */
+        std::array<Delay, kMaxInserts> tapPdc;
         Smooth post, main, panL, panR, cue;
         std::array<Smooth, kNumBuses> sends;
     };
@@ -134,6 +136,7 @@ private:
 
     // scratch (allocated in prepare)
     juce::AudioBuffer<float> chanBuf;   // 1 per channel strip
+    juce::AudioBuffer<float> tapBuf;    // send taps of the channel being processed: [0] input, [k] after k plugins
     juce::AudioBuffer<float> busBuf;    // 2 per bus: channel sends in, then the bus output
     juce::AudioBuffer<float> busFeed;   // 2 per bus: what other buses feed into it this block
     juce::AudioBuffer<float> mainFromBuses; // buses routed to Main LR

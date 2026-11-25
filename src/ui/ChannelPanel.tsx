@@ -4,7 +4,9 @@
 import { useState } from 'react';
 import { useConsole } from '../core/store';
 import { linkInfo } from '../core/links';
-import type { Channel } from '../core/types';
+import type { Channel, Send } from '../core/types';
+import { getPlugin } from '../core/plugins';
+import { applyTapValue, tapChoices, tapValue } from '../core/sends';
 import { fmtDb, fmtMs, Knob, Toggle } from './controls';
 import { ColorPicker, Inserts, LinkSection, SourcePicker } from './Detail';
 
@@ -45,13 +47,13 @@ function SendsTab({ ch }: { ch: Channel }) {
   return (
     <div className="tab-body">
       <div className="row">
-        <select value="" onChange={(e) => e.target.value && up({ sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false } } })}>
+        <select value="" onChange={(e) => e.target.value && up({ sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false, tap: 'post' } } })}>
           <option value="">+ Add send to…</option>
           {s.buses
             .filter((b) => b.type !== 'mixminus' && !(ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)) && !(ch.routes ?? []).includes(b.id))
             .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
         </select>
-        <span className="hint">Sends (aux, FX, feeds) have their own level, pre or post fader. To make a channel part of a group, use ASSIGN.</span>
+        <span className="hint">Sends (aux, FX, feeds) have their own level and tap point: INPUT, PRE (after the rack or after a chosen plugin), POST or PSP. To make a channel part of a group, use ASSIGN.</span>
       </div>
       <div className="sends sends-big">
         {s.buses.filter((b) => b.type === 'mixminus' || ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)).map((b) => {
@@ -64,14 +66,16 @@ function SendsTab({ ch }: { ch: Channel }) {
               </div>
             );
           }
-          const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
+          const snd: Send = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
           const setSend = (p: Partial<typeof snd>) => up({ sends: { ...ch.sends, [b.id]: { ...snd, ...p } } });
           return (
             <div key={b.id} className={'send' + (snd.on ? ' on' : '')}>
               <Toggle small on={snd.on} onClick={() => setSend({ on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 })}>{b.name}</Toggle>
               <input type="range" min={-60} max={10} step={0.5} value={isFinite(snd.levelDb) ? snd.levelDb : -60} onChange={(e) => setSend({ levelDb: Number(e.target.value) <= -60 ? -Infinity : Number(e.target.value), on: true })} />
               <span className="send-db">{isFinite(snd.levelDb) ? fmtDb(snd.levelDb) : '-∞'}</span>
-              <Toggle small on={snd.pre} onClick={() => setSend({ pre: !snd.pre })} title="Pre-fader (e.g. IEM / foldback)">PRE</Toggle>
+              <select className="tap-select" value={tapValue(snd)} title="Tap point: where this send picks up the channel" onChange={(e) => up({ sends: { ...ch.sends, [b.id]: applyTapValue(snd, e.target.value) } })}>
+                {tapChoices(ch, (id, fb) => getPlugin(id)?.name ?? fb ?? 'Plugin').map((c) => <option key={c.value} value={c.value} title={c.label}>{c.short}</option>)}
+              </select>
               <button className="icon-btn" title="Remove this send" onClick={() => { const { [b.id]: _gone, ...rest } = ch.sends; up({ sends: rest }); }}>✕</button>
             </div>
           );

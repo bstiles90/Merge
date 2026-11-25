@@ -506,9 +506,6 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .send-row.on .sr-fill { background: #1f5fa8; }
 .sr-name { position: relative; display: block; font-size: 8.5px; line-height: 13px; padding: 0 3px; color: #8a929b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .send-row.on .sr-name { color: #fff; font-weight: 600; }
-.sr-pre { position: absolute; right: 2px; top: 2px; font-size: 6.5px; line-height: 9px; padding: 0 2px; border-radius: 2px; background: #ffc53d; color: #111; font-weight: 800; pointer-events: none; }
-.sr-menu { position: relative; width: 11px; flex: 0 0 11px; font-size: 8px; line-height: 13px; text-align: center; color: #8a929b; background: #16191d; border-radius: 0 2px 2px 0; cursor: pointer; }
-.sr-menu:hover { color: #fff; background: #2a2f36; }
 .send-row select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .send-row.auto .sr-bar { cursor: default; border-radius: 2px; }
 .send-row.auto .sr-fill { background: #12a594; opacity: 0.25; }
@@ -523,3 +520,19 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .out-pill.pickable:hover { outline: 1px solid var(--accent); }
 .out-pill.none { background: #4a1f22; color: #ffb4b4; }
 .out-pill select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.sr-tap { position: relative; flex: 0 0 19px; width: 19px; font-size: 6.5px; font-weight: 800; letter-spacing: -0.2px; line-height: 13px; text-align: center; color: #9aa3ad; background: #16191d; border-radius: 0 2px 2px 0; border-left: 1px solid #0b0d0f; cursor: pointer; overflow: hidden; }
+.sr-tap:hover { color: #fff; background: #2a2f36; }
+/* tap colours: INPUT orange, PRE yellow, POST blue, PSP violet */
+.send-row.tap-input .sr-tap { color: #ff9f5a; }
+.send-row.tap-pre .sr-tap { color: #ffc53d; }
+.send-row.tap-post .sr-tap { color: #7cb8ff; }
+.send-row.tap-psp .sr-tap { color: #b9a6ff; }
+.send-row.tap-input .sr-fill { background: #3d2616; }
+.send-row.tap-pre .sr-fill { background: #3a3118; }
+.send-row.tap-psp .sr-fill { background: #2c2548; }
+.send-row.on.tap-input .sr-fill { background: #a8531c; }
+.send-row.on.tap-pre .sr-fill { background: #94721a; }
+.send-row.on.tap-post .sr-fill { background: #1f5fa8; }
+.send-row.on.tap-psp .sr-fill { background: #5b45b8; }
+.sends-big .send { grid-template-columns: 90px 1fr 38px 104px 22px; }
+.tap-select { min-width: 0; width: 100%; font-size: 11px; }

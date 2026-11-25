@@ -40,10 +40,18 @@ struct ChannelPlan
     float post = 0; // fader * DCA * mute
     float mainGain = 0; // 1 if assigned & routed
     std::array<float, kNumBuses> sendGain {};
-    std::array<bool, kNumBuses> sendPre {};
-    /** output assignment (channel → group): panned exactly like the main mix, so a source sounds
-        the same whether it goes to Main LR directly or through a bus */
-    std::array<bool, kNumBuses> sendRoute {};
+    /** Where each send taps the channel:
+        route = output assignment (channel → group), panned exactly like the main mix;
+        input = after gain/polarity, before delay and every plugin (mono, no fader);
+        pre   = pre-fader after the rack, or after the first `sendAfter` plugins (mono, no fader);
+        post  = after the rack and fader (mono, centre);
+        psp   = post-fader and post-pan (panned like the main mix, unity at centre). */
+    enum class Tap : uint8_t { post, route, input, pre, psp };
+    std::array<Tap, kNumBuses> sendTap {};
+    /** pre taps: number of rack plugins before the tap (kMaxInserts = after the whole rack) */
+    std::array<uint8_t, kNumBuses> sendAfter {};
+    /** which mid-rack taps this channel needs (bit k = after k plugins, k = 1..kMaxInserts-1; bit 0 = input) */
+    uint32_t tapMask = 0;
     float cue = 0;
     bool cuePre = true;
 };

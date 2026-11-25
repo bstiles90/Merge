@@ -69,7 +69,7 @@ export function buildMixPlan(s: ConsoleState) {
           // a bus the channel is assigned to takes the assignment, not a send as well
           ...Object.entries(g.sends)
             .filter(([bus, v]) => v.gain > 0 && !(bus in g.routes))
-            .map(([bus, v]) => ({ bus, gain: r(v.gain), pre: v.pre })),
+            .map(([bus, v]) => ({ bus, gain: r(v.gain), pre: v.pre, tap: v.tap, ...(v.after ? { after: v.after } : {}) })),
         ],
         cue: r(g.cue),
         cuePre: g.cuePre,

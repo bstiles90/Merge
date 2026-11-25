@@ -30,10 +30,21 @@ export interface InsertSlot {
   state?: string;
 }
 
+/** Where a send taps the channel:
+ *  input = after gain only (before delay and every plugin)
+ *  pre   = pre-fader, after the rack (or after a chosen plugin: tapAfter)
+ *  post  = after the rack and the fader
+ *  psp   = post-fader and post-pan */
+export type SendTap = 'input' | 'pre' | 'post' | 'psp';
+
 export interface Send {
   on: boolean;
   levelDb: number;
+  /** true for input/pre taps (kept in step with `tap` for older code and shows) */
   pre: boolean;
+  tap?: SendTap;
+  /** pre tap only: the insert slot id the tap comes after (missing = after the whole rack) */
+  tapAfter?: string;
 }
 
 export interface Channel {

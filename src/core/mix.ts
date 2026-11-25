@@ -2,7 +2,8 @@
 // the actual gains the engine applies. Kept free of Web Audio so it is unit tested
 // and portable to a native engine.
 
-import type { Bus, Channel, ConsoleState } from './types';
+import type { Bus, Channel, ConsoleState, SendTap } from './types';
+import { isPreFader, sendTap, tapAfterCount } from './sends';
 
 export const NEG_INF = -Infinity;
 export const MIN_DB = -90;
@@ -96,7 +97,7 @@ export interface ChannelGains {
   post: number;
   /** output assignment gains to buses (groups), panned like Main LR */
   routes: Record<string, number>;
-  sends: Record<string, { gain: number; pre: boolean }>;
+  sends: Record<string, { gain: number; pre: boolean; tap: SendTap; after?: number }>;
   /** gain into the cue (solo) bus */
   cue: number;
   cuePre: boolean;
@@ -115,16 +116,18 @@ export function computeChannelGains(s: ConsoleState, ch: Channel): ChannelGains 
       // Mix-minus: everything going to the main mix, minus the excluded source,
       // at the channel's post-fader level.
       const on = ch.mainAssign && bus.mixMinusExclude !== ch.id;
-      sends[bus.id] = { gain: on ? post : 0, pre: false };
+      sends[bus.id] = { gain: on ? post : 0, pre: false, tap: 'psp' };
       continue;
     }
     const send = ch.sends[bus.id];
     if (!send || !send.on || mute) {
-      sends[bus.id] = { gain: 0, pre: send?.pre ?? false };
+      sends[bus.id] = { gain: 0, pre: send?.pre ?? false, tap: send ? sendTap(send) : 'post' };
       continue;
     }
     const sendGain = dbToGain(send.levelDb);
-    sends[bus.id] = { gain: send.pre ? sendGain : sendGain * post, pre: send.pre };
+    const tap = sendTap(send);
+    const pre = isPreFader(tap);
+    sends[bus.id] = { gain: pre ? sendGain : sendGain * post, pre, tap, after: tapAfterCount(ch, send) };
   }
   // output assignments to buses (groups): at the channel's post-fader level, panned like Main LR
   const routes: Record<string, number> = {};

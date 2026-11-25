@@ -3,7 +3,8 @@ import { busMuteReason, channelMuteReason, formatDb } from '../core/mix';
 import { getPlugin } from '../core/plugins';
 import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
-import type { Bus, Channel, InsertSlot, StripRef } from '../core/types';
+import type { Bus, Channel, InsertSlot, Send, StripRef } from '../core/types';
+import { applyTapValue, sendTap, tapChoices, tapCode, tapValue } from '../core/sends';
 import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
 import { createsLoop } from '../core/plan';
@@ -129,20 +130,25 @@ function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?:
 
 const sendUsed = (snd?: { on: boolean; levelDb: number }) => !!snd && (snd.on || isFinite(snd.levelDb));
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+const pluginName = (id: string, fallback?: string) => getPlugin(id)?.name ?? fallback ?? 'Plugin';
 
-/** One send on the strip (like Logic): the bus name over its level. Drag sideways for level,
- *  double-click on/off, ▾ for pre/post, change bus or remove. */
+/** One send on the strip (like Logic): the bus name over its level, and its tap point beside it.
+ *  Drag sideways for level, double-click on/off; the tap code opens the menu (tap point, on/off,
+ *  change bus, remove). */
 function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
   const s = useConsole();
-  const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
+  const snd: Send = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
   const drag = useRef<{ x: number; db: number } | null>(null);
   const setSends = (sends: Channel['sends']) => s.updateChannel(ch.id, { sends });
-  const set = (p: Partial<typeof snd>) => setSends({ ...ch.sends, [b.id]: { ...snd, ...p } });
+  const set = (p: Partial<Send>) => setSends({ ...ch.sends, [b.id]: { ...snd, ...p } });
   const frac = isFinite(snd.levelDb) ? Math.max(0, Math.min(1, (snd.levelDb + 60) / 70)) : 0;
   const db = isFinite(snd.levelDb) ? `${snd.levelDb > 0 ? '+' : ''}${snd.levelDb.toFixed(1)} dB` : '-∞';
+  const tap = sendTap(snd);
+  const code = tapCode(ch, snd);
+  const tapName = tapChoices(ch, pluginName).find((c) => c.value === tapValue(snd))?.label ?? code;
   const menu = (v: string) => {
     if (v === 'toggle') set({ on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 });
-    else if (v === 'pre') set({ pre: !snd.pre });
+    else if (v.startsWith('tap:')) setSends({ ...ch.sends, [b.id]: applyTapValue(snd, v.slice(4)) });
     else if (v === 'remove') {
       const { [b.id]: _gone, ...rest } = ch.sends;
       setSends(rest);
@@ -152,10 +158,10 @@ function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
     }
   };
   return (
-    <div className={'send-row' + (snd.on ? ' on' : '') + (snd.pre ? ' pre' : '')} onClick={stop}>
+    <div className={`send-row tap-${tap}` + (snd.on ? ' on' : '')} onClick={stop}>
       <div
         className="sr-bar"
-        title={`Send to ${b.name}: ${db}${snd.pre ? ' (pre-fader)' : ''}${snd.on ? '' : ' (off)'}. Drag sideways for level, double-click on/off.`}
+        title={`Send to ${b.name}: ${db}${snd.on ? '' : ' (off)'}. Tap: ${tapName}. Drag sideways for level, double-click on/off.`}
         onPointerDown={(e) => {
           e.stopPropagation();
           (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -171,15 +177,20 @@ function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
       >
         <span className="sr-fill" style={{ width: `${frac * 100}%` }} />
         <span className="sr-name">{b.name}</span>
-        {snd.pre && <span className="sr-pre">PRE</span>}
       </div>
-      <span className="sr-menu" title="Send options">
-        ▾
+      <span className="sr-tap" title={`Tap: ${tapName}. Click for options`}>
+        {code}
         <select value="" onChange={(e) => menu(e.target.value)}>
           <option value="" disabled>{b.name} · {db}</option>
-          <option value="toggle">{snd.on ? 'Turn send off' : 'Turn send on'}</option>
-          <option value="pre">{snd.pre ? 'Make post-fader' : 'Make pre-fader (IEM / foldback)'}</option>
-          <option value="remove">Remove send</option>
+          <optgroup label="Tap point">
+            {tapChoices(ch, pluginName).map((c) => (
+              <option key={c.value} value={`tap:${c.value}`}>{c.value === tapValue(snd) ? '✓ ' : '    '}{c.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Send">
+            <option value="toggle">{snd.on ? 'Turn send off' : 'Turn send on'}</option>
+            <option value="remove">Remove send</option>
+          </optgroup>
           <optgroup label="Change to bus">
             {s.buses
               .filter((x) => x.type !== 'mixminus' && x.id !== b.id && !sendUsed(ch.sends[x.id]))
@@ -209,7 +220,7 @@ function SendsSection({ ch }: { ch?: Channel }) {
         <span className="sr-name">+ send</span>
         <select
           value=""
-          onChange={(e) => e.target.value && s.updateChannel(ch.id, { sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false } } })}
+          onChange={(e) => e.target.value && s.updateChannel(ch.id, { sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false, tap: 'post' } } })}
         >
           <option value="" disabled>Send to…</option>
           {s.buses

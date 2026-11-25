@@ -71,8 +71,22 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
                     const int b = busIndex (s["bus"].toString());
                     if (b < 0 || b >= kNumBuses) continue;
                     p.sendGain[(size_t) b] = num (s, "gain", 0);
-                    p.sendPre[(size_t) b] = flag (s, "pre", false);
-                    p.sendRoute[(size_t) b] = flag (s, "route", false);
+                    const auto tap = s["tap"].toString();
+                    using Tap = ChannelPlan::Tap;
+                    Tap t = flag (s, "route", false) ? Tap::route
+                          : tap == "input" ? Tap::input
+                          : tap == "pre" ? Tap::pre
+                          : tap == "psp" ? Tap::psp
+                          : tap == "post" ? Tap::post
+                          : flag (s, "pre", false) ? Tap::pre : Tap::post; // older plans: pre flag
+                    int after = kMaxInserts;
+                    if (t == Tap::pre && ! (s["after"].isVoid() || s["after"].isUndefined()))
+                        after = juce::jlimit (1, kMaxInserts, (int) s["after"]);
+                    if (t == Tap::pre && after >= (int) p.inserts.size()) after = kMaxInserts; // after the whole rack
+                    p.sendTap[(size_t) b] = t;
+                    p.sendAfter[(size_t) b] = (uint8_t) after;
+                    if (t == Tap::input) p.tapMask |= 1u;
+                    else if (t == Tap::pre && after < kMaxInserts) p.tapMask |= (1u << after);
                 }
             p.cue = num (c, "cue", 0);
             p.cuePre = flag (c, "cuePre", true);

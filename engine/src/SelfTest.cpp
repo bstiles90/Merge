@@ -191,6 +191,39 @@ juce::var routedPlan (int numTones, const juce::String& busesJson)
     return plan;
 }
 
+/** ch1 alone (main off), one send to bus9 (bus9 -> Main LR). */
+juce::var tapPlan (const juce::String& sendJson, float post, float pan, const juce::String& insertsJson = "[]", int numTones = 1)
+{
+    auto plan = tonePlan (numTones, insertsJson);
+    auto* c1 = plan["channels"][0].getDynamicObject();
+    c1->setProperty ("main", 0);
+    c1->setProperty ("post", post);
+    c1->setProperty ("pan", pan);
+    c1->setProperty ("sends", juce::JSON::parse ("[" + sendJson + "]"));
+    plan["buses"].getArray()->add (juce::JSON::parse (R"({"id":"bus9","out":1,"to":"main","inserts":[]})"));
+    return plan;
+}
+
+void testSendTaps()
+{
+    std::cout << "Send tap points" << std::endl;
+    const float tone = 0.125f;
+    Mixer m;
+    m.prepare (kSr, kBlock, 0, 4);
+    m.setPlan (parsePlan (tapPlan (R"({"bus":"bus9","gain":1,"tap":"input"})", 0.0f, -1.0f), kSr, nullptr, nullptr));
+    auto p = render (m, 100);
+    check (near (p[0], tone, 0.003) && near (p[1], tone, 0.003), "INPUT tap: fader down and pan ignored (mono, unity)", juce::String (p[0], 4) + " / " + juce::String (p[1], 4));
+    m.setPlan (parsePlan (tapPlan (R"({"bus":"bus9","gain":0.5,"tap":"post"})", 0.5f, -1.0f), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], 0.5f * tone, 0.003) && near (p[1], 0.5f * tone, 0.003), "POST tap: follows the fader, ignores pan", juce::String (p[0], 4) + " / " + juce::String (p[1], 4));
+    m.setPlan (parsePlan (tapPlan (R"({"bus":"bus9","gain":0.5,"tap":"psp"})", 0.5f, -1.0f), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], 0.5f * tone * std::sqrt (2.0f), 0.003) && p[1] < 1e-4f, "PSP tap: follows the fader and the pan (hard left stays left)", juce::String (p[0], 4) + " / " + juce::String (p[1], 5));
+    m.setPlan (parsePlan (tapPlan (R"({"bus":"bus9","gain":1,"pre":true})", 0.0f, 0.0f), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], tone, 0.003), "older shows: pre flag still means pre-fader", juce::String (p[0], 4));
+}
+
 void testRouting()
 {
     std::cout << "Routing (64 buses)" << std::endl;
@@ -406,6 +439,24 @@ void testPluginHosting (const juce::String& pluginPath)
         e.mixer().collectGarbage();
     }
 
+    // send taps inside the rack: two 64-sample plugins on ch1; a PRE tap after the first one and an
+    // INPUT tap must stay in time with ch2 going straight to Main LR
+    {
+        const juce::String two = "[{\"id\":\"slotT1\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false},{\"id\":\"slotT2\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]";
+        const float expected = 0.125f + kToneCentre; // mono unity send + ch2 at centre, in phase
+        for (auto* send : { R"({"bus":"bus9","gain":1,"tap":"pre","after":1})", R"({"bus":"bus9","gain":1,"tap":"input"})" })
+        {
+            e.handleMessage (0, planMsg (tapPlan (send, 1.0f, 0.0f, two, 2)));
+            for (int i = 0; i < 300 && (e.host().numLoading() > 0 || ! e.host().find ("slotT2")); ++i) pump (10);
+            auto pt = render (e.mixer(), 150);
+            check (near (pt[0], expected, 0.008), juce::String (juce::String (send).contains ("input") ? "INPUT" : "PRE-after-plugin-1") + " tap stays in time with the rest of the mix",
+                   juce::String (pt[0], 4) + " vs " + juce::String (expected, 4));
+        }
+        e.handleMessage (0, planMsg (tonePlan (2)));
+        render (e.mixer(), 4);
+        e.mixer().collectGarbage();
+    }
+
     // missing plugin reports an error instead of failing the plan
     sent.clear();
     e.handleMessage (0, planMsg (tonePlan (1, R"([{"id":"slotX","pluginId":"vst3:not-installed","bypass":false}])")));
@@ -478,6 +529,7 @@ int runSelfTest (const juce::StringArray& args)
     testBigMessages();
     testMixer();
     testRouting();
+    testSendTaps();
     testTruePeak();
     testPluginHosting (pluginPath);
     testWebSocketRoundTrip();
