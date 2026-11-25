@@ -160,7 +160,7 @@ export function ChannelPanel({ ch }: { ch: Channel }) {
       </div>
       <ColorPicker value={ch.color} onChange={(color) => s.updateChannel(ch.id, { color })} />
       <div className="chp-split">
-        <TallMeter id={ch.id} stereo={!!ch.stereo} />
+        <TallMeter id={ch.id} stereo={!!ch.stereo} refr={{ kind: 'channel', id: ch.id }} faderDb={ch.faderDb} color={ch.color} />
         <div className="chp-main">
         <StripOverview refr={{ kind: 'channel', id: ch.id }} meter={false} />
       <div className="chp-tabs">

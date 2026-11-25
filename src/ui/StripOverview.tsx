@@ -37,16 +37,20 @@ export function StripOverview({ refr, meter = true }: { refr: StripRef; meter?: 
     const dests = [...(ch.mainAssign ? ['Main LR'] : []), ...(ch.routes ?? []).map((id) => s.buses.find((b) => b.id === id)?.name ?? id)];
     return (
       <div className="overview" ref={ref}>
-        <div className="ov-meter">
-          {meter && <MeterScale height={H} />}
-          {meter && <Meter id={ch.id} height={H} stereo={!!ch.stereo} />}
-          <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={H} />
-        </div>
-        <div className="ov-controls">
-          <div className="ov-readouts">
-            <div><span className="ov-label">INPUT PEAK</span><PeakReadout id={ch.id} /></div>
-            <div><span className="ov-label">FADER</span><span className="ov-val num">{formatDb(ch.faderDb)}</span></div>
+        {meter && (
+          <div className="ov-meter">
+            <MeterScale height={H} />
+            <Meter id={ch.id} height={H} stereo={!!ch.stereo} />
+            <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={H} />
           </div>
+        )}
+        <div className="ov-controls">
+          {meter && (
+            <div className="ov-readouts">
+              <div><span className="ov-label">INPUT PEAK</span><PeakReadout id={ch.id} /></div>
+              <div><span className="ov-label">FADER</span><span className="ov-val num">{formatDb(ch.faderDb)}</span></div>
+            </div>
+          )}
           <div className="ov-knobs">
             <Knob size={44} label="Gain" value={ch.gainDb} min={-24} max={48} defaultValue={0} color={gainColor(ch.gainDb)} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb: Math.abs(gainDb) < 0.3 ? 0 : gainDb })} />
             <Knob size={44} label={ch.stereo ? 'Balance' : 'Pan'} value={ch.pan} min={-1} max={1} defaultValue={0} format={panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
@@ -94,8 +98,9 @@ export function StripOverview({ refr, meter = true }: { refr: StripRef; meter?: 
   return null;
 }
 
-/** The inspector's tall meter: runs the full height of the panel (dBFS scale + peak number). */
-export function TallMeter({ id, stereo }: { id: string; stereo: boolean }) {
+/** The inspector's tall meter + fader, side by side, running the full height of the panel
+ *  (dBFS scale, meter, fader; peak and fader readouts on top). */
+export function TallMeter({ id, stereo, refr, faderDb, color }: { id: string; stereo: boolean; refr: StripRef; faderDb: number; color: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [h, setH] = useState(300);
   useEffect(() => {
@@ -107,10 +112,14 @@ export function TallMeter({ id, stereo }: { id: string; stereo: boolean }) {
   }, []);
   return (
     <div className="tall-meter">
-      <PeakReadout id={id} />
+      <div className="tall-readouts">
+        <PeakReadout id={id} />
+        <span className="tall-fader-val num" title="Fader level (dB)">{formatDb(faderDb)}</span>
+      </div>
       <div className="tall-meter-body" ref={ref}>
         <MeterScale height={h} />
         <Meter id={id} height={h} stereo={stereo} />
+        <Fader db={faderDb} onChange={(db) => setStripFader(refr, db)} color={color} height={h} />
       </div>
     </div>
   );
