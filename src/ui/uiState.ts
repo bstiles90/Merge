@@ -1,30 +1,15 @@
-// View state for this machine (not part of the show): the plugin dock.
+// View state for this machine (not part of the show): the channel settings drawer.
 import { create } from 'zustand';
 
 interface UiState {
-  dockOpen: boolean;
-  dockHeight: number;
-  /** insert slot shown in the dock's plugin area */
-  dockSlot: string | null;
+  /** the right-side drawer with the selected strip's settings */
+  drawerOpen: boolean;
+  /** user key being edited in the drawer (instead of the strip settings) */
+  editKey: string | null;
 }
 
-const load = (): UiState => {
-  try {
-    const v = JSON.parse(localStorage.getItem('merge.ui.v1') || '{}');
-    return { dockOpen: v.dockOpen ?? true, dockHeight: v.dockHeight ?? 330, dockSlot: null };
-  } catch {
-    return { dockOpen: true, dockHeight: 330, dockSlot: null };
-  }
-};
+export const useUi = create<UiState>(() => ({ drawerOpen: false, editKey: null }));
 
-export const useUi = create<UiState>(load);
-useUi.subscribe((s) => {
-  try {
-    localStorage.setItem('merge.ui.v1', JSON.stringify({ dockOpen: s.dockOpen, dockHeight: s.dockHeight }));
-  } catch {
-    /* storage unavailable */
-  }
-});
-
-/** Show a plugin in the dock (opens the dock). */
-export const openInDock = (slotId: string) => useUi.setState({ dockSlot: slotId, dockOpen: true });
+export const openDrawer = () => useUi.setState({ drawerOpen: true, editKey: null });
+export const closeDrawer = () => useUi.setState({ drawerOpen: false, editKey: null });
+export const editUserKey = (id: string) => useUi.setState({ drawerOpen: true, editKey: id });

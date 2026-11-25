@@ -135,6 +135,11 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
                 {desc?.name ?? ins.pluginName ?? ins.pluginId}
                 <span className="hint"> {loading ? 'loading…' : desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : isNative ? 'VST3 · not loaded' : 'missing'}</span>
               </button>
+              {isNative && nativeConnected && desc && (
+                <Toggle small on={!!errors[ins.id]?.editorOpen} title="Open or close the plugin's own window" onClick={() => sendNative({ type: 'insert.editor', slotId: ins.id, open: !errors[ins.id]?.editorOpen })}>
+                  WIN
+                </Toggle>
+              )}
               <Toggle small on={ins.bypass} onClick={() => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))}>
                 BYP
               </Toggle>

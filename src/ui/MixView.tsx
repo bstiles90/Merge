@@ -6,7 +6,8 @@ import { readNativeTruePeak, resetNativeTruePeakHold, sendNative, useNative } fr
 import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
 import { FaderBank, PageKeys } from './Pages';
-import { Dock } from './Dock';
+import { ChannelDrawer } from './ChannelDrawer';
+import { editUserKey } from './uiState';
 import { UserKeyGrid } from './UserKeys';
 
 
@@ -138,7 +139,6 @@ function Monitor() {
 }
 
 export function MixView() {
-  const [editKey, setEditKey] = useState<string | null>(null);
   const [editPages, setEditPages] = useState(false);
   const split = useConsole((s) => s.bankLayout === 'split');
   return (
@@ -149,7 +149,6 @@ export function MixView() {
           <FaderBank editing={editPages} bank="A" />
           {split && <FaderBank editing={editPages} bank="B" />}
         </div>
-        <Dock editKey={editKey} closeKey={() => setEditKey(null)} />
       </div>
       <div className="mix-side">
         <Loudness />
@@ -160,9 +159,10 @@ export function MixView() {
             <span>User keys</span>
             <span className="hint">right-click to assign</span>
           </div>
-          <UserKeyGrid onEdit={setEditKey} />
+          <UserKeyGrid onEdit={editUserKey} />
         </div>
       </div>
+      <ChannelDrawer />
     </div>
   );
 }

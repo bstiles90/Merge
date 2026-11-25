@@ -64,8 +64,8 @@ jobs:
         run: engine/build/MergeEngine_artefacts/Release/Merge.exe --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
 
       # Launch the real app on macOS: the embedded console must load, connect to the engine,
-      # and dock a real VST3's GUI inside the window (test show with the test plugin on ch 1)
-      - name: App launch + plugin dock check (macOS)
+      # and load a real VST3 into a rack (test show with the test plugin on ch 1)
+      - name: App launch + plugin load check (macOS)
         if: runner.os == 'macOS'
         run: |
           APP=engine/build/MergeEngine_artefacts/Release/Merge.app
@@ -83,7 +83,7 @@ jobs:
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
           osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $PID) to true" || true
-          for i in $(seq 1 30); do grep -q "\[dock\] Merge" app.log && break; sleep 1; done
+          for i in $(seq 1 30); do grep -q "\[insert\] ready Merge" app.log && break; sleep 1; done
           sleep 3
           screencapture -x app-screenshot.png || true
           kill $PID || true
@@ -92,7 +92,7 @@ jobs:
           # the console must stay connected (a message the web view refuses makes it drop and reconnect)
           test "$(grep -c "UI client connected" app.log)" -eq 1
           grep -q "\[plan\]" app.log   # the console sent its mix (audio)
-          grep -q "\[dock\] Merge Test Gain" app.log
+          grep -q "\[insert\] ready Merge Test Gain" app.log
 
       - uses: actions/upload-artifact@v4
         if: runner.os == 'macOS' && always()

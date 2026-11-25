@@ -6,7 +6,8 @@ import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, StripRef } from '../core/types';
 import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
-import { openInDock } from './uiState';
+import { sendNative, useNative } from '../native/bridge';
+import { closeDrawer, openDrawer, useUi } from './uiState';
 
 export function sameRef(a: StripRef | null, b: StripRef | null) {
   if (!a || !b) return false;
@@ -61,10 +62,16 @@ function InputSection({ ch }: { ch: Channel }) {
   );
 }
 
+/** Rack slots: click a plugin to open (or close) its own floating window. */
 function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?: () => void }) {
-  const open = (ins?: InsertSlot) => {
-    onSelect?.();
-    if (ins) openInDock(ins.id);
+  const nativeOn = useNative((st) => st.status === 'connected');
+  const native = useNative((st) => st.inserts);
+  const click = (ins?: InsertSlot) => {
+    if (ins && nativeOn && !ins.pluginId.startsWith('builtin.')) {
+      sendNative({ type: 'insert.editor', slotId: ins.id, open: !native[ins.id]?.editorOpen });
+      return;
+    }
+    onSelect?.(); // empty slot or browser effect: its settings are in the drawer's RACK tab
   };
   const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
   return (
@@ -72,12 +79,18 @@ function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?:
       {inserts &&
         slots.map((ins, i) => {
           const name = ins ? getPlugin(ins.pluginId)?.name ?? ins.pluginName ?? 'Plugin' : '';
+          const n = ins ? native[ins.id] : undefined;
+          const isWin = !!ins && nativeOn && !ins.pluginId.startsWith('builtin.');
           return (
             <div
               key={i}
-              className={'rack-slot' + (ins ? ' used' : '') + (ins?.bypass ? ' byp' : '')}
-              title={ins ? `${name}${ins.bypass ? ' (bypassed)' : ''} — click to open below` : 'Empty insert — add in the RACK tab'}
-              onClick={() => open(ins)}
+              className={'rack-slot' + (ins ? ' used' : '') + (ins?.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}
+              title={
+                ins
+                  ? `${name}${ins.bypass ? ' (bypassed)' : ''}${n?.error ? ` — ${n.error}` : ''} — ${isWin ? (n?.editorOpen ? 'click to close its window' : 'click to open its window') : 'click for settings'}`
+                  : 'Empty insert — click, then add in the RACK tab'
+              }
+              onClick={() => click(ins)}
             >
               {ins ? name : '·'}
             </div>
@@ -150,7 +163,12 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
   if (!refr) return <div className="strip empty"><div className="strip-num">{index + 1}</div></div>;
 
   const selected = sameRef(s.selected, refr);
-  const select = () => s.select(refr);
+  const select = () => {
+    // selecting a strip opens its settings drawer; selecting it again closes the drawer
+    if (selected && useUi.getState().drawerOpen) return closeDrawer();
+    s.select(refr);
+    openDrawer();
+  };
   const onStripClick = (e: React.MouseEvent) => {
     if (!isControl(e.target)) select();
   };

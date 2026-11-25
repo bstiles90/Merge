@@ -155,23 +155,53 @@ juce::var HostedInsert::describeParams (const std::vector<int>* only) const
 // ======================================================================= PluginHost
 namespace
 {
+/** Where each plugin's window was last left (per plugin type, on this computer). */
+static juce::PropertiesFile& windowPositions()
+{
+    static juce::PropertiesFile props ([] {
+        juce::PropertiesFile::Options o;
+        o.applicationName = "plugin-windows";
+        o.folderName = "Merge";
+        o.filenameSuffix = ".settings";
+        o.osxLibrarySubFolder = "Application Support";
+        return o;
+    }());
+    return props;
+}
+
 class EditorWindow : public juce::DocumentWindow
 {
 public:
-    EditorWindow (const juce::String& title, juce::AudioProcessorEditor* ed, std::function<void()> onClose)
+    EditorWindow (const juce::String& title, juce::AudioProcessorEditor* ed, const juce::String& pluginId, std::function<void()> onClose)
         : DocumentWindow (title, juce::Colour (0xff181b1f), DocumentWindow::closeButton | DocumentWindow::minimiseButton),
-          closeCb (std::move (onClose))
+          key ("window " + pluginId), closeCb (std::move (onClose))
     {
         setUsingNativeTitleBar (true);
         setContentOwned (ed, true);
         setResizable (ed->isResizable(), false);
         setAlwaysOnTop (true); // live use: plugin windows stay above the console
-        centreWithSize (getWidth(), getHeight());
+        // reopen where this plugin was left last time (if that spot is still on a connected screen)
+        const auto saved = windowPositions().getValue (key);
+        bool placed = false;
+        if (saved.isNotEmpty())
+        {
+            const auto w = getWidth(), h = getHeight();
+            placed = restoreWindowStateFromString (saved);
+            if (placed && ! ed->isResizable()) setSize (w, h); // the plugin decides its size
+            placed = placed && juce::Desktop::getInstance().getDisplays().getDisplayForRect (getBounds()) != nullptr;
+        }
+        if (! placed) centreWithSize (getWidth(), getHeight());
         setVisible (true);
+    }
+    ~EditorWindow() override
+    {
+        windowPositions().setValue (key, getWindowStateAsString());
+        windowPositions().saveIfNeeded();
     }
     void closeButtonPressed() override { closeCb(); }
 
 private:
+    juce::String key;
     std::function<void()> closeCb;
 };
 
@@ -566,7 +596,7 @@ void PluginHost::openEditor (const juce::String& slotId)
     auto& p = slot.insert->plugin();
     auto* ed = p.hasEditor() ? p.createEditorIfNeeded() : nullptr;
     if (! ed) ed = new juce::GenericAudioProcessorEditor (p);
-    slot.editor = std::make_unique<EditorWindow> (p.getName() + " — " + slot.strip, ed, [this, slotId] { closeEditor (slotId); });
+    slot.editor = std::make_unique<EditorWindow> (p.getName() + " — " + slot.strip, ed, slot.pluginId, [this, slotId] { closeEditor (slotId); });
     send (obj ({ { "type", "insert.editor" }, { "slotId", slotId }, { "open", true } }));
 }
 
@@ -609,10 +639,9 @@ void PluginHost::closeEditor (const juce::String& slotId)
     auto it = slots.find (slotId);
     if (it == slots.end() || ! it->second.editor) return;
     // defer: we may be inside the window's own close callback
-    juce::MessageManager::callAsync ([this, slotId] {
-        auto i = slots.find (slotId);
-        if (i != slots.end()) i->second.editor.reset();
-    });
+    // (the window leaves the slot now, so a quick re-open makes a fresh one)
+    auto* window = it->second.editor.release();
+    juce::MessageManager::callAsync ([window] { delete window; });
     if (it->second.insert) it->second.insert->stateDirty = true;
     send (obj ({ { "type", "insert.editor" }, { "slotId", slotId }, { "open", false } }));
 }
