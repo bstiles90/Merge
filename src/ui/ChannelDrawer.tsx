@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useConsole } from '../core/store';
 import { Detail } from './Detail';
 import { KeyEditor } from './UserKeys';
+import { Inspector } from './Inspector';
 import { closeDrawer, useUi } from './uiState';
 
 export function ChannelDrawer({ pinned = false }: { pinned?: boolean }) {
@@ -29,7 +30,15 @@ export function ChannelDrawer({ pinned = false }: { pinned?: boolean }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [drawerOpen, pinned]);
+  const ch = useConsole((s) => (sel?.kind === 'channel' ? s.channels.find((c) => c.id === sel.id) : undefined));
   if (!drawerOpen && !pinned) return null;
+  // channels: the no-scroll inspector (it has its own name row)
+  if (ch && !editKey)
+    return (
+      <aside className={'drawer' + (pinned ? ' pinned' : '')} aria-label="Channel settings">
+        <Inspector ch={ch} closable={!pinned} />
+      </aside>
+    );
   return (
     <aside className={'drawer' + (pinned ? ' pinned' : '')} aria-label="Channel settings">
       <div className="drawer-head">

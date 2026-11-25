@@ -236,7 +236,7 @@ function RackSection({ inserts, onSelect, onAdd, onBypass }: { inserts?: InsertS
 }
 
 /** Add a plugin to the end of a rack (and open its window once it has loaded). */
-function newInsert(p: PluginDescriptor): InsertSlot {
+export function newInsert(p: PluginDescriptor): InsertSlot {
   return { id: newId('ins'), pluginId: p.id, pluginName: p.name, bypass: false, params: defaultParams(p) };
 }
 
@@ -247,7 +247,7 @@ const pluginName = (id: string, fallback?: string) => getPlugin(id)?.name ?? fal
 /** One send on the strip (like Logic): the bus name over its level, and its tap point beside it.
  *  Drag sideways for level, double-click on/off; the tap code opens the menu (tap point, on/off,
  *  change bus, remove). */
-function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
+export function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
   const s = useConsole();
   const snd: Send = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
   const drag = useRef<{ x: number; db: number } | null>(null);
@@ -315,7 +315,7 @@ function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
 }
 
 /** Sends listed on the strip by bus name, plus an empty slot to add one. */
-function SendsSection({ ch }: { ch?: Channel }) {
+export function SendsSection({ ch }: { ch?: Channel }) {
   const s = useConsole();
   if (!ch) return <div className="sec sec-sends" />;
   const used = routableBuses(s).filter((b) => sendUsed(ch.sends[b.id]));
@@ -360,7 +360,7 @@ function SendsSection({ ch }: { ch?: Channel }) {
 }
 
 /** The channel's output, shown and changed right on the strip (Main LR and/or buses). */
-function ChannelOutput({ ch }: { ch: Channel }) {
+export function ChannelOutput({ ch }: { ch: Channel }) {
   const s = useConsole();
   const routes = ch.routes ?? [];
   const names = [...(ch.mainAssign ? ['Main LR'] : []), ...routes.map((id) => s.buses.find((b) => b.id === id)?.name ?? id)];
