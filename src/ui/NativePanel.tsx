@@ -105,7 +105,15 @@ export function NativePanel() {
           {n.scanning && n.scan && (
             <div className="scan">
               <div className="scan-bar"><div style={{ width: `${Math.round(n.scan.progress * 100)}%` }} /></div>
-              <span className="hint">{n.scan.format} · {n.scan.file.split(/[\\/]/).pop()}</span>
+              <span className="hint">
+                {n.scan.format} · {n.scan.file.split(/[\\/]/).pop()}
+                {(n.scan.seconds ?? 0) >= 3 && ` · ${n.scan.seconds}s`}
+              </span>
+              {(n.scan.seconds ?? 0) >= 5 && (
+                <button className="small" onClick={() => sendNative({ type: 'plugins.skip' })} title="Give up on this plugin (it's skipped until a full rescan)">
+                  Skip this plugin
+                </button>
+              )}
             </div>
           )}
           <div className="row">
@@ -113,7 +121,9 @@ export function NativePanel() {
             <button disabled={!path} onClick={() => { sendNative({ type: 'plugins.addFile', path }); setPath(''); }}>Add</button>
           </div>
           {n.blacklisted.length > 0 && (
-            <p className="hint">Skipped after crashing during a scan: {n.blacklisted.map((f) => f.split(/[\\/]/).pop()).join(', ')}</p>
+            <p className="hint">
+              Skipped (didn't finish loading, crashed, or skipped by you): {n.blacklisted.map((f) => f.split(/[\\/]/).pop()).join(', ')}. A full rescan tries them again.
+            </p>
           )}
           <div className="plugin-list">
             {nativePlugins.map((p) => (

@@ -15,6 +15,23 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         const auto args = juce::StringArray::fromTokens (commandLine, true);
+        if (const auto params = getCommandLineParameterArray(); params.contains ("--scan-one"))
+        {
+            // plugin-scan helper: load one plugin file, write what it contains, exit. Runs in its own
+            // process so a plugin that hangs or crashes can't take the app down with it.
+            const int i = params.indexOf ("--scan-one");
+           #if JUCE_MAC
+            juce::Process::setDockIconVisible (false);
+           #endif
+            const auto format = params[i + 1], id = params[i + 2];
+            const juce::File out (params[i + 3]);
+            juce::MessageManager::callAsync ([format, id, out] {
+                const int n = merge::PluginHost::scanOneToFile (format, id, out);
+                std::fflush (stdout);
+                std::_Exit (n > 0 ? 0 : 2);
+            });
+            return;
+        }
         if (args.contains ("--print-plugin-ids"))
         {
             // lists the scanned plugins (id <tab> name); used by CI to build a test show

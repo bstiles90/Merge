@@ -62,8 +62,17 @@ public:
 
     void setAudioConfig (double sampleRate, int maxBlock);
 
-    // ---- scanning (incremental on the message thread; crashing plugins are blacklisted next run)
+    // ---- scanning: each plugin file is scanned in a helper process (Merge --scan-one), so a
+    //      plugin that hangs or crashes while loading can't freeze the app; it's skipped and listed
     void startScan (bool rescanAll);
+    /** Queue one plugin file (drag-drop / "Add"), scanned the same safe way. */
+    void scanFileAsync (const juce::String& path);
+    /** Give up on the plugin being scanned now (it's skipped until a full rescan). */
+    void skipCurrentScan();
+    /** Helper-process side: scan one file and write the descriptions as XML. Returns the count. */
+    static int scanOneToFile (const juce::String& formatName, const juce::String& fileOrId, const juce::File& out);
+    /** How long one plugin file may take to scan (shells like WaveShell take a while). */
+    static int scanTimeoutMs();
     /** Scan only these folders (self-test / custom locations). */
     void startScanIn (const juce::FileSearchPath& folders, bool rescanAll);
     bool scanFile (const juce::String& path); // add one plugin file (tests / drag-drop)
@@ -117,13 +126,19 @@ private:
 
     juce::AudioPluginFormatManager formats;
     juce::KnownPluginList known;
-    std::unique_ptr<juce::PluginDirectoryScanner> scanner;
-    int scanFormatIndex = 0;
-    bool scanRescanAll = false;
+    struct ScanJob { juce::String format, id; };
+    std::vector<ScanJob> scanQueue;
+    size_t scanIndex = 0;
+    std::unique_ptr<juce::ChildProcess> scanChild;
+    juce::File scanOut;
+    juce::uint32 scanStartedMs = 0, scanLastReportMs = 0;
     bool scanActive = false;
+    bool scanSkipRequested = false;
     std::optional<juce::FileSearchPath> scanFolders;
-    juce::String scanFormatName;
-    juce::File dataDir, listFile, deadMansPedal;
+    juce::StringArray scanProblems; // "Foo.vst (timed out)" etc., for the end-of-scan report
+    void finishScanJob (bool timedOut);
+    void startNextScanJob();
+    juce::File dataDir, listFile;
     double sampleRate = 48000;
     int maxBlock = 512;
     std::map<juce::String, Slot> slots;

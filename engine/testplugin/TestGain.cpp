@@ -3,6 +3,14 @@
 
 // Minimal effect used to verify hosting: a gain parameter (dB) and a fixed
 // reported latency so plugin delay compensation can be exercised.
+// Test hook: when MERGE_TEST_PLUGIN_HANG is set, never finish loading (like a plugin stuck in a
+// copy-protection or licence check as its file is loaded), so the host's scan safety can be tested.
+static const bool mergeTestHang = [] {
+    if (juce::SystemStats::getEnvironmentVariable ("MERGE_TEST_PLUGIN_HANG", {}).isNotEmpty())
+        for (;;) juce::Thread::sleep (1000);
+    return false;
+}();
+
 class TestGain final : public juce::AudioProcessor
 {
 public:

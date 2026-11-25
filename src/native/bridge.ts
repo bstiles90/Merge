@@ -54,7 +54,7 @@ interface NativeState {
   version?: string;
   error?: string;
   device?: NativeDevice;
-  scan?: { progress: number; file: string; format?: string };
+  scan?: { progress: number; file: string; format?: string; seconds?: number };
   scanning: boolean;
   blacklisted: string[];
   pdc: number;
@@ -161,7 +161,7 @@ function onMessage(m: any) {
       useNative.setState({ scanning: !!m.scanning, blacklisted: m.blacklisted ?? [], scan: m.scanning ? useNative.getState().scan : undefined });
       break;
     case 'plugins.scan':
-      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format } });
+      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format, seconds: m.seconds } });
       break;
     case 'meters': {
       const next = new Map<string, MeterReading>();
