@@ -35,6 +35,80 @@ const WORKSPACES: { id: Workspace; label: string; tabs: Tab[]; ready: boolean; a
   { id: 'record', label: 'Record', tabs: ['timeline', 'routing', 'io'], ready: true, about: 'Record and play back: timeline, transport' },
 ];
 
+/** Engine status dot + sample rate; click for a quick audio menu (rate, buffer, device). */
+function EngineMenu({ onAudioSettings }: { onAudioSettings: () => void }) {
+  const native = useNative();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  const d = native.device;
+  const on = native.status === 'connected';
+  const rates = d?.sampleRates?.length ? d.sampleRates : d ? [d.sampleRate] : [];
+  const fmtRate = (r: number) => (r % 1000 ? `${(r / 1000).toFixed(1)}k` : `${r / 1000}k`);
+  const set = (patch: object) => sendNative({ type: 'device.set', deviceType: d?.deviceType, ...patch });
+  return (
+    <div className="engine-wrap" ref={ref}>
+      <button className={'engine-on native' + (on ? '' : ' offline') + (open ? ' open' : '')} onClick={() => setOpen(!open)} title="Audio engine: sample rate, buffer, device">
+        <i className="eng-dot" />
+        {on ? (d ? fmtRate(d.sampleRate) : 'ON') : 'Starting…'}
+      </button>
+      {open && (
+        <div className="show-menu engine-menu" role="menu">
+          <div className="ws-menu-title">Audio engine</div>
+          {!d || d.virtual ? (
+            <div className="show-menu-info"><span className="hint">No audio device open. Choose one in audio settings.</span></div>
+          ) : (
+            <>
+              <div className="show-menu-info">
+                <div><b>{d.outputDevice || d.inputDevice || d.deviceType}</b></div>
+                {d.inputDevice && d.inputDevice !== d.outputDevice && <div className="hint">In: {d.inputDevice}</div>}
+              </div>
+              <div className="menu-label">Sample rate</div>
+              <div className="rate-row">
+                {[44100, 48000, 96000].map((r) => {
+                  const ok = rates.includes(r);
+                  return (
+                    <button
+                      key={r}
+                      className={'rate-btn' + (d.sampleRate === r ? ' on' : '')}
+                      disabled={!ok}
+                      title={ok ? `Run at ${fmtRate(r)}Hz (audio stops for a moment while the device restarts)` : `${d.outputDevice || 'This device'} doesn't offer ${fmtRate(r)}Hz`}
+                      onClick={() => d.sampleRate !== r && set({ sampleRate: r })}
+                    >
+                      {fmtRate(r)}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="menu-label">Buffer</div>
+              <select className="buffer-select" value={d.bufferSize} onChange={(e) => set({ bufferSize: Number(e.target.value) })}>
+                {(d.bufferSizes?.length ? d.bufferSizes : [d.bufferSize]).map((b) => (
+                  <option key={b} value={b}>
+                    {b} samples ({((b / d.sampleRate) * 1000).toFixed(1)} ms)
+                  </option>
+                ))}
+              </select>
+              <div className="hint engine-note">Changing these restarts the audio device for a moment: do it before the service, not during.</div>
+            </>
+          )}
+          <button className="menu-item" onClick={() => { setOpen(false); onAudioSettings(); }}>Audio settings…</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The wordmark is the workspace switcher: MERGE | LIVE ▾ (click the workspace name to change it). */
 function WorkspaceSwitcher({ current, onChoose }: { current: Workspace; onChoose: (w: (typeof WORKSPACES)[number]) => void }) {
   const [open, setOpen] = useState(false);
@@ -251,10 +325,7 @@ export function App() {
           )}
         </div>
         {EMBEDDED ? (
-          <span className={'engine-on native' + (native.status === 'connected' ? '' : ' offline')} title={native.showPath ?? ''}>
-            <i className="eng-dot" />
-            {native.status === 'connected' ? (native.device ? `${native.device.sampleRate / 1000}k` : 'ON') : 'Starting…'}
-          </span>
+          <EngineMenu onAudioSettings={() => setTab('io')} />
         ) : native.status === 'connected' ? (
           <button className="engine-on native" onClick={toggleNative} title={`Native engine at ${native.url} — click to disconnect`}>
             ● NATIVE {native.device ? `${native.device.sampleRate / 1000}k` : ''}
