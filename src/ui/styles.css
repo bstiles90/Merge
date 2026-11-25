@@ -584,3 +584,12 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 /* layout switch + pinned channel panel (big screens) */
 .layout-select { width: 100%; font-size: 10px; padding: 2px; }
 .drawer.pinned { position: relative; top: auto; right: auto; bottom: auto; width: 340px; flex: 0 0 340px; box-shadow: none; animation: none; z-index: auto; }
+/* the fader shares the strip height with the rack and sends: on a taller screen the rack and
+   send list grow too (bigger plugin names, more sends visible) instead of only the fader */
+.strip-body { flex: 3 1 0; min-height: 170px; }
+.sec-rack { flex: 1 1 0; min-height: 90px; max-height: 176px; height: auto; }
+.sec-rack .rack-slot { flex: 1 1 0; height: auto; min-height: 10px; max-height: 20px; display: flex; align-items: center; font-size: 8.5px; }
+.sec-sends { flex: 1 1 0; min-height: 86px; max-height: 240px; height: auto; }
+/* shorter fader, more room for the rack and sends */
+.strip-body { flex: 2 1 0; min-height: 170px; max-height: 420px; }
+.sec-sends { max-height: none; }
