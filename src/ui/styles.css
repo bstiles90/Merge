@@ -688,3 +688,32 @@ input, textarea, select { box-shadow: var(--shadow-pressed); }
 .ukey { border-radius: var(--r-md); }
 .mg-master { border-radius: var(--r-md); }
 .mg-master.on { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15) inset; }
+
+/* ======================================================================================
+   Design system step 3: page navigator (same structure, refined)
+   ====================================================================================== */
+.pages { width: 104px; flex: 0 0 104px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); padding: var(--s-3); gap: var(--s-3); }
+.pages-title { font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.18em; color: var(--text-secondary); }
+.layout-select { font-size: var(--fs-sm); padding: 3px 4px; border-radius: var(--r-sm); }
+.rack-toggle { border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: var(--fw-bold); letter-spacing: var(--tracking-caps); color: var(--text-secondary); background: var(--surface-control); }
+.rack-toggle.on { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-control-hover); }
+.pages-nav button { border-radius: var(--r-sm); color: var(--text-secondary); }
+.page-key {
+  min-height: 46px; padding: 6px 7px 5px 9px; gap: 4px; border-radius: var(--r-md);
+  background: var(--surface-strip); border: 1px solid var(--border-subtle); border-left: 3px solid color-mix(in srgb, var(--pc) 70%, var(--surface-strip));
+  box-shadow: var(--shadow-control); color: var(--text-primary);
+}
+.page-key:hover:not(:disabled) { background: var(--surface-raised); }
+.page-key.on {
+  background: color-mix(in srgb, var(--pc) 26%, var(--surface-strip));
+  border-color: color-mix(in srgb, var(--pc) 60%, var(--border));
+  border-left-color: var(--pc);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 35%, transparent);
+  color: var(--text-primary);
+}
+.page-key.shown { background: color-mix(in srgb, var(--pc) 14%, var(--surface-strip)); }
+.page-name { font-size: 11.5px; font-weight: var(--fw-semibold); letter-spacing: 0.005em; }
+.page-num { top: 4px; right: 6px; font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-secondary); opacity: 1; }
+.page-preview { height: 4px; gap: 1px; }
+.page-preview i { border-radius: 1px; outline: none; filter: saturate(var(--channel-saturation)); }
+.pages-actions button { font-size: var(--fs-sm); border-radius: var(--r-sm); }

@@ -147,7 +147,7 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
                 {split && inB && <b className="bank-badge b">B</b>}
                 {i + 1}
               </span>
-              <span className="page-name">{l.name}</span>
+              <span className="page-name">{l.name.replace(/-/g, "\u2011") /* keep "1-16" together */}</span>
               <span className="page-preview">
                 {l.slots.map((r, j) => (
                   <i key={j} style={{ background: refColor(s, r) ?? 'transparent' }} />
