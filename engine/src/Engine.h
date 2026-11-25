@@ -2,6 +2,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "Mixer.h"
 #include <map>
+#include <deque>
 #include "PluginHost.h"
 #include "WebSocketServer.h"
 
@@ -44,7 +45,9 @@ public:
 
     /** Messages bigger than this are sent in pieces: the Mac's web view (WebKit) drops the
         connection on any single WebSocket message over about 1 MB (e.g. a big plugin list). */
-    static constexpr int kMaxPieceChars = 100000;
+    static constexpr int kMaxPieceChars = 8000;
+    /** Pieces are sent at a steady pace (per 30 Hz tick), never as one big burst. */
+    static constexpr int kPiecesPerTick = 8;
     /** Splits a long message into 'chunk' messages the console reassembles (public for tests). */
     static juce::StringArray splitIntoChunks (const juce::String& text, int id);
 
@@ -64,6 +67,7 @@ private:
 
     void applyPlan (juce::var planJson); // by value: callers pass lastPlan itself, and var self-assignment frees it
     void send (const juce::var& msg, int clientId = 0);
+    void sendQueuedPieces();
     juce::var deviceInfo();
     void setDevice (const juce::var& msg);
     void startVirtual();
@@ -77,6 +81,7 @@ private:
     std::unique_ptr<VirtualDevice> virtualDevice;
     juce::var lastPlan;
     int chunkSeq = 0;
+    std::deque<std::pair<int, juce::String>> outgoingPieces; // (client, piece) waiting to be sent
     std::map<juce::String, juce::StringArray> incomingChunks; // "client:id" -> pieces so far
     juce::File settingsFile;
     int meterTick = 0;

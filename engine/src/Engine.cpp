@@ -142,7 +142,9 @@ void Engine::send (const juce::var& msg, int clientId)
         else ws.broadcast (t);
     };
     if (text.length() <= kMaxPieceChars) { deliver (text); return; }
-    for (auto& piece : splitIntoChunks (text, ++chunkSeq)) deliver (piece);
+    // big: small pieces, queued and sent a few per tick (see timerCallback)
+    for (auto& piece : splitIntoChunks (text, ++chunkSeq)) outgoingPieces.emplace_back (clientId, piece);
+    sendQueuedPieces();
 }
 
 void Engine::applyPlan (juce::var planJson)
@@ -332,8 +334,20 @@ void Engine::setDevice (const juce::var& msg)
     send (deviceInfo());
 }
 
+void Engine::sendQueuedPieces()
+{
+    for (int k = 0; k < kPiecesPerTick && ! outgoingPieces.empty(); ++k)
+    {
+        const auto [clientId, piece] = outgoingPieces.front();
+        outgoingPieces.pop_front();
+        if (clientId) ws.sendTo (clientId, piece);
+        else ws.broadcast (piece);
+    }
+}
+
 void Engine::timerCallback()
 {
+    sendQueuedPieces();
     mix.collectGarbage();
     if (ws.numClients() == 0 && ! extraSink) return;
     juce::Array<juce::var> chans, buses;

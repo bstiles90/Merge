@@ -100,7 +100,7 @@ export function resetNativeTruePeakHold() {
 
 /** The Mac's web view drops the connection on any single message over about 1 MB, so long
  *  messages (both ways) travel in pieces and are put back together on the other side. */
-const MAX_PIECE = 100000;
+const MAX_PIECE = 8000;
 let chunkSeq = 0;
 function wsSend(text: string) {
   if (ws?.readyState !== WebSocket.OPEN) return;
