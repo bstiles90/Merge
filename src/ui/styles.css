@@ -497,3 +497,29 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .sec-src.pickable { position: relative; cursor: pointer; }
 .sec-src.pickable:hover { outline: 1px solid var(--accent); border-radius: 3px; }
 .sec-src .src-select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+/* ---------------- strip sends + output (listed by name, like Logic) */
+.sec-sends { height: 86px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; padding-top: 2px; }
+.send-row { position: relative; display: flex; align-items: stretch; height: 13px; flex: 0 0 13px; }
+.sr-bar { position: relative; flex: 1; min-width: 0; background: #0d0f11; border-radius: 2px 0 0 2px; overflow: hidden; cursor: ew-resize; touch-action: none; }
+.sr-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #23354a; }
+.send-row.on .sr-fill { background: #1f5fa8; }
+.sr-name { position: relative; display: block; font-size: 8.5px; line-height: 13px; padding: 0 3px; color: #8a929b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.send-row.on .sr-name { color: #fff; font-weight: 600; }
+.sr-pre { position: absolute; right: 2px; top: 2px; font-size: 6.5px; line-height: 9px; padding: 0 2px; border-radius: 2px; background: #ffc53d; color: #111; font-weight: 800; pointer-events: none; }
+.sr-menu { position: relative; width: 11px; flex: 0 0 11px; font-size: 8px; line-height: 13px; text-align: center; color: #8a929b; background: #16191d; border-radius: 0 2px 2px 0; cursor: pointer; }
+.sr-menu:hover { color: #fff; background: #2a2f36; }
+.send-row select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.send-row.auto .sr-bar { cursor: default; border-radius: 2px; }
+.send-row.auto .sr-fill { background: #12a594; opacity: 0.25; }
+.send-row.auto.on .sr-fill { opacity: 0.6; }
+.send-row.add { border: 1px dashed #2a2f36; border-radius: 2px; cursor: pointer; }
+.send-row.add .sr-name { color: #59616b; line-height: 11px; }
+.send-row.add:hover { border-color: var(--accent); }
+.send-row.add:hover .sr-name { color: #c9ced4; }
+.sec-out { height: 22px; display: flex; align-items: center; border-top: 1px solid #1f2328; }
+.out-pill { position: relative; flex: 1; min-width: 0; height: 15px; font-size: 8.5px; line-height: 15px; text-align: center; font-weight: 700; color: #d8dce1; background: #262a30; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.out-pill.pickable { cursor: pointer; }
+.out-pill.pickable:hover { outline: 1px solid var(--accent); }
+.out-pill.none { background: #4a1f22; color: #ffb4b4; }
+.out-pill select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }

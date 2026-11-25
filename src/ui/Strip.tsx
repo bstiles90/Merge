@@ -6,6 +6,7 @@ import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, StripRef } from '../core/types';
 import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
+import { createsLoop } from '../core/plan';
 import { sendNative, useNative } from '../native/bridge';
 import { closeDrawer, openDrawer, useUi } from './uiState';
 
@@ -30,7 +31,7 @@ function useHeight<T extends HTMLElement>() {
 }
 
 const isControl = (t: EventTarget | null) =>
-  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader, .knob, .minibar, .rack-slot');
+  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader, .knob, .rack-slot, .send-row, .out-pill');
 
 // ------------------------------------------------------------------ strip sections
 function sourceLabel(ch: Channel) {
@@ -126,60 +127,153 @@ function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?:
   );
 }
 
-/** Horizontal send/level bar: drag sideways to change (relative), double-click to switch on/off. */
-function MiniBar({ label, db, on, onChange, onToggle, auto }: { label: string; db: number; on: boolean; onChange: (db: number) => void; onToggle: () => void; auto?: boolean }) {
+const sendUsed = (snd?: { on: boolean; levelDb: number }) => !!snd && (snd.on || isFinite(snd.levelDb));
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+
+/** One send on the strip (like Logic): the bus name over its level. Drag sideways for level,
+ *  double-click on/off, ▾ for pre/post, change bus or remove. */
+function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
+  const s = useConsole();
+  const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
   const drag = useRef<{ x: number; db: number } | null>(null);
-  const frac = isFinite(db) ? Math.max(0, Math.min(1, (db + 60) / 70)) : 0;
+  const setSends = (sends: Channel['sends']) => s.updateChannel(ch.id, { sends });
+  const set = (p: Partial<typeof snd>) => setSends({ ...ch.sends, [b.id]: { ...snd, ...p } });
+  const frac = isFinite(snd.levelDb) ? Math.max(0, Math.min(1, (snd.levelDb + 60) / 70)) : 0;
+  const db = isFinite(snd.levelDb) ? `${snd.levelDb > 0 ? '+' : ''}${snd.levelDb.toFixed(1)} dB` : '-∞';
+  const menu = (v: string) => {
+    if (v === 'toggle') set({ on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 });
+    else if (v === 'pre') set({ pre: !snd.pre });
+    else if (v === 'remove') {
+      const { [b.id]: _gone, ...rest } = ch.sends;
+      setSends(rest);
+    } else if (v.startsWith('to:')) {
+      const { [b.id]: _gone, ...rest } = ch.sends;
+      setSends({ ...rest, [v.slice(3)]: snd });
+    }
+  };
   return (
-    <div
-      className={'minibar' + (on ? ' on' : '') + (auto ? ' auto' : '')}
-      title={auto ? `${label}: mix-minus (automatic)` : `${label}: ${isFinite(db) ? db.toFixed(1) : '-∞'} dB${on ? '' : ' (off)'} — drag sideways, double-click on/off`}
-      onPointerDown={(e) => {
-        if (auto) return;
-        e.stopPropagation();
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        drag.current = { x: e.clientX, db: isFinite(db) ? db : -60 };
-      }}
-      onPointerMove={(e) => {
-        if (!drag.current) return;
-        const next = Math.max(-60, Math.min(10, drag.current.db + (e.clientX - drag.current.x) * (e.shiftKey ? 0.1 : 0.5)));
-        onChange(next <= -60 ? -Infinity : Math.round(next * 2) / 2);
-      }}
-      onPointerUp={() => (drag.current = null)}
-      onDoubleClick={() => !auto && onToggle()}
-    >
-      <span className="mb-label">{label}</span>
-      <span className="mb-track">
-        <span className="mb-fill" style={{ width: `${auto ? 100 : frac * 100}%` }} />
+    <div className={'send-row' + (snd.on ? ' on' : '') + (snd.pre ? ' pre' : '')} onClick={stop}>
+      <div
+        className="sr-bar"
+        title={`Send to ${b.name}: ${db}${snd.pre ? ' (pre-fader)' : ''}${snd.on ? '' : ' (off)'}. Drag sideways for level, double-click on/off.`}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          (e.target as HTMLElement).setPointerCapture(e.pointerId);
+          drag.current = { x: e.clientX, db: isFinite(snd.levelDb) ? snd.levelDb : -60 };
+        }}
+        onPointerMove={(e) => {
+          if (!drag.current) return;
+          const next = Math.max(-60, Math.min(10, drag.current.db + (e.clientX - drag.current.x) * (e.shiftKey ? 0.1 : 0.5)));
+          set({ levelDb: next <= -60 ? -Infinity : Math.round(next * 2) / 2, on: true });
+        }}
+        onPointerUp={() => (drag.current = null)}
+        onDoubleClick={() => menu('toggle')}
+      >
+        <span className="sr-fill" style={{ width: `${frac * 100}%` }} />
+        <span className="sr-name">{b.name}</span>
+        {snd.pre && <span className="sr-pre">PRE</span>}
+      </div>
+      <span className="sr-menu" title="Send options">
+        ▾
+        <select value="" onChange={(e) => menu(e.target.value)}>
+          <option value="" disabled>{b.name} · {db}</option>
+          <option value="toggle">{snd.on ? 'Turn send off' : 'Turn send on'}</option>
+          <option value="pre">{snd.pre ? 'Make post-fader' : 'Make pre-fader (IEM / foldback)'}</option>
+          <option value="remove">Remove send</option>
+          <optgroup label="Change to bus">
+            {s.buses
+              .filter((x) => x.type !== 'mixminus' && x.id !== b.id && !sendUsed(ch.sends[x.id]))
+              .map((x) => <option key={x.id} value={`to:${x.id}`}>{x.id.slice(3)} · {x.name}</option>)}
+          </optgroup>
+        </select>
       </span>
     </div>
   );
 }
 
+/** Sends listed on the strip by bus name, plus an empty slot to add one. */
 function SendsSection({ ch }: { ch?: Channel }) {
   const s = useConsole();
+  if (!ch) return <div className="sec sec-sends" />;
+  const used = s.buses.filter((b) => b.type !== 'mixminus' && sendUsed(ch.sends[b.id]));
+  const mm = s.buses.filter((b, i) => b.type === 'mixminus' && i < 8);
   return (
     <div className="sec sec-sends">
-      {ch &&
-        s.buses.map((b: Bus, i) => {
-          const sd = ch.sends[b.id];
-          // 64 buses: the strip shows the sends this channel actually uses (SENDS tab adds more)
-          if (b.type !== 'mixminus' && !(sd?.on || isFinite(sd?.levelDb ?? -Infinity))) return null;
-          if (b.type === 'mixminus' && i >= 8) return null;
-          if (b.type === 'mixminus')
-            return <MiniBar key={b.id} label={`${i + 1}`} db={0} on={ch.mainAssign && b.mixMinusExclude !== ch.id} auto onChange={() => {}} onToggle={() => {}} />;
-          const snd = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
-          return (
-            <MiniBar
-              key={b.id}
-              label={`${i + 1}`}
-              db={snd.levelDb}
-              on={snd.on}
-              onChange={(levelDb) => s.updateChannel(ch.id, { sends: { ...ch.sends, [b.id]: { ...snd, levelDb, on: true } } })}
-              onToggle={() => s.updateChannel(ch.id, { sends: { ...ch.sends, [b.id]: { ...snd, on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 } } })}
-            />
-          );
-        })}
+      {used.map((b) => <SendRow key={b.id} ch={ch} b={b} />)}
+      {mm.map((b) => (
+        <div key={b.id} className={'send-row auto' + (ch.mainAssign && b.mixMinusExclude !== ch.id ? ' on' : '')} title={`${b.name}: mix-minus (automatic)`}>
+          <div className="sr-bar"><span className="sr-fill" style={{ width: '100%' }} /><span className="sr-name">{b.name}</span></div>
+        </div>
+      ))}
+      <div className="send-row add" onClick={stop} title="Add a send to a bus">
+        <span className="sr-name">+ send</span>
+        <select
+          value=""
+          onChange={(e) => e.target.value && s.updateChannel(ch.id, { sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false } } })}
+        >
+          <option value="" disabled>Send to…</option>
+          {s.buses
+            .filter((b) => b.type !== 'mixminus' && !sendUsed(ch.sends[b.id]))
+            .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/** The channel's output, shown and changed right on the strip (Main LR and/or buses). */
+function ChannelOutput({ ch }: { ch: Channel }) {
+  const s = useConsole();
+  const routes = ch.routes ?? [];
+  const names = [...(ch.mainAssign ? ['Main LR'] : []), ...routes.map((id) => s.buses.find((b) => b.id === id)?.name ?? id)];
+  const label = names.length === 0 ? 'No output' : names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
+  const choose = (v: string) => {
+    if (v === 'main') s.updateChannel(ch.id, { mainAssign: !ch.mainAssign });
+    else if (v === 'only-main') s.updateChannel(ch.id, { mainAssign: true, routes: [] });
+    else if (v.startsWith('only:')) s.updateChannel(ch.id, { mainAssign: false, routes: [v.slice(5)] });
+    else s.updateChannel(ch.id, { routes: routes.includes(v) ? routes.filter((x) => x !== v) : [...routes, v] });
+  };
+  const buses = s.buses.filter((b) => b.type !== 'mixminus');
+  return (
+    <div className="sec sec-out">
+      <div className={'out-pill pickable' + (names.length === 0 ? ' none' : '')} title={`Output: ${names.join(', ') || 'none'}. Click to change`} onClick={stop}>
+        {label}
+        <select value="" onChange={(e) => choose(e.target.value)}>
+          <option value="" disabled>Output (✓ = on, pick to switch on/off)</option>
+          <option value="main">{ch.mainAssign ? '✓ ' : '    '}Main LR</option>
+          <optgroup label="Buses">
+            {buses.map((b) => <option key={b.id} value={b.id}>{routes.includes(b.id) ? '✓ ' : '    '}{b.id.slice(3)} · {b.name}</option>)}
+          </optgroup>
+          <optgroup label="Only this output">
+            <option value="only-main">Main LR only</option>
+            {buses.map((b) => <option key={b.id} value={`only:${b.id}`}>{b.name} only</option>)}
+          </optgroup>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/** A bus's output on its strip: Main LR, another bus, or physical outputs only. */
+function BusOutput({ b }: { b: Bus }) {
+  const s = useConsole();
+  if (b.type === 'mixminus') return <div className="sec sec-out"><div className="out-pill">N-1 out</div></div>;
+  const out = b.output ?? 'none';
+  const label = out === 'main' ? 'Main LR' : out === 'none' ? 'Outputs' : s.buses.find((x) => x.id === out)?.name ?? out;
+  return (
+    <div className="sec sec-out">
+      <div className="out-pill pickable" title={`Output: ${out === 'none' ? 'physical outputs only (patch on the I/O page)' : label}. Click to change`} onClick={stop}>
+        {label}
+        <select value={out} onChange={(e) => s.updateBus(b.id, { output: e.target.value })}>
+          <option value="main">Main LR</option>
+          <option value="none">Outputs only (patch on I/O)</option>
+          <optgroup label="Another bus">
+            {s.buses
+              .filter((x) => x.id !== b.id && x.type !== 'mixminus' && !createsLoop(s, b.id, x.id))
+              .map((x) => <option key={x.id} value={x.id}>{x.id.slice(3)} · {x.name}</option>)}
+          </optgroup>
+        </select>
+      </div>
     </div>
   );
 }
@@ -228,6 +322,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <InputSection ch={ch} />
         <RackSection inserts={ch.inserts} onSelect={select} />
         <SendsSection ch={ch} />
+        <ChannelOutput ch={ch} />
         <div className="sec sec-pan">
           <Knob size={30} value={ch.pan} min={-1} max={1} defaultValue={0} format={panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
         </div>
@@ -276,6 +371,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
         <RackSection inserts={b.inserts} onSelect={select} />
         <SendsSection />
+        <BusOutput b={b} />
         <div className="sec sec-pan" />
         <div className="sec sec-groups" />
       </>
@@ -312,6 +408,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <div className="sec sec-input"><div className="sec-src" title={members.map((m) => m.name).join(', ')}>{members.length} CH</div></div>
         <RackSection />
         <SendsSection />
+        <div className="sec sec-out" />
         <div className="sec sec-pan" />
         <div className="sec sec-groups" />
       </>
@@ -338,6 +435,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <div className="sec sec-input"><div className="sec-src">PGM</div></div>
         <RackSection inserts={s.main.inserts} onSelect={select} />
         <SendsSection />
+        <div className="sec sec-out"><div className="out-pill" title="Main LR goes to the physical outputs patched on the I/O page">Outputs</div></div>
         <div className="sec sec-pan" />
         <div className="sec sec-groups" />
       </>
