@@ -198,7 +198,7 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "device.list") send (deviceInfo(), clientId);
     else if (type == "device.set") setDevice (msg);
     else if (type == "loudness.reset") mix.loudness.reset();
-    else if (type.startsWith ("show.")) handleShowMessage (clientId, type, msg);
+    else if (type.startsWith ("show.") || type == "logic.open") handleShowMessage (clientId, type, msg); // file dialogs
     else if (type == "insert.dock")
     {
         if (! plugins.dock (msg["slotId"]))
