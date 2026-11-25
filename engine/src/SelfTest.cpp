@@ -273,6 +273,22 @@ void testRouting()
     m.setPlan (parsePlan (loop, kSr, nullptr, nullptr));
     p = render (m, 200);
     check (std::isfinite (p[0]) && p[0] < 1e-4f, "routing loops are cut (no feedback)", juce::String (p[0], 6));
+
+    // bus sends (Lead Vocal bus -> Vocal Verb): post follows the bus fader, pre ignores it
+    const auto sendPlan = [] (const char* busesJson) {
+        auto plan = routedPlan (1, busesJson);
+        plan.getDynamicObject()->setProperty ("busOrder", juce::JSON::parse (R"(["bus9","bus10"])"));
+        return plan;
+    };
+    m.setPlan (parsePlan (sendPlan (R"([{"id":"bus9","out":0.5,"to":"main","inserts":[],"sends":[{"bus":"bus10","gain":0.5,"pre":false}]},{"id":"bus10","out":1,"to":"main","inserts":[]}])"), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], 0.75 * kToneCentre, 0.003), "bus post send: bus fader x send level, added to the bus's own path", juce::String (p[0], 4));
+    m.setPlan (parsePlan (sendPlan (R"([{"id":"bus9","out":0,"to":"main","inserts":[],"sends":[{"bus":"bus10","gain":1,"pre":true}]},{"id":"bus10","out":1,"to":"main","inserts":[]}])"), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], kToneCentre, 0.003), "bus pre send: reaches the target with the bus fader down", juce::String (p[0], 4));
+    m.setPlan (parsePlan (sendPlan (R"([{"id":"bus9","out":1,"to":"bus10","inserts":[]},{"id":"bus10","out":1,"to":"main","inserts":[],"sends":[{"bus":"bus9","gain":1,"pre":false}]}])"), kSr, nullptr, nullptr));
+    p = render (m, 200);
+    check (std::isfinite (p[0]) && near (p[0], kToneCentre, 0.003), "a send back up the chain is dropped (no feedback)", juce::String (p[0], 4));
 }
 
 float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }

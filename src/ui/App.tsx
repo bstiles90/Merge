@@ -3,6 +3,7 @@ import { installHotkeys } from '../control/hotkeys';
 import { defaultState } from '../core/defaults';
 import { anySolo } from '../core/mix';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
+import { importLogic } from '../core/logicImport';
 import { MixView } from './MixView';
 import { IOView } from './IOView';
 import { ScenesView } from './ScenesView';
@@ -209,6 +210,7 @@ export function App() {
   const [err, setErr] = useState('');
   const s = useConsole();
   const fileRef = useRef<HTMLInputElement>(null);
+  const logicRef = useRef<HTMLInputElement>(null);
   const scene = s.scenes.find((x) => x.id === s.currentScene);
 
   useEffect(() => installHotkeys(), []);
@@ -306,6 +308,7 @@ export function App() {
               </div>
               <button className="menu-item" onClick={() => { save(); setShowOpen(false); }}>Save show</button>
               <button className="menu-item" onClick={() => { setShowOpen(false); EMBEDDED ? sendNative({ type: 'show.open' }) : fileRef.current?.click(); }}>{EMBEDDED ? 'Open show…' : 'Load show…'}</button>
+              <button className="menu-item" title="Make a show from a Logic Pro project (replaces the current show)" onClick={() => { setShowOpen(false); EMBEDDED ? sendNative({ type: 'logic.open' }) : logicRef.current?.click(); }}>Import Logic project…</button>
               <button
                 className={'menu-item' + (confirmNew ? ' danger' : '')}
                 title="Start from the default show (unsaved changes are lost)"
@@ -342,6 +345,22 @@ export function App() {
             </button>
           </>
         )}
+        <input
+          ref={logicRef}
+          type="file"
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            // browser: pick the ProjectData file inside the .logicx package (Alternatives/000)
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            try {
+              useNative.setState({ showPath: undefined, notice: importLogic(new Uint8Array(await f.arrayBuffer()), f.name === 'ProjectData' ? 'Logic import' : f.name) });
+            } catch (er) {
+              useNative.setState({ notice: `Could not import: ${er}` });
+            }
+          }}
+        />
         <input
           ref={fileRef}
           type="file"

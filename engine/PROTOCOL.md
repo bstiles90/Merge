@@ -16,7 +16,8 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 |---|---|---|
 | `plan` | `plan` | Full mix plan (below). Inserts are created/removed to match it. |
 | `insert.param` | `slotId, id, value` | Set a plugin parameter (normalised 0–1). `id` comes from `insert.ready`. |
-| `insert.setState` | `slotId, state` | Restore plugin state (base64), e.g. after loading a show. |
+| `insert.setState` | `slotId, state` | Restore plugin state: JUCE base64, or `b64:` + standard base64 (e.g. an AU ClassInfo plist from a Logic project). |
+| `logic.open` | — | Pick a Logic Pro `.logicx`; replies `logic.opened` with `name` and `data` (its newest ProjectData, base64) or `error`. |
 | `insert.editor` | `slotId, open` | Open/close the plugin's own editor window (always-on-top). |
 | `insert.dock` | `slotId` | Dock that plugin's GUI inside the app window (one at a time). |
 | `insert.undock` | | Remove the docked GUI. |

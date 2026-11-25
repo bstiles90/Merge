@@ -317,8 +317,16 @@ juce::String PluginHost::pluginIdFor (const juce::PluginDescription& d)
 
 std::optional<juce::PluginDescription> PluginHost::findDescription (const juce::String& pluginId) const
 {
-    for (const auto& d : known.getTypes()) // getTypes() returns a copy: return by value
+    const auto types = known.getTypes(); // a copy: return by value
+    for (const auto& d : types)
         if (pluginIdFor (d) == pluginId) return d;
+    // "aucode:type,subtype,manufacturer" (shows imported from Logic): the AU with those codes
+    if (pluginId.startsWith ("aucode:"))
+    {
+        const auto codes = pluginId.fromFirstOccurrenceOf (":", false, false);
+        for (const auto& d : types)
+            if (d.pluginFormatName == "AudioUnit" && d.fileOrIdentifier.endsWith ("/" + codes)) return d;
+    }
     return std::nullopt;
 }
 
@@ -635,7 +643,13 @@ bool PluginHost::setState (const juce::String& slotId, const juce::String& base6
     auto ins = find (slotId);
     if (! ins) return false;
     juce::MemoryBlock mb;
-    if (! mb.fromBase64Encoding (base64)) return false;
+    if (base64.startsWith ("b64:"))
+    {
+        // standard base64 (e.g. an Audio Unit's ClassInfo plist imported from a Logic project)
+        juce::MemoryOutputStream out (mb, false);
+        if (! juce::Base64::convertFromBase64 (out, base64.substring (4))) return false;
+    }
+    else if (! mb.fromBase64Encoding (base64)) return false;
     ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
     // report all values back so the UI's generic editor matches the restored state
     send (obj ({ { "type", "insert.params" }, { "slotId", slotId }, { "params", ins->describeParams() } }));

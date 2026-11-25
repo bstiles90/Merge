@@ -253,6 +253,29 @@ void Engine::handleShowMessage (int clientId, const juce::String& type, const ju
                                   send (obj ({ { "type", "show.saved" }, { "ok", ok }, { "path", f.getFullPathName() } }), clientId);
                               });
     }
+    else if (type == "logic.open")
+    {
+        // a Logic Pro project: the console turns its ProjectData into a show
+        chooser = std::make_unique<juce::FileChooser> ("Import Logic Pro project", juce::File::getSpecialLocation (juce::File::userMusicDirectory), "*.logicx");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectDirectories,
+                              [this, clientId] (const juce::FileChooser& fc) {
+                                  const auto pkg = fc.getResult();
+                                  if (pkg == juce::File()) return;
+                                  // the most recently saved alternative's ProjectData (or the file itself)
+                                  juce::File data = pkg.existsAsFile() ? pkg : juce::File();
+                                  for (const auto& f : pkg.getChildFile ("Alternatives").findChildFiles (juce::File::findDirectories, false))
+                                      if (auto pd = f.getChildFile ("ProjectData"); pd.existsAsFile() && (data == juce::File() || pd.getLastModificationTime() > data.getLastModificationTime()))
+                                          data = pd;
+                                  juce::MemoryBlock mb;
+                                  if (data == juce::File() || ! data.loadFileAsData (mb))
+                                  {
+                                      send (obj ({ { "type", "logic.opened" }, { "error", "No ProjectData in " + pkg.getFileName() } }), clientId);
+                                      return;
+                                  }
+                                  send (obj ({ { "type", "logic.opened" }, { "name", pkg.getFileNameWithoutExtension() },
+                                               { "data", juce::Base64::toBase64 (mb.getData(), mb.getSize()) } }), clientId);
+                              });
+    }
     else if (type == "show.open")
     {
         chooser = std::make_unique<juce::FileChooser> ("Open show", showFolder(), "*.json");

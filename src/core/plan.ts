@@ -3,8 +3,9 @@
 // in TypeScript. The engine only renders gains and DSP parameters. Mirrors
 // engine/src/Plan.cpp.
 
-import { anySolo, computeBusGain, computeChannelGains, computeMainGain, computeMonitorGain, dbToGain } from './mix';
-import type { ConsoleState, InsertSlot } from './types';
+import { anySolo, busMuteReason, computeBusGain, computeChannelGains, computeMainGain, computeMonitorGain, dbToGain } from './mix';
+import { isPreFader, sendTap } from './sends';
+import type { Bus, ConsoleState, InsertSlot } from './types';
 
 export interface PlanInsert {
   id: string;
@@ -24,28 +25,57 @@ export function busTarget(s: Pick<ConsoleState, 'buses'>, id: string): string {
   return createsLoop(s, id, out) ? '' : out;
 }
 
-/** Would routing bus `from` into bus `to` make a loop (to → … → from)? */
+/** Buses a bus feeds: its output and the buses it sends to. */
+function feeds(s: Pick<ConsoleState, 'buses'>, id: string): string[] {
+  const b = s.buses.find((x) => x.id === id);
+  if (!b) return [];
+  const out = b.output && b.output !== 'main' && b.output !== 'none' ? [b.output] : [];
+  for (const [t, snd] of Object.entries(b.sends ?? {})) if (snd.on && t !== id && !out.includes(t)) out.push(t);
+  return out;
+}
+
+/** Would feeding bus `from` into bus `to` (output or send) make a loop (to → … → from)? */
 export function createsLoop(s: Pick<ConsoleState, 'buses'>, from: string, to: string): boolean {
-  let cur: string | undefined = to;
-  for (let i = 0; i <= s.buses.length && cur; i++) {
+  const seen = new Set<string>();
+  const stack = [to];
+  while (stack.length) {
+    const cur = stack.pop()!;
     if (cur === from) return true;
-    const out: string | undefined = s.buses.find((x) => x.id === cur)?.output;
-    cur = out && out !== 'main' && out !== 'none' ? out : undefined;
+    if (seen.has(cur)) continue;
+    seen.add(cur);
+    stack.push(...feeds(s, cur));
   }
   return false;
 }
 
-/** Buses ordered so each comes before the bus it feeds (the engine processes them in this order). */
+/** Buses ordered so each comes before every bus it feeds (the engine processes them in this order). */
 export function busOrder(s: Pick<ConsoleState, 'buses'>): string[] {
-  const depth = (id: string) => {
-    let d = 0, cur = busTarget(s, id);
-    while (cur && cur !== 'main' && d <= s.buses.length) {
-      d++;
-      cur = busTarget(s, cur);
-    }
-    return d; // number of buses downstream: further from Main LR = earlier
+  const memo = new Map<string, number>();
+  const depth = (id: string, path: Set<string>): number => {
+    const m = memo.get(id);
+    if (m !== undefined) return m;
+    if (path.has(id)) return 0; // a loop: cut here (the engine drops the link)
+    path.add(id);
+    let d = 0;
+    for (const t of feeds(s, id)) if (s.buses.some((x) => x.id === t)) d = Math.max(d, 1 + depth(t, path));
+    path.delete(id);
+    memo.set(id, d);
+    return d; // longest chain of buses downstream: further from Main LR = earlier
   };
-  return s.buses.map((b, i) => ({ id: b.id, d: depth(b.id), i })).sort((a, b) => b.d - a.d || a.i - b.i).map((x) => x.id);
+  return s.buses.map((b, i) => ({ id: b.id, d: depth(b.id, new Set()), i })).sort((a, b) => b.d - a.d || a.i - b.i).map((x) => x.id);
+}
+
+/** A bus's sends for the engine: post sends follow the bus fader (and mute) there; pre sends
+ *  are cut here when the bus is muted. Sends that would loop are left out. */
+function busSends(s: ConsoleState, b: Bus, muted: boolean) {
+  const out: { bus: string; gain: number; pre: boolean }[] = [];
+  for (const [t, snd] of Object.entries(b.sends ?? {})) {
+    const target = s.buses.find((x) => x.id === t);
+    if (!snd.on || t === b.id || !target || target.created === false || !isFinite(snd.levelDb)) continue;
+    const pre = isPreFader(sendTap(snd));
+    out.push({ bus: t, gain: r(pre && muted ? 0 : dbToGain(snd.levelDb)), pre });
+  }
+  return out;
 }
 
 export function buildMixPlan(s: ConsoleState) {
@@ -91,6 +121,7 @@ export function buildMixPlan(s: ConsoleState) {
         delayMs: b.delayMs,
         inserts: inserts(b.inserts),
         to: busTarget(s, b.id),
+        ...(b.sends && Object.keys(b.sends).length ? { sends: busSends(s, b, busMuteReason(s, b).muted) } : {}),
       };
     }),
     busOrder: busOrder(s),

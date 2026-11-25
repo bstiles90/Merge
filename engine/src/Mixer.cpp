@@ -93,6 +93,8 @@ void Mixer::prepare (double sr, int block, int, int)
         for (auto& d : b.delay) d.prepare ((int) sr + 1);
         for (auto& d : b.chanPdc) d.prepare (16384);
         for (auto& d : b.outPdc) d.prepare (16384);
+        for (auto& d : b.preLine) d.prepare (16384);
+        for (auto& d : b.postLine) d.prepare (16384);
     }
     for (auto& d : mainDirectPdc) d.prepare (16384);
     for (auto& d : mainDelay) d.prepare ((int) (2 * sr) + 1); // lip-sync up to 2 s
@@ -100,6 +102,7 @@ void Mixer::prepare (double sr, int block, int, int)
     tapBuf.setSize (kMaxInserts * 2, maxBlock);
     busBuf.setSize (kNumBuses * 2, maxBlock);
     busFeed.setSize (kNumBuses * 2, maxBlock);
+    busPre.setSize (2, maxBlock);
     mainFromBuses.setSize (2, maxBlock);
     mainBuf.setSize (2, maxBlock);
     cueBuf.setSize (2, maxBlock);
@@ -226,6 +229,9 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             const int t = plan->buses[(size_t) b].to;
             if (t >= 0) inLat[t] = juce::jmax (inLat[t], outLat[b]);
             else if (t == -2) mainIn = juce::jmax (mainIn, outLat[b]);
+            if (plan->buses[(size_t) b].anySends)
+                for (int x = 0; x < kNumBuses; ++x)
+                    if (plan->buses[(size_t) b].sendGain[(size_t) x] > 0) inLat[x] = juce::jmax (inLat[x], outLat[b]);
         }
         pdcSamples.store (mainIn, std::memory_order_relaxed);
 
@@ -404,6 +410,7 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                     for (int i = 0; i < n; ++i) lr[side][i] = st.delay[(size_t) side].run (lr[side][i], d);
             for (auto& r : bp.inserts)
                 if (r.insert) r.insert->process (lr, 2, n);
+            for (int side = 0; side < 2; ++side) busPre.copyFrom (side, 0, lr[side], n);
             st.out.set (bp.out);
             st.cuePre.set (bp.cuePre);
             st.cuePost.set (bp.cuePost);
@@ -423,6 +430,44 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 pr = juce::jmax (pr, std::abs (lr[1][i]));
             }
             meters[(size_t) (kNumChannels + b)].raise (pl, pr);
+
+            // sends to other buses (only ever to buses processed later), lined up with the other
+            // paths into each target; a send that was just turned off fades out first
+            {
+                int tgt[kNumBuses], tdel[kNumBuses], nt = 0;
+                for (int t = 0; t < kNumBuses; ++t)
+                {
+                    auto& sm = st.sends[(size_t) t];
+                    sm.set (bp.sendGain[(size_t) t]);
+                    if (bp.sendGain[(size_t) t] > 0 || sm.cur > 1.0e-6f)
+                    {
+                        tgt[nt] = t;
+                        tdel[nt++] = juce::jlimit (0, 16000, inLat[t] - outLat[b]);
+                    }
+                    else sm.cur = 0;
+                }
+                // the lines always run, so a send that is turned on starts from current audio
+                {
+                    const float* pre[2] = { busPre.getReadPointer (0), busPre.getReadPointer (1) };
+                    for (int i = 0; i < n; ++i)
+                    {
+                        for (int side = 0; side < 2; ++side)
+                        {
+                            st.preLine[(size_t) side].push (pre[side][i]);
+                            st.postLine[(size_t) side].push (lr[side][i]);
+                        }
+                        for (int j = 0; j < nt; ++j)
+                        {
+                            const int t = tgt[j];
+                            const float g = st.sends[(size_t) t].next (k);
+                            auto& line = bp.sendPre[(size_t) t] ? st.preLine : st.postLine;
+                            for (int side = 0; side < 2; ++side)
+                                busFeed.getWritePointer (t * 2 + side)[i] += line[(size_t) side].at (tdel[j]) * g;
+                        }
+                        for (int side = 0; side < 2; ++side) { st.preLine[(size_t) side].advance(); st.postLine[(size_t) side].advance(); }
+                    }
+                }
+            }
 
             // on to Main LR or the next bus, delayed to line up with the other paths into it
             if (bp.to != -1)

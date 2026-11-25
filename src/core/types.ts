@@ -103,6 +103,8 @@ export interface Bus {
   safe?: SafeSet;
   /** where the bus goes after its fader: Main LR, another bus, or nowhere (physical outputs only) */
   output?: 'main' | 'none' | BusId;
+  /** sends to other buses (e.g. a vocal group into the vocal reverbs): pre (after the rack) or post fader */
+  sends?: Record<BusId, Send>;
   /** only created buses appear in routing / sends / outputs (64 slots are available) */
   created?: boolean;
   /** what the bus is for (label + defaults when it's created): group, aux / IEM, FX return, matrix / feed */

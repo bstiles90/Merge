@@ -86,6 +86,16 @@ private:
         std::vector<float> buf;
         int pos = 0;
         void prepare (int maxSamples) { buf.assign ((size_t) juce::jmax (1, maxSamples), 0.0f); pos = 0; }
+        // multi-tap use: push one sample, read it back at several delays, then advance
+        void push (float x) noexcept { buf[(size_t) pos] = x; }
+        float at (int d) const noexcept
+        {
+            const int n = (int) buf.size();
+            int r = pos - juce::jlimit (0, n - 1, d);
+            if (r < 0) r += n;
+            return buf[(size_t) r];
+        }
+        void advance() noexcept { if (++pos >= (int) buf.size()) pos = 0; }
         float run (float x, int d) noexcept
         {
             const int n = (int) buf.size();
@@ -116,6 +126,9 @@ private:
         // delay compensation through the bus tree: the channel part of the bus input, and the bus
         // output on its way to Main LR / the next bus
         std::array<Delay, 2> chanPdc, outPdc;
+        // bus-to-bus sends: the bus before and after its fader, tapped at each target's delay
+        std::array<Delay, 2> preLine, postLine;
+        std::array<Smooth, kNumBuses> sends;
     };
 
     float sourceSample (ChannelState&, const ChannelPlan&, const float* const* in, int numIn, int i) noexcept;
@@ -140,6 +153,7 @@ private:
     juce::AudioBuffer<float> tapBuf;    // send taps of the channel being processed: [side * kMaxInserts + k], k 0 = input
     juce::AudioBuffer<float> busBuf;    // 2 per bus: channel sends in, then the bus output
     juce::AudioBuffer<float> busFeed;   // 2 per bus: what other buses feed into it this block
+    juce::AudioBuffer<float> busPre;    // the bus being processed, before its fader (for pre sends)
     juce::AudioBuffer<float> mainFromBuses; // buses routed to Main LR
     juce::AudioBuffer<float> mainBuf, cueBuf, monBuf;
 };

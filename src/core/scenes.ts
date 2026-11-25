@@ -60,6 +60,7 @@ function recallBus(cur: Bus, saved: Bus): Bus {
     ...(safe('input') ? {} : { delayMs: saved.delayMs }),
     ...(safe('fader') ? {} : { faderDb: saved.faderDb }),
     ...(safe('mute') ? {} : { mute: saved.mute }),
+    ...(safe('sends') ? {} : { sends: saved.sends }),
     ...(safe('routing') ? {} : { output: saved.output }),
     ...(safe('groups') ? {} : { muteGroups: saved.muteGroups }),
     ...(safe('inserts') ? {} : { inserts: mergeInserts(cur.inserts, saved.inserts) }),

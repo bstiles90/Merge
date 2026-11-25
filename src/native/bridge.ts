@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { buildMixPlan } from '../core/plan';
 import { setNativePlugins, type PluginFormat } from '../core/plugins';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
+import { importLogic } from '../core/logicImport';
 import { EMBEDDED, EMBEDDED_URL } from './embedded';
 import type { ConsoleState, InsertSlot } from '../core/types';
 import type { LoudnessReading, MeterReading } from '../audio/engine';
@@ -319,6 +320,19 @@ function onMessage(m: any) {
       break;
     case 'show.saved':
       useNative.setState({ showPath: m.ok ? m.path : useNative.getState().showPath, notice: m.ok ? `Saved ${String(m.path).split(/[\\/]/).pop()}` : 'Save failed' });
+      break;
+    case 'logic.opened':
+      if (m.error) useNative.setState({ notice: m.error });
+      else {
+        try {
+          const bin = atob(m.data);
+          const bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          useNative.setState({ showPath: undefined, notice: importLogic(bytes, m.name) });
+        } catch (err) {
+          useNative.setState({ notice: `Could not import the Logic project: ${err}` });
+        }
+      }
       break;
     case 'show.opened':
       try {

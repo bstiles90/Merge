@@ -247,17 +247,20 @@ const pluginName = (id: string, fallback?: string) => getPlugin(id)?.name ?? fal
 /** One send on the strip (like Logic): the bus name over its level, and its tap point beside it.
  *  Drag sideways for level, double-click on/off; the tap code opens the menu (tap point, on/off,
  *  change bus, remove). */
-export function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
+export function SendRow({ ch: chan, bus, b }: { ch?: Channel; bus?: Bus; b: Bus }) {
   const s = useConsole();
+  // a channel's send, or a bus's send to another bus (pre = after its rack, or post fader)
+  const ch = { id: (chan ?? bus)!.id, inserts: (chan ?? bus)!.inserts, sends: chan ? chan.sends : bus?.sends ?? {} };
   const snd: Send = ch.sends[b.id] ?? { on: false, levelDb: -Infinity, pre: false };
   const drag = useRef<{ x: number; db: number } | null>(null);
-  const setSends = (sends: Channel['sends']) => s.updateChannel(ch.id, { sends });
+  const setSends = (sends: Channel['sends']) => (chan ? s.updateChannel(ch.id, { sends }) : s.updateBus(ch.id, { sends }));
   const set = (p: Partial<Send>) => setSends({ ...ch.sends, [b.id]: { ...snd, ...p } });
+  const choices = tapChoices(ch, pluginName).filter((c) => !bus || c.value === 'pre' || c.value === 'post');
   const frac = isFinite(snd.levelDb) ? Math.max(0, Math.min(1, (snd.levelDb + 60) / 70)) : 0;
   const db = isFinite(snd.levelDb) ? `${snd.levelDb > 0 ? '+' : ''}${snd.levelDb.toFixed(1)} dB` : '-∞';
   const tap = sendTap(snd);
   const code = tapCode(ch, snd);
-  const tapName = tapChoices(ch, pluginName).find((c) => c.value === tapValue(snd))?.label ?? code;
+  const tapName = choices.find((c) => c.value === tapValue(snd))?.label ?? code;
   const menu = (v: string) => {
     if (v === 'toggle') set({ on: !snd.on, levelDb: isFinite(snd.levelDb) ? snd.levelDb : 0 });
     else if (v.startsWith('tap:')) setSends({ ...ch.sends, [b.id]: applyTapValue(snd, v.slice(4)) });
@@ -295,7 +298,7 @@ export function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
         <select value="" onChange={(e) => menu(e.target.value)}>
           <option value="" disabled>{b.name} · {db}</option>
           <optgroup label="Tap point">
-            {tapChoices(ch, pluginName).map((c) => (
+            {choices.map((c) => (
               <option key={c.value} value={`tap:${c.value}`}>{c.value === tapValue(snd) ? '✓ ' : '    '}{c.label}</option>
             ))}
           </optgroup>
@@ -305,7 +308,7 @@ export function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
           </optgroup>
           <optgroup label="Change to bus">
             {routableBuses(s)
-              .filter((x) => x.type !== 'mixminus' && x.id !== b.id && !sendUsed(ch.sends[x.id]))
+              .filter((x) => x.type !== 'mixminus' && x.id !== b.id && x.id !== ch.id && !sendUsed(ch.sends[x.id]) && !(bus && createsLoop(s, bus.id, x.id)))
               .map((x) => <option key={x.id} value={`to:${x.id}`}>{x.id.slice(3)} · {x.name}</option>)}
           </optgroup>
         </select>
@@ -314,17 +317,21 @@ export function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
   );
 }
 
-/** Sends listed on the strip by bus name, plus an empty slot to add one. */
-export function SendsSection({ ch }: { ch?: Channel }) {
+/** Sends listed on the strip by bus name, plus an empty slot to add one (channels, and buses
+ *  sending on to other buses). */
+export function SendsSection({ ch, bus }: { ch?: Channel; bus?: Bus }) {
   const s = useConsole();
-  if (!ch) return <div className="sec sec-sends" />;
-  const used = routableBuses(s).filter((b) => sendUsed(ch.sends[b.id]));
-  const mm = createdBuses(s).filter((b) => b.type === 'mixminus');
+  const owner = ch ?? bus;
+  if (!owner) return <div className="sec sec-sends" />;
+  const sends = ch ? ch.sends : bus?.sends ?? {};
+  const used = routableBuses(s).filter((b) => b.id !== owner.id && sendUsed(sends[b.id]));
+  const mm = ch ? createdBuses(s).filter((b) => b.type === 'mixminus') : [];
+  const targets = routableBuses(s).filter((b) => b.type !== 'mixminus' && b.id !== owner.id && !sendUsed(sends[b.id]) && !(bus && createsLoop(s, bus.id, b.id)));
   return (
     <div className="sec sec-sends">
-      {used.map((b) => <SendRow key={b.id} ch={ch} b={b} />)}
+      {used.map((b) => <SendRow key={b.id} ch={ch} bus={bus} b={b} />)}
       {mm.map((b) => (
-        <div key={b.id} className={'send-row auto' + (ch.mainAssign && b.mixMinusExclude !== ch.id ? ' on' : '')} title={`${b.name}: mix-minus (automatic)`}>
+        <div key={b.id} className={'send-row auto' + (ch!.mainAssign && b.mixMinusExclude !== ch!.id ? ' on' : '')} title={`${b.name}: mix-minus (automatic)`}>
           <div className="sr-bar"><span className="sr-fill" style={{ width: '100%' }} /><span className="sr-name">{b.name}</span></div>
         </div>
       ))}
@@ -336,23 +343,27 @@ export function SendsSection({ ch }: { ch?: Channel }) {
             let id = e.target.value;
             if (!id) return;
             if (id === 'new') {
-              // a new aux / IEM bus, fed by this send (name it in the bus panel)
+              // a new bus fed by this send: aux / IEM from a channel, FX return from a bus
               const st = useConsole.getState();
-              const made = createBus(st, 'aux');
+              const made = createBus(st, ch ? 'aux' : 'fx');
               if (!made.id) return;
               st.update(() => made.patch);
               id = made.id;
             }
             const st = useConsole.getState();
-            const c = st.channels.find((x) => x.id === ch.id)!;
-            st.updateChannel(ch.id, { sends: { ...c.sends, [id]: { on: true, levelDb: 0, pre: false, tap: 'post' } } });
+            const snd = { on: true, levelDb: 0, pre: false, tap: 'post' as const };
+            if (ch) {
+              const c = st.channels.find((x) => x.id === ch.id)!;
+              st.updateChannel(ch.id, { sends: { ...c.sends, [id]: snd } });
+            } else {
+              const x = st.buses.find((y) => y.id === owner.id)!;
+              st.updateBus(owner.id, { sends: { ...(x.sends ?? {}), [id]: snd } });
+            }
           }}
         >
           <option value="" disabled>Send to…</option>
-          <option value="new">+ New bus (aux / IEM)…</option>
-          {routableBuses(s)
-            .filter((b) => b.type !== 'mixminus' && !sendUsed(ch.sends[b.id]))
-            .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
+          <option value="new">{ch ? '+ New bus (aux / IEM)…' : '+ New bus (FX return)…'}</option>
+          {targets.map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
         </select>
       </div>
     </div>
@@ -519,7 +530,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
       <>
         <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
         <RackSection inserts={b.inserts} onSelect={select} onBypass={(id) => s.updateBus(b.id, { inserts: b.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateBus(b.id, { inserts: [...b.inserts, newInsert(p)] })} />
-        <SendsSection />
+        {b.type === 'mixminus' ? <SendsSection /> : <SendsSection bus={b} />}
         <BusOutput b={b} />
         <div className="sec sec-pan" />
         <div className="sec sec-groups" />

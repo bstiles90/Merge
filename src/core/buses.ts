@@ -19,7 +19,7 @@ export function busInUse(s: Pick<ConsoleState, 'channels' | 'buses' | 'io' | 'ta
     b.type === 'mixminus' ||
     b.inserts.length > 0 ||
     s.channels.some((c) => (c.routes ?? []).includes(b.id) || c.sends[b.id]?.on) ||
-    s.buses.some((x) => x.output === b.id) ||
+    s.buses.some((x) => x.output === b.id || x.sends?.[b.id]?.on) ||
     s.io.outputPatch.some((o) => o?.src === b.id) ||
     s.talkback.destinations.includes(b.id) ||
     s.monitor.source === b.id
@@ -67,13 +67,19 @@ export function createBus(s: ConsoleState, role: BusRole, name?: string): { patc
   return { patch: { buses: s.buses.map((b) => (b.id === bus.id ? bus : b)), layers }, id: bus.id };
 }
 
+function dropSendTo(b: Bus, id: string): Bus {
+  if (!b.sends?.[id]) return b;
+  const { [id]: _gone, ...sends } = b.sends;
+  return { ...b, sends };
+}
+
 /** Remove a bus: everything that pointed at it lets go (sends, assignments, outputs, patch). */
 export function deleteBus(s: ConsoleState, id: string): Partial<ConsoleState> {
   return {
     buses: s.buses.map((b) =>
       b.id === id
-        ? { ...b, created: false, role: undefined, name: `Bus ${id.slice(3)}`, inserts: [], output: 'main' as const, type: 'aux' as const, mixMinusExclude: undefined }
-        : b.output === id ? { ...b, output: 'none' as const } : b,
+        ? { ...b, created: false, role: undefined, name: `Bus ${id.slice(3)}`, inserts: [], sends: undefined, output: 'main' as const, type: 'aux' as const, mixMinusExclude: undefined }
+        : dropSendTo({ ...b, ...(b.output === id ? { output: 'none' as const } : {}) }, id),
     ),
     channels: s.channels.map((c) => {
       if (!c.sends[id] && !(c.routes ?? []).includes(id)) return c;

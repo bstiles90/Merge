@@ -8,7 +8,7 @@
 namespace merge
 {
 
-constexpr int kNumChannels = 32;
+constexpr int kNumChannels = 64;
 constexpr int kNumBuses = 64; // every bus can be a group, an aux/FX send or a feed: routing decides
 constexpr int kMaxInserts = 8;
 
@@ -66,6 +66,10 @@ struct BusPlan
     float delayMs = 0;
     std::vector<InsertRef> inserts;
     int to = -1; // where the bus goes after its fader: -1 nowhere (outputs only), -2 Main LR, 0.. another bus
+    /** sends to buses later in the processing order (pre = after the rack, before the fader) */
+    std::array<float, kNumBuses> sendGain {};
+    std::array<bool, kNumBuses> sendPre {};
+    bool anySends = false;
 };
 
 struct MainPlan

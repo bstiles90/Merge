@@ -109,6 +109,14 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
             const auto to = b["to"].toString();
             p.to = to == "main" ? -2 : to.startsWith ("bus") ? busIndex (to) : -1;
             if (p.to >= kNumBuses || p.to == i) p.to = -1;
+            if (auto* sends = b["sends"].getArray())
+                for (auto& s : *sends)
+                {
+                    const int t = busIndex (s["bus"].toString());
+                    if (t < 0 || t >= kNumBuses || t == i) continue;
+                    p.sendGain[(size_t) t] = num (s, "gain", 0);
+                    p.sendPre[(size_t) t] = (bool) s["pre"];
+                }
         }
 
     // processing order (sources before the bus they feed); anything missing or looping is
@@ -129,7 +137,16 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
         std::array<int, kNumBuses> pos {};
         for (int k = 0; k < kNumBuses; ++k) pos[(size_t) plan->busOrder[(size_t) k]] = k;
         for (int b = 0; b < kNumBuses; ++b)
-            if (const int t = plan->buses[(size_t) b].to; t >= 0 && pos[(size_t) t] <= pos[(size_t) b]) plan->buses[(size_t) b].to = -1;
+        {
+            auto& bp = plan->buses[(size_t) b];
+            if (bp.to >= 0 && pos[(size_t) bp.to] <= pos[(size_t) b]) bp.to = -1;
+            // a send may only feed a bus processed later (no loops)
+            for (int t = 0; t < kNumBuses; ++t)
+            {
+                if (pos[(size_t) t] <= pos[(size_t) b]) bp.sendGain[(size_t) t] = 0;
+                bp.anySends = bp.anySends || bp.sendGain[(size_t) t] > 0;
+            }
+        }
     }
 
     const auto main = json["main"];
