@@ -117,22 +117,30 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
         const isNative = !ins.pluginId.startsWith('builtin.');
         const err = errors[ins.id]?.error;
         const loading = errors[ins.id]?.loading;
+        const canWindow = isNative && nativeConnected && !!desc && !err;
+        const winOpen = !!errors[ins.id]?.editorOpen;
         return (
-          <div key={ins.id} className={'insert' + (ins.bypass ? ' bypassed' : '') + (err ? ' error' : '')}>
+          <div key={ins.id} className={'insert' + (ins.bypass ? ' bypassed' : '') + (err ? ' error' : '') + (winOpen ? ' win-open' : '')}>
             <div className="insert-row">
               <span className="insert-idx">{i + 1}</span>
-              <button className="insert-name" onClick={() => setOpen(open === ins.id ? null : ins.id)}>
-                {desc?.name ?? ins.pluginName ?? ins.pluginId}
-                <span className="hint"> {loading ? 'loading…' : desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : isNative ? 'VST3 · not loaded' : 'missing'}</span>
+              {/* click the plugin to open its own window (browser effects: show their controls here) */}
+              <button
+                className="insert-name"
+                title={canWindow ? (winOpen ? 'Close the plugin window' : 'Open the plugin window') : 'Show controls'}
+                onClick={() => (canWindow ? sendNative({ type: 'insert.editor', slotId: ins.id, open: !winOpen }) : setOpen(open === ins.id ? null : ins.id))}
+              >
+                <span className="insert-title">{desc?.name ?? ins.pluginName ?? ins.pluginId}</span>
+                <span className="hint">{loading ? 'loading…' : err ? 'not loaded' : desc ? `${desc.vendor} · ${desc.format.toUpperCase()}` : isNative ? 'not installed here' : 'missing'}</span>
               </button>
-              {isNative && nativeConnected && desc && (
-                <Toggle small on={!!errors[ins.id]?.editorOpen} title="Open or close the plugin's own window" onClick={() => sendNative({ type: 'insert.editor', slotId: ins.id, open: !errors[ins.id]?.editorOpen })}>
-                  WIN
-                </Toggle>
-              )}
-              <Toggle small on={ins.bypass} onClick={() => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))}>
-                BYP
-              </Toggle>
+              <button
+                className={'byp-switch' + (ins.bypass ? '' : ' on')}
+                role="switch"
+                aria-checked={!ins.bypass}
+                title={ins.bypass ? 'Bypassed: click to turn on' : 'On: click to bypass'}
+                onClick={() => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))}
+              >
+                {ins.bypass ? 'BYP' : 'ON'}
+              </button>
               <button className="icon-btn" disabled={i === 0} title="Move up" onClick={() => {
                 const n = inserts.slice();
                 [n[i - 1], n[i]] = [n[i], n[i - 1]];
@@ -163,7 +171,7 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
             setPicker(null);
             const slot: InsertSlot = { id: newId('ins'), pluginId: desc.id, pluginName: desc.name, bypass: false, params: defaultParams(desc) };
             onChange([...inserts, slot]);
-            setOpen(slot.id);
+            if (desc.id.startsWith('builtin.')) setOpen(slot.id); // browser effects: show their controls
           }}
         />
       )}

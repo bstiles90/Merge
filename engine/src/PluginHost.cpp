@@ -169,15 +169,80 @@ static juce::PropertiesFile& windowPositions()
     return props;
 }
 
+/** The plugin's own GUI with a slim Merge bar on top (bypass switch + strip name). */
+class EditorContent : public juce::Component, private juce::ComponentListener
+{
+public:
+    static constexpr int barH = 28;
+    EditorContent (juce::AudioProcessorEditor* e, const juce::String& stripName, bool bypassed, std::function<void (bool)> onBypass)
+        : ed (e), strip (stripName), bypassCb (std::move (onBypass))
+    {
+        bypass.setClickingTogglesState (true);
+        bypass.setToggleState (bypassed, juce::dontSendNotification);
+        bypass.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff292d32));
+        bypass.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe3a33a));
+        bypass.setColour (juce::TextButton::textColourOffId, juce::Colour (0xffe1e6ea));
+        bypass.setColour (juce::TextButton::textColourOnId, juce::Colour (0xff111316));
+        bypass.onClick = [this] { updateText(); if (bypassCb) bypassCb (bypass.getToggleState()); };
+        updateText();
+        addAndMakeVisible (bypass);
+        addAndMakeVisible (ed.get());
+        ed->addComponentListener (this);
+        setSize (ed->getWidth(), ed->getHeight() + barH);
+    }
+    ~EditorContent() override { if (ed) ed->removeComponentListener (this); }
+    void setBypassed (bool b) { bypass.setToggleState (b, juce::dontSendNotification); updateText(); repaint(); }
+    juce::AudioProcessorEditor* editor() const { return ed.get(); }
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff101214));
+        g.setColour (juce::Colour (0xff16191c));
+        g.fillRect (0, 0, getWidth(), barH);
+        g.setColour (juce::Colour (0xff383e46));
+        g.drawHorizontalLine (barH - 1, 0.0f, (float) getWidth());
+        g.setColour (juce::Colour (0xff929ba5));
+        g.setFont (juce::FontOptions (12.0f));
+        g.drawText (strip, 110, 0, getWidth() - 118, barH, juce::Justification::centredRight);
+    }
+    void resized() override
+    {
+        bypass.setBounds (6, 4, 96, barH - 8);
+        if (ed && ! inLayout)
+        {
+            const juce::ScopedValueSetter<bool> svs (inLayout, true);
+            ed->setBounds (0, barH, getWidth(), juce::jmax (0, getHeight() - barH));
+        }
+    }
+
+private:
+    void updateText() { bypass.setButtonText (bypass.getToggleState() ? "BYPASSED" : juce::String::fromUTF8 ("\xe2\x97\x8f ON")); }
+    void componentMovedOrResized (juce::Component&, bool, bool wasResized) override
+    {
+        // the plugin changed its own size: follow it
+        if (wasResized && ed && ! inLayout)
+        {
+            const juce::ScopedValueSetter<bool> svs (inLayout, true);
+            setSize (ed->getWidth(), ed->getHeight() + barH);
+        }
+    }
+    std::unique_ptr<juce::AudioProcessorEditor> ed;
+    juce::TextButton bypass;
+    juce::String strip;
+    std::function<void (bool)> bypassCb;
+    bool inLayout = false;
+};
+
 class EditorWindow : public juce::DocumentWindow
 {
 public:
-    EditorWindow (const juce::String& title, juce::AudioProcessorEditor* ed, const juce::String& pluginId, std::function<void()> onClose)
+    EditorWindow (const juce::String& title, juce::AudioProcessorEditor* ed, const juce::String& pluginId, const juce::String& stripName,
+                  bool bypassed, std::function<void (bool)> onBypass, std::function<void()> onClose)
         : DocumentWindow (title, juce::Colour (0xff181b1f), DocumentWindow::closeButton | DocumentWindow::minimiseButton),
           key ("window " + pluginId), closeCb (std::move (onClose))
     {
         setUsingNativeTitleBar (true);
-        setContentOwned (ed, true);
+        content = new EditorContent (ed, stripName, bypassed, std::move (onBypass));
+        setContentOwned (content, true);
         setResizable (ed->isResizable(), false);
         setAlwaysOnTop (true); // live use: plugin windows stay above the console
         // reopen where this plugin was left last time (if that spot is still on a connected screen)
@@ -199,10 +264,12 @@ public:
         windowPositions().saveIfNeeded();
     }
     void closeButtonPressed() override { closeCb(); }
+    void setBypassed (bool b) { if (content) content->setBypassed (b); }
 
 private:
     juce::String key;
     std::function<void()> closeCb;
+    EditorContent* content = nullptr; // owned by the window
 };
 
 juce::var obj (std::initializer_list<std::pair<const char*, juce::var>> kv)
@@ -479,6 +546,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         {
             existing->second.bypass = s.bypass;
             if (existing->second.insert) existing->second.insert->bypass = s.bypass;
+            if (auto* w = dynamic_cast<EditorWindow*> (existing->second.editor.get())) w->setBypassed (s.bypass);
             continue;
         }
         changed = true;
@@ -599,7 +667,16 @@ void PluginHost::openEditor (const juce::String& slotId)
     auto& p = slot.insert->plugin();
     auto* ed = p.hasEditor() ? p.createEditorIfNeeded() : nullptr;
     if (! ed) ed = new juce::GenericAudioProcessorEditor (p);
-    slot.editor = std::make_unique<EditorWindow> (p.getName() + " — " + slot.strip, ed, slot.pluginId, [this, slotId] { closeEditor (slotId); });
+    slot.editor = std::make_unique<EditorWindow> (p.getName() + " — " + slot.strip, ed, slot.pluginId, slot.strip, slot.bypass,
+        [this, slotId] (bool b) {
+            // bypass from the plugin window: apply now, and tell the console (it owns the show)
+            auto i = slots.find (slotId);
+            if (i == slots.end()) return;
+            i->second.bypass = b;
+            if (i->second.insert) i->second.insert->bypass = b;
+            send (obj ({ { "type", "insert.bypass" }, { "slotId", slotId }, { "bypass", b } }));
+        },
+        [this, slotId] { closeEditor (slotId); });
     send (obj ({ { "type", "insert.editor" }, { "slotId", slotId }, { "open", true } }));
 }
 

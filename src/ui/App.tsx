@@ -151,8 +151,7 @@ export function App() {
             </button>
           ))}
         </div>
-        <input className="show-name" value={s.showName} onChange={(e) => s.update(() => ({ showName: e.target.value }))} />
-        <nav className="tabs">
+        <nav className="tabs" aria-label="View">
           {ws.tabs.map((id) => [id, TABS.find((t) => t[0] === id)![1]] as const).map(([id, label]) => (
             <button key={id} className={'tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)} title={TAB_HINTS[id]}>
               {label}
@@ -160,17 +159,25 @@ export function App() {
           ))}
         </nav>
         <div className="spacer" />
-        <div className="scene-mini" title="Current scene">
-          <span className="hint">SCENE</span> {scene?.name ?? '—'}
-        </div>
         {anySolo(s) && (
           <button className="solo-flash" onClick={() => s.dispatch({ type: 'solo.clear', args: {} })} title="A channel or bus is soloed — the monitor is on the cue/PFL bus. Click to clear.">
             SOLO
           </button>
         )}
-        <TransportMini />
+        {/* Live: the current scene. Record / Studio: transport and timecode. */}
+        {workspace === 'live' ? (
+          <div className="scene-mini" title="Current scene">
+            <span className="tb-label">SCENE</span> <span className="scene-name">{scene?.name ?? '—'}</span>
+          </div>
+        ) : (
+          <TransportMini />
+        )}
+        <div className="show-block" title={native.showPath ?? 'Show file'}>
+          <span className="tb-label">SHOW</span>
+          <input className="show-name" value={s.showName} onChange={(e) => s.update(() => ({ showName: e.target.value }))} aria-label="Show name" />
+        </div>
         <div className="file-btns">
-          <button onClick={save}>Save show</button>
+          <button onClick={save}>Save</button>
           <button onClick={() => (EMBEDDED ? sendNative({ type: 'show.open' }) : fileRef.current?.click())}>{EMBEDDED ? 'Open' : 'Load'}</button>
           <button
             className={confirmNew ? 'confirm' : ''}

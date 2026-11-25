@@ -149,7 +149,7 @@ function InputSection({ ch }: { ch: Channel }) {
 
 /** Rack slots: click a plugin to open (or close) its own floating window;
  *  click the next empty slot to pick a plugin for it. */
-function RackSection({ inserts, onSelect, onAdd }: { inserts?: InsertSlot[]; onSelect?: () => void; onAdd?: (p: PluginDescriptor) => void }) {
+function RackSection({ inserts, onSelect, onAdd, onBypass }: { inserts?: InsertSlot[]; onSelect?: () => void; onAdd?: (p: PluginDescriptor) => void; onBypass?: (slotId: string) => void }) {
   const hidden = useUi((u) => u.rackHidden);
   const nativeOn = useNative((st) => st.status === 'connected');
   const native = useNative((st) => st.inserts);
@@ -203,7 +203,18 @@ function RackSection({ inserts, onSelect, onAdd }: { inserts?: InsertSlot[]; onS
               }
               onClick={(e) => click(e, ins)}
             >
-              {ins && <i className="rs-dot" />}
+              {ins && (
+                <span
+                  className="rs-dot"
+                  role="switch"
+                  aria-checked={!ins.bypass}
+                  title={ins.bypass ? `${name} is bypassed: click to turn it on` : `${name} is on: click to bypass`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onBypass?.(ins.id);
+                  }}
+                />
+              )}
               {ins ? name : addable ? '+' : ''}
             </div>
           );
@@ -431,7 +442,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <InputSection ch={ch} />
-        <RackSection inserts={ch.inserts} onSelect={select} onAdd={(p) => s.updateChannel(ch.id, { inserts: [...ch.inserts, newInsert(p)] })} />
+        <RackSection inserts={ch.inserts} onSelect={select} onBypass={(id) => s.updateChannel(ch.id, { inserts: ch.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateChannel(ch.id, { inserts: [...ch.inserts, newInsert(p)] })} />
         <SendsSection ch={ch} />
         <ChannelOutput ch={ch} />
         <div className="sec sec-pan">
@@ -479,7 +490,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
-        <RackSection inserts={b.inserts} onSelect={select} onAdd={(p) => s.updateBus(b.id, { inserts: [...b.inserts, newInsert(p)] })} />
+        <RackSection inserts={b.inserts} onSelect={select} onBypass={(id) => s.updateBus(b.id, { inserts: b.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateBus(b.id, { inserts: [...b.inserts, newInsert(p)] })} />
         <SendsSection />
         <BusOutput b={b} />
         <div className="sec sec-pan" />
@@ -542,7 +553,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">PGM</div></div>
-        <RackSection inserts={s.main.inserts} onSelect={select} onAdd={(p) => s.updateMain({ inserts: [...s.main.inserts, newInsert(p)] })} />
+        <RackSection inserts={s.main.inserts} onSelect={select} onBypass={(id) => s.updateMain({ inserts: s.main.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateMain({ inserts: [...s.main.inserts, newInsert(p)] })} />
         <SendsSection />
         <div className="sec sec-out"><div className="out-pill" title="Main LR goes to the physical outputs patched on the I/O page">Outputs</div></div>
         <div className="sec sec-pan" />

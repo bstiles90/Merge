@@ -268,6 +268,9 @@ function onMessage(m: any) {
     case 'insert.state':
       patchSlot(m.slotId, { state: m.state });
       break;
+    case 'insert.bypass': // bypass switched in the plugin's own window
+      patchSlot(m.slotId, { bypass: !!m.bypass });
+      break;
     case 'insert.error':
       setInsert(m.slotId, { loading: false, error: m.message });
       break;
