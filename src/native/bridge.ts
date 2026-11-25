@@ -98,8 +98,40 @@ export function resetNativeTruePeakHold() {
   truePeak = { ...truePeak, tpMaxDb: -Infinity };
 }
 
+/** The Mac's web view drops the connection on any single message over about 1 MB, so long
+ *  messages (both ways) travel in pieces and are put back together on the other side. */
+const MAX_PIECE = 100000;
+let chunkSeq = 0;
+function wsSend(text: string) {
+  if (ws?.readyState !== WebSocket.OPEN) return;
+  if (text.length <= MAX_PIECE) {
+    ws.send(text);
+    return;
+  }
+  const id = ++chunkSeq;
+  const pieces: string[] = [];
+  for (let at = 0; at < text.length; ) {
+    let end = Math.min(text.length, at + MAX_PIECE);
+    // never split a character made of two UTF-16 code units
+    if (end < text.length && /[\uDC00-\uDFFF]/.test(text[end])) end--;
+    pieces.push(text.slice(at, end));
+    at = end;
+  }
+  pieces.forEach((data, i) => ws!.send(JSON.stringify({ type: 'chunk', id, i, n: pieces.length, data })));
+}
+const incoming = new Map<number, string[]>();
+/** Returns the whole message once its last piece is in, otherwise null. */
+function takeChunk(m: { id: number; i: number; n: number; data: string }): string | null {
+  const parts = incoming.get(m.id) ?? [];
+  parts[m.i] = m.data;
+  incoming.set(m.id, parts);
+  if (m.i !== m.n - 1) return null;
+  incoming.delete(m.id);
+  return parts.join('');
+}
+
 export function sendNative(msg: object) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  wsSend(JSON.stringify(msg));
 }
 
 /** Inside the app: write a line to the engine's log (console errors and start-up steps). */
@@ -114,7 +146,7 @@ function schedulePlan() {
     const json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
     if (json === lastPlanJson) return; // e.g. only UI-only state changed
     lastPlanJson = json;
-    if (ws?.readyState === WebSocket.OPEN) ws.send(`{"type":"plan","plan":${json}}`);
+    wsSend(`{"type":"plan","plan":${json}}`);
   }, 15);
 }
 
@@ -306,7 +338,11 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
     };
     sock.onmessage = (e) => {
       try {
-        onMessage(JSON.parse(e.data));
+        const m = JSON.parse(e.data);
+        if (m?.type === 'chunk') {
+          const whole = takeChunk(m);
+          if (whole !== null) onMessage(JSON.parse(whole));
+        } else onMessage(m);
       } catch (err) {
         console.error('Bad engine message', err);
       }

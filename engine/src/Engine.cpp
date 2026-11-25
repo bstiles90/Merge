@@ -122,12 +122,27 @@ void Engine::changeListenerCallback (juce::ChangeBroadcaster*)
     send (deviceInfo());
 }
 
+juce::StringArray Engine::splitIntoChunks (const juce::String& text, int id)
+{
+    juce::StringArray out;
+    const int len = text.length();
+    const int n = (len + kMaxPieceChars - 1) / kMaxPieceChars;
+    for (int i = 0; i < n; ++i)
+        out.add (juce::JSON::toString (obj ({ { "type", "chunk" }, { "id", id }, { "i", i }, { "n", n },
+                                              { "data", text.substring (i * kMaxPieceChars, (i + 1) * kMaxPieceChars) } }), true));
+    return out;
+}
+
 void Engine::send (const juce::var& msg, int clientId)
 {
     if (extraSink) extraSink (msg);
     const auto text = juce::JSON::toString (msg, true);
-    if (clientId) ws.sendTo (clientId, text);
-    else ws.broadcast (text);
+    auto deliver = [this, clientId] (const juce::String& t) {
+        if (clientId) ws.sendTo (clientId, t);
+        else ws.broadcast (t);
+    };
+    if (text.length() <= kMaxPieceChars) { deliver (text); return; }
+    for (auto& piece : splitIntoChunks (text, ++chunkSeq)) deliver (piece);
 }
 
 void Engine::applyPlan (juce::var planJson)
@@ -149,6 +164,23 @@ void Engine::handleMessage (int clientId, const juce::String& text)
 {
     const auto msg = juce::JSON::parse (text);
     const auto type = msg["type"].toString();
+    if (type == "chunk")
+    {
+        // a big message from the console, sent in pieces: reassemble, then handle it
+        const auto key = juce::String (clientId) + ":" + msg["id"].toString();
+        const int n = (int) msg["n"], i = (int) msg["i"];
+        if (n <= 0 || n > 2000 || i < 0 || i >= n) return;
+        auto& parts = incomingChunks[key];
+        if (parts.size() != n) { parts.clear(); for (int k = 0; k < n; ++k) parts.add ({}); }
+        parts.set (i, msg["data"].toString());
+        if (i == n - 1) // pieces arrive in order on one connection
+        {
+            const auto whole = parts.joinIntoString ({});
+            incomingChunks.erase (key);
+            handleMessage (clientId, whole);
+        }
+        return;
+    }
     // trace: what the console asks for (not the high-rate messages), plus console errors
     if (type == "ui.log") { std::cout << "[ui] " << msg["text"].toString() << std::endl; return; }
     if (type != "plan" && type != "dock.bounds" && type != "insert.param" && type != "ping" && type != "show.autosave")

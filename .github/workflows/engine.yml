@@ -77,6 +77,8 @@ jobs:
           test -n "$PLUGIN_ID"
           mkdir -p "$HOME/Library/Merge"  # Merge's data folder on macOS
           python3 engine/ci/make_dock_test_show.py "$PLUGIN_ID" "$HOME/Library/Merge/current-show.merge.json"
+          # a big plugin collection: the list sent to the console is > 1 MB (WebKit's message limit)
+          python3 engine/ci/add_many_plugins.py "$HOME/Library/Merge/plugins.xml" 8000
           "$APP/Contents/MacOS/Merge" > app.log 2>&1 &
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
@@ -87,6 +89,9 @@ jobs:
           kill $PID || true
           cat app.log
           grep -q "UI client connected" app.log
+          # the console must stay connected (a message the web view refuses makes it drop and reconnect)
+          test "$(grep -c "UI client connected" app.log)" -eq 1
+          grep -q "\[plan\]" app.log   # the console sent its mix (audio)
           grep -q "\[dock\] Merge Test Gain" app.log
 
       - uses: actions/upload-artifact@v4

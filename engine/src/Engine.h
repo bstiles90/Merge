@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_devices/juce_audio_devices.h>
 #include "Mixer.h"
+#include <map>
 #include "PluginHost.h"
 #include "WebSocketServer.h"
 
@@ -41,6 +42,12 @@ public:
     PluginHost& host() { return plugins; }
     Mixer& mixer() { return mix; }
 
+    /** Messages bigger than this are sent in pieces: the Mac's web view (WebKit) drops the
+        connection on any single WebSocket message over about 1 MB (e.g. a big plugin list). */
+    static constexpr int kMaxPieceChars = 100000;
+    /** Splits a long message into 'chunk' messages the console reassembles (public for tests). */
+    static juce::StringArray splitIntoChunks (const juce::String& text, int id);
+
     /** Entry point for UI messages (also used by the self-test without a socket). */
     void handleMessage (int clientId, const juce::String& text);
     std::function<void (const juce::var&)> extraSink; // tests can observe outgoing messages
@@ -69,6 +76,8 @@ private:
     WebSocketServer ws;
     std::unique_ptr<VirtualDevice> virtualDevice;
     juce::var lastPlan;
+    int chunkSeq = 0;
+    std::map<juce::String, juce::StringArray> incomingChunks; // "client:id" -> pieces so far
     juce::File settingsFile;
     int meterTick = 0;
     std::unique_ptr<juce::FileChooser> chooser;

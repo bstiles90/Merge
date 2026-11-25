@@ -102,6 +102,41 @@ void testProtocolBasics()
     ui.getParentDirectory().getChildFile ("secret.txt").deleteFile();
 }
 
+
+void testBigMessages()
+{
+    std::cout << "Big messages (sent in pieces)" << std::endl;
+    // a ~2.5 MB message with non-ASCII text, like a big plugin list
+    juce::String big;
+    for (int i = 0; i < 20000; ++i) big << "{\"name\":\"Plug " << i << " — “Test” é\",\"vendor\":\"Waves\"},";
+    auto pieces = Engine::splitIntoChunks (big, 7);
+    bool small = true;
+    juce::String joined;
+    for (auto& p : pieces)
+    {
+        small = small && p.getNumBytesAsUTF8() < 900000;
+        joined << juce::JSON::parse (p)["data"].toString();
+    }
+    check (pieces.size() > 1 && small, "a big message is split into pieces under the web view's ~1 MB limit",
+           juce::String (pieces.size()) + " pieces from " + juce::String ((int) (big.getNumBytesAsUTF8() / 1024)) + " KB");
+    check (joined == big, "the pieces put back together exactly");
+
+    // the console's big messages arrive in pieces too: the engine reassembles and handles them
+    Engine e;
+    juce::var reply;
+    e.extraSink = [&] (const juce::var& m) { if (m["type"] == "pong") reply = m; };
+    juce::String padded = "{\"type\":\"ping\",\"t\":99,\"pad\":\"" + juce::String::repeatedString ("x", 250000) + "\"}";
+    const int n = 3, k = (padded.length() + n - 1) / n;
+    for (int i = 0; i < n; ++i)
+    {
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("type", "chunk"); o->setProperty ("id", 1); o->setProperty ("i", i); o->setProperty ("n", n);
+        o->setProperty ("data", padded.substring (i * k, (i + 1) * k));
+        e.handleMessage (5, juce::JSON::toString (juce::var (o)));
+    }
+    check ((int) reply["t"] == 99, "a big message from the console is reassembled and handled");
+}
+
 void testMixer()
 {
     std::cout << "Mixer" << std::endl;
@@ -388,6 +423,7 @@ int runSelfTest (const juce::StringArray& args)
     const auto pluginPath = pi >= 0 ? args[pi + 1].unquoted() : juce::String();
     std::cout << "Merge Engine self-test" << std::endl;
     testProtocolBasics();
+    testBigMessages();
     testMixer();
     testTruePeak();
     testPluginHosting (pluginPath);
