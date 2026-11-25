@@ -31,7 +31,7 @@ function NativeInsertEditor({ ins }: { ins: InsertSlot }) {
   const n = useNative((st) => st.inserts[ins.id]);
   const connected = useNative((st) => st.status === 'connected');
   const [filter, setFilter] = useState('');
-  if (!connected) return <div className="plugin-editor"><span className="hint">Connect the native engine (I/O page) to load this plugin.</span></div>;
+  if (!connected) return <div className="plugin-editor"><span className="hint">Engine not connected.</span></div>;
   if (!n || n.loading)
     return (
       <div className="plugin-editor">
@@ -269,7 +269,6 @@ export function LinkSection({ ch }: { ch: Channel }) {
           >
             Link with {partner.name} (ch {partnerId.slice(2)})
           </button>
-          <span className="hint">pans go hard L/R</span>
         </div>
       ) : (
         <>
@@ -282,7 +281,6 @@ export function LinkSection({ ch }: { ch: Channel }) {
           </div>
           <div className="row">
             <button onClick={() => s.update((st) => removeLink(st, ch.id))}>Unlink</button>
-            <span className="hint">Pan and plugins are always per side, so each side can have its own rack processing.</span>
           </div>
         </>
       )}
@@ -340,7 +338,6 @@ function BusDetail({ id }: { id: string }) {
             </label>
           )}
         </div>
-        {b.type === 'mixminus' && <p className="hint">Receives the main mix (post-fader) minus the selected source — e.g. a remote guest's return feed so they don't hear themselves delayed.</p>}
         <div className="row">
           <Knob label="Delay" value={b.delayMs} min={0} max={500} defaultValue={0} format={fmtMs} onChange={(delayMs) => up({ delayMs })} />
           <Toggle kind="safe" on={b.recallSafe} onClick={() => up({ recallSafe: !b.recallSafe })} small>SAFE</Toggle>
@@ -419,8 +416,6 @@ function MainDetail() {
         <div className="row">
           <Knob label="Lip-sync delay" value={s.main.delayMs} min={0} max={1000} defaultValue={0} format={fmtMs} onChange={(delayMs) => s.updateMain({ delayMs })} />
         </div>
-        <p className="hint">Use the delay to line program audio up with a delayed video path.</p>
-        <p className="hint">Master-bus processing (EQ, glue compression, true-peak limiter) goes in the inserts below. Watch <b>TP max</b> under the loudness meter to confirm the chain holds your ceiling.</p>
       </div>
       <Inserts inserts={s.main.inserts} onChange={(inserts) => s.updateMain({ inserts })} />
     </div>

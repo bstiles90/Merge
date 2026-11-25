@@ -21,14 +21,14 @@ export function DevicesPanel() {
           Engine: {engine.ctx.sampleRate} Hz · base latency {(engine.ctx.baseLatency * 1000).toFixed(1)} ms · output channels {engine.outputChannels}/{engine.maxOutputChannels}
         </p>
       ) : (
-        <p className="hint">Start the audio engine (top bar) to open devices.</p>
+        <p className="hint">Audio is off.</p>
       )}
       <div className="section-title">Inputs</div>
       <table className="list">
         <tbody>
           {devices.length === 0 && (
             <tr>
-              <td className="hint">No inputs listed yet — click “Allow input access”.</td>
+              <td className="hint">No inputs.</td>
             </tr>
           )}
           {devices.map((d) => {
@@ -197,7 +197,6 @@ export function OutputPatch() {
   return (
     <div className="panel">
       <div className="panel-title">Output patch</div>
-      <p className="hint">The interface reports {max} output channel{max === 1 ? '' : 's'}. Outputs beyond that are kept in the show file for when a larger interface is connected.</p>
       <div className="patch-list">
         {Array.from({ length: n }, (_, i) => (
           <div key={i} className={'patch-row' + (i >= max ? ' offline' : '')}>
@@ -255,7 +254,6 @@ export function TalkbackPanel() {
           </button>
         ))}
       </div>
-      <p className="hint">Talkback dims the control-room monitor by 20 dB while active.</p>
     </div>
   );
 }
@@ -273,7 +271,7 @@ export function MidiPanel() {
     <div className="panel">
       <div className="panel-title">MIDI control surfaces</div>
       {!st.available ? (
-        <p className="hint">Web MIDI is not available in this browser (use Chrome or Edge).</p>
+        <p className="hint">MIDI not available here.</p>
       ) : !st.enabled ? (
         <button onClick={() => enableMidi().then(() => force((x) => x + 1))}>Enable MIDI</button>
       ) : (
@@ -312,7 +310,6 @@ export function MidiPanel() {
               ))}
             </tbody>
           </table>
-          <p className="hint">Fader positions are echoed back so motorised faders follow scene recalls and DCA moves. User keys learn MIDI in the key editor.</p>
         </>
       )}
     </div>

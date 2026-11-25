@@ -122,7 +122,6 @@ export function KeyEditor({ id, onClose }: { id: string; onClose: () => void }) 
         </label>
         <div className="form-group">
           <div className="section-title">Actions (run in order)</div>
-          <p className="hint">Give a "Set fader" action a time ("over … s") and the fader glides there; several fades run together. Add "Wait" to space actions out. Example: bed down over 4 s, Host 1 up over 2 s, wait 1 s, unmute Audience. The key stays lit until it's done.</p>
           {key.actions.map((a, i) => {
             const def = ACTIONS.get(a.type);
             return (
@@ -173,7 +172,6 @@ export function KeyEditor({ id, onClose }: { id: string; onClose: () => void }) 
               {learning === 'hotkey' ? 'Press a key… (Esc clears)' : 'Learn'}
             </button>
           </div>
-          <p className="hint">Stream Deck: add a “Hotkey” action that sends this key (F13–F24 recommended). Works with Companion, X-keys and any keyboard too.</p>
           <div className="row">
             <span className="trigger-label">MIDI</span>
             <code>{key.midi ? `${(key.midi.status & 0xf0) === 0x90 ? 'Note' : 'CC'} ${key.midi.data1} ch${(key.midi.status & 0x0f) + 1}` : '—'}</code>

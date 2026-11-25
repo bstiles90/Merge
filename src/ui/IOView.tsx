@@ -106,7 +106,6 @@ function BusesSection() {
         {BUS_ROLES.map((r) => (
           <button key={r.id} className="new-bus" disabled={!free} title={r.about} onClick={() => s.update((st) => createBus(st, r.id).patch)}>
             <b>+ {r.label}</b>
-            <span className="hint">{r.about}</span>
           </button>
         ))}
       </div>

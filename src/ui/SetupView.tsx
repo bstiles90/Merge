@@ -18,7 +18,6 @@ function LayerEditor() {
   return (
     <div className="panel">
       <div className="panel-title">Fader pages</div>
-      <p className="hint">Any channel, bus, DCA or the main can go in any fader slot, in any order, on as many layers as you like.</p>
       <div className="row wrap">
         {s.layers.map((l) => (
           <button key={l.id} className={'layer-btn' + (l.id === layer?.id ? ' on' : '')} onClick={() => setSel(l.id)}>
@@ -80,7 +79,6 @@ function GroupMatrix() {
   return (
     <div className="panel">
       <div className="panel-title">Mute groups &amp; DCAs</div>
-      <p className="hint">A channel can belong to several mute groups and DCAs. Mute groups never touch a channel's own mute button.</p>
       <div className="matrix-wrap">
         <table className="matrix">
           <thead>
@@ -171,7 +169,6 @@ function MeteringPanel() {
           <option value={-20}>-20 dBFS (EBU-style)</option>
         </select>
       </div>
-      <p className="hint">Set each channel's gain so its meter just touches yellow on the loud parts. Red is the top 3 dB before clipping.</p>
     </div>
   );
 }

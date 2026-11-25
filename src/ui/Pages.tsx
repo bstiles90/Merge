@@ -189,7 +189,6 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
             <button disabled={s.layers.indexOf(current) === 0} onClick={() => move(-1)}>Move up</button>
             <button disabled={s.layers.indexOf(current) === s.layers.length - 1} onClick={() => move(1)}>Move down</button>
           </div>
-          <p className="hint">Pick what goes on each fader with the selectors above the strips, or drag strips by their name.</p>
         </div>
       )}
     </div>

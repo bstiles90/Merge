@@ -65,7 +65,7 @@ function EngineMenu({ onAudioSettings }: { onAudioSettings: () => void }) {
         <div className="show-menu engine-menu" role="menu">
           <div className="ws-menu-title">Audio engine</div>
           {!d || d.virtual ? (
-            <div className="show-menu-info"><span className="hint">No audio device open. Choose one in audio settings.</span></div>
+            <div className="show-menu-info"><span className="hint">No audio device open.</span></div>
           ) : (
             <>
               <div className="show-menu-info">

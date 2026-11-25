@@ -52,7 +52,6 @@ function SendsTab({ ch }: { ch: Channel }) {
             .filter((b) => b.type !== 'mixminus' && !(ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)) && !(ch.routes ?? []).includes(b.id))
             .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
         </select>
-        <span className="hint">Sends (aux, FX, feeds) have their own level and tap point: INPUT, PRE (after the rack or after a chosen plugin), POST or PSP. To make a channel part of a group, use ASSIGN.</span>
       </div>
       <div className="sends sends-big">
         {createdBuses(s).filter((b) => b.type === 'mixminus' || ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)).map((b) => {
@@ -90,7 +89,6 @@ function AssignTab({ ch }: { ch: Channel }) {
   return (
     <div className="tab-body">
       <div className="section-title">Output</div>
-      <p className="hint">Where this channel goes after its fader and pan. E.g. kick → Drums only (Main LR off), and the Drums bus goes to Main LR.</p>
       <div className="chips">
         <button className={'chip' + (ch.mainAssign ? ' on' : '')} onClick={() => up({ mainAssign: !ch.mainAssign })}>Main LR</button>
         {(ch.routes ?? []).map((id) => {

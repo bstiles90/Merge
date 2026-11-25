@@ -258,10 +258,6 @@ export function TimelineView() {
           }));
         }}
       />
-      <p className="hint tl-foot">
-        Arm tracks and hit Rec to multitrack the raw inputs (plus a PGM stereo record). Switch a channel to PB to feed it from its track for virtual soundcheck.
-        Space = play/stop. Recordings are held in memory in this prototype — export WAVs to keep them.
-      </p>
     </div>
   );
 }

@@ -274,23 +274,22 @@ export function RoutingGrid() {
       /* storage unavailable */
     }
   };
-  const about = VIEWS.find((v) => v.id === view)!.about;
   const inputsOpen = useEngineInputs().devices.length > 0;
   return (
     <div className="panel io-panel routing-panel">
       <div className="rg-toolbar">
         <div className="rg-views" role="tablist" aria-label="Routing view">
           {VIEWS.map((v) => (
-            <button key={v.id} role="tab" aria-selected={view === v.id} className={'rg-view' + (view === v.id ? ' on' : '')} onClick={() => choose(v.id)}>
+            <button key={v.id} role="tab" aria-selected={view === v.id} className={'rg-view' + (view === v.id ? ' on' : '')} title={v.about} onClick={() => choose(v.id)}>
               {v.label}
             </button>
           ))}
         </div>
-        <span className="hint">{about}</span>
+
       </div>
       <div className="rg-scroll">
         {view === 'input' && <InputGrid />}
-        {view === 'input' && !inputsOpen && <p className="hint rg-empty">No audio interface open yet: choose one under Devices &amp; MIDI, then its inputs appear here as columns.</p>}
+        {view === 'input' && !inputsOpen && <p className="hint rg-empty">No audio interface open.</p>}
         {view === 'internal' && <InternalGrid />}
         {view === 'output' && <OutputGrid />}
       </div>

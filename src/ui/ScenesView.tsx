@@ -35,7 +35,7 @@ export function ScenesView() {
             <button onClick={store}>+ Store new</button>
           </div>
         </div>
-        {!s.scenes.length && <p className="hint">No scenes yet. Set up the mix and hit “Store new”. Assign Scene Go/Prev to user keys for one-button show running.</p>}
+        {!s.scenes.length && <p className="hint">No scenes yet.</p>}
         <table className="list">
           <tbody>
             {s.scenes.map((sc, i) => (
@@ -81,7 +81,6 @@ export function ScenesView() {
       <div className="col">
         <div className="panel">
           <div className="panel-title">Recall scope</div>
-          <p className="hint">Which sections a recall changes. Input source, mono/stereo, solo, record-arm and playback mode are never recalled.</p>
           <div className="row wrap">
             {scopeKeys.map((k) => (
               <Toggle key={k} on={s.sceneScope[k]} onClick={() => s.update((st) => ({ sceneScope: { ...st.sceneScope, [k]: !st.sceneScope[k] } }))}>
@@ -115,7 +114,6 @@ function SafesPanel() {
   return (
     <div className="panel safes-panel">
       <div className="panel-title">Recall safes</div>
-      <p className="hint">Safe parts are left alone by every scene recall, e.g. a presenter's fader you're riding live, or one plugin slot. Single plugin slots: the lock on each plugin in a channel's RACK tab.</p>
       <div className="safes-scroll">
         <table className="safes">
           <thead>

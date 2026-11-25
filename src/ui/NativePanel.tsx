@@ -41,9 +41,7 @@ export function NativePanel() {
         <span>Native engine (VST3 / AU host)</span>
         <span className={'status-dot ' + n.status}>{n.status === 'connected' ? `v${n.version ?? '?'} connected` : n.status}</span>
       </div>
-      {EMBEDDED ? (
-        <p className="hint">Built into this app — always connected.</p>
-      ) : (
+      {EMBEDDED ? null : (
       <div className="row">
         <input value={n.url} onChange={(e) => useNative.setState({ url: e.target.value })} disabled={connected} style={{ flex: 1 }} />
         <button className={connected ? 'on' : ''} onClick={toggleNative}>
@@ -53,16 +51,13 @@ export function NativePanel() {
       )}
       {n.error && !EMBEDDED && <p className="error">{n.error}</p>}
       {!connected && !EMBEDDED && (
-        <p className="hint">
-          Run <code>Merge Engine</code> (built from <code>engine/</code>) on this machine, then connect. The engine does the audio and plugin hosting; this UI stays the
-          console. Only one engine renders at a time — the browser engine pauses while the native one is connected.
-        </p>
+        <p className="hint">Not connected.</p>
       )}
 
       {connected && d && (
         <>
           <div className="section-title">Audio device</div>
-          {d.virtual && <p className="hint">No audio interface is open — the engine is running on a virtual clock. Pick a device below.</p>}
+          {d.virtual && <p className="hint">No audio interface open.</p>}
           <div className="form-grid">
             <label>Driver</label>
             <select value={d.deviceType ?? ''} onChange={(e) => setDevice({ deviceType: e.target.value })}>
@@ -124,7 +119,7 @@ export function NativePanel() {
           </div>
           {n.blacklisted.length > 0 && (
             <p className="hint">
-              Skipped (didn't finish loading, crashed, or skipped by you): {n.blacklisted.map((f) => f.split(/[\\/]/).pop()).join(', ')}. A full rescan tries them again.
+              Skipped: {n.blacklisted.map((f) => f.split(/[\\/]/).pop()).join(', ')}
             </p>
           )}
           <div className="plugin-list">
