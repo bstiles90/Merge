@@ -139,12 +139,38 @@ export function uiLog(text: string) {
   if (EMBEDDED) sendNative({ type: 'ui.log', text: text.slice(0, 500) });
 }
 
+// ---- start-up tracing (inside the app): what arrives, how long it takes, when the console is busy
+const seenTypes = new Set<string>();
+const t0 = performance.now();
+const since = () => `${Math.round(performance.now() - t0)} ms`;
+const errText = (err: unknown) => (err instanceof Error ? `${err.message} @ ${(err.stack ?? '').split('\n').slice(0, 3).join(' | ')}` : String(err));
+let tracingStarted = false;
+function startTracing() {
+  if (tracingStarted || !EMBEDDED) return;
+  tracingStarted = true;
+  window.addEventListener('error', (e) => uiLog(`error: ${e.message} (${e.filename}:${e.lineno})`));
+  window.addEventListener('unhandledrejection', (e) => uiLog(`unhandled: ${errText(e.reason)}`));
+  const origError = console.error.bind(console);
+  console.error = (...a: unknown[]) => {
+    origError(...a);
+    uiLog(`console error: ${a.map((x) => (x instanceof Error ? errText(x) : String(x))).join(' ')}`);
+  };
+  // the console's own heartbeat: a long gap means its JavaScript was busy (UI frozen, nothing sent)
+  let last = performance.now();
+  setInterval(() => {
+    const now = performance.now();
+    if (now - last > 2000) uiLog(`console was busy for ${Math.round(now - last)} ms (at ${since()})`);
+    last = now;
+  }, 500);
+}
+
 function schedulePlan() {
   if (planTimer) return;
   planTimer = setTimeout(() => {
     planTimer = null;
     const json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
     if (json === lastPlanJson) return; // e.g. only UI-only state changed
+    if (!lastPlanJson) uiLog(`first mix sent (${since()})`);
     lastPlanJson = json;
     wsSend(`{"type":"plan","plan":${json}}`);
   }, 15);
@@ -181,7 +207,8 @@ function onMessage(m: any) {
     case 'device':
       useNative.setState({ device: m });
       break;
-    case 'plugins':
+    case 'plugins': {
+      const tp = performance.now();
       setNativePlugins(
         (m.list as any[]).map((p) => ({
           id: p.id,
@@ -193,7 +220,12 @@ function onMessage(m: any) {
         })),
       );
       useNative.setState((st) => ({ scanning: !!m.scanning && st.scanning, blacklisted: m.blacklisted ?? [], scan: m.scanning && st.scanning ? st.scan : undefined }));
+      if (EMBEDDED) {
+        uiLog(`plugin list: ${(m.list as any[]).length} plugins stored in ${Math.round(performance.now() - tp)} ms`);
+        requestAnimationFrame(() => uiLog(`plugin list on screen ${Math.round(performance.now() - tp)} ms after it arrived`));
+      }
       break;
+    }
     case 'plugins.scan':
       useNative.setState({ scanning: true, scanResult: undefined, scan: { progress: m.progress, file: m.file, format: m.format, seconds: m.seconds, index: m.index, total: m.total } });
       break;
@@ -329,6 +361,8 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
     const sock = new WebSocket(url);
     ws = sock;
     sock.onopen = () => {
+      startTracing();
+      uiLog(`connected (${since()})`);
       useNative.setState({ status: 'connected' });
       if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
       lastPlanJson = '';
@@ -339,9 +373,18 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
     sock.onmessage = (e) => {
       try {
         const m = JSON.parse(e.data);
+        if (EMBEDDED && m?.type && !seenTypes.has(m.type)) {
+          seenTypes.add(m.type);
+          uiLog(`first "${m.type}" message (${Math.round(String(e.data).length / 1024)} KB, ${since()})`);
+        }
         if (m?.type === 'chunk') {
           const whole = takeChunk(m);
-          if (whole !== null) onMessage(JSON.parse(whole));
+          if (whole !== null) {
+            const tp = performance.now();
+            const inner = JSON.parse(whole);
+            onMessage(inner);
+            uiLog(`"${inner?.type}" in ${m.n} pieces (${Math.round(whole.length / 1024)} KB) handled in ${Math.round(performance.now() - tp)} ms (${since()})`);
+          }
         } else onMessage(m);
       } catch (err) {
         console.error('Bad engine message', err);

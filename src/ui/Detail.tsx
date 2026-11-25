@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { defaultParams, getPlugin, listPlugins } from '../core/plugins';
 import { newId, PALETTE } from '../core/defaults';
 import { useConsole } from '../core/store';
@@ -99,11 +99,24 @@ export function InsertControls({ ins, onParam }: { ins: InsertSlot; onParam: (id
 
 export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange: (i: InsertSlot[]) => void }) {
   const [open, setOpen] = useState<string | null>(null);
-  usePluginsVersion();
+  const version = usePluginsVersion();
   const nativeConnected = useNative((st) => st.status === 'connected');
   const errors = useNative((st) => st.inserts);
-  const plugins = listPlugins().filter((p) => (nativeConnected ? p.native : !p.native));
-  const groups = [...new Set(plugins.map((p) => `${p.format === 'builtin' ? 'Built-in' : p.format.toUpperCase()} · ${p.category}`))].sort();
+  // grouped and sorted once per plugin-list change (thousands of plugins on a studio Mac)
+  const { plugins, grouped } = useMemo(() => {
+    const list = listPlugins().filter((p) => (nativeConnected ? p.native : !p.native));
+    const byGroup = new Map<string, typeof list>();
+    for (const p of list) {
+      const g = `${p.format === 'builtin' ? 'Built-in' : p.format.toUpperCase()} · ${p.category}`;
+      const arr = byGroup.get(g);
+      if (arr) arr.push(p);
+      else byGroup.set(g, [p]);
+    }
+    const key = (x: string) => x.toLowerCase();
+    const cmp = (a: string, b: string) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
+    const grouped = [...byGroup.entries()].sort((a, b) => cmp(a[0], b[0])).map(([g, arr]) => [g, arr.slice().sort((a, b) => cmp(a.name, b.name))] as const);
+    return { plugins: list, grouped };
+  }, [version, nativeConnected]);
   return (
     <div className="section">
       <div className="section-title">
@@ -152,16 +165,13 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
           }}
         >
           <option value="">{plugins.length ? '+ Add plugin…' : nativeConnected ? 'No plugins yet — scan in I/O' : '+ Add plugin…'}</option>
-          {groups.map((g) => (
+          {grouped.map(([g, arr]) => (
             <optgroup key={g} label={g}>
-              {plugins
-                .filter((p) => `${p.format === 'builtin' ? 'Built-in' : p.format.toUpperCase()} · ${p.category}` === g)
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.vendor})
-                  </option>
-                ))}
+              {arr.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.vendor})
+                </option>
+              ))}
             </optgroup>
           ))}
         </select>
