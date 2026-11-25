@@ -151,6 +151,20 @@ export interface ActionCall {
   args: Record<string, string | number | boolean>;
 }
 
+/** One step of a macro. Fader moves run alongside the next steps unless `wait` is set. */
+export type MacroStep =
+  | { kind: 'action'; call: ActionCall }
+  | { kind: 'fade'; target: StripRef; db: number; sec: number; wait?: boolean }
+  | { kind: 'wait'; sec: number };
+
+/** A user macro: a named, timed sequence (like a ProPresenter macro), run from a user key. */
+export interface Macro {
+  id: string;
+  name: string;
+  color: string;
+  steps: MacroStep[];
+}
+
 export interface UserKey {
   id: string;
   label: string;
@@ -292,4 +306,8 @@ export interface ConsoleState {
   truePeakCeiling: number;
   /** meters turn from green to yellow here (dBFS): -10 like Waves LV1, -18 like dLive / Wing / M32 / CL */
   meterYellowDb?: number;
+  /** user macros (timed multi-step sequences) */
+  macros?: Macro[];
+  /** macros running right now (not saved) */
+  macrosRunning?: string[];
 }

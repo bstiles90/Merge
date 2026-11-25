@@ -42,7 +42,7 @@ export function UserKeyGrid({ onEdit }: { onEdit?: (id: string) => void }) {
   );
 }
 
-function ArgInput({ spec, value, onChange, s }: { spec: ArgSpec; value: any; onChange: (v: any) => void; s: ConsoleState }) {
+export function ArgInput({ spec, value, onChange, s }: { spec: ArgSpec; value: any; onChange: (v: any) => void; s: ConsoleState }) {
   const opts = (list: { id: string; name: string }[]) => (
     <select value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
       <option value="">— {spec.label} —</option>
@@ -66,6 +66,8 @@ function ArgInput({ spec, value, onChange, s }: { spec: ArgSpec; value: any; onC
       return opts(s.scenes);
     case 'layer':
       return opts(s.layers);
+    case 'macro':
+      return opts(s.macros ?? []);
     case 'boolean':
       return (
         <label className="row">

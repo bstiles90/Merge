@@ -9,7 +9,7 @@ import { focusedLayerId, setFocusedLayer } from './layers';
 import { services } from './services';
 import type { ActionCall, Bus, Channel, ConsoleState } from './types';
 
-export type ArgKind = 'channel' | 'bus' | 'dca' | 'muteGroup' | 'scene' | 'layer' | 'number' | 'boolean';
+export type ArgKind = 'channel' | 'bus' | 'dca' | 'muteGroup' | 'scene' | 'layer' | 'macro' | 'number' | 'boolean';
 
 export interface ArgSpec {
   name: string;
@@ -21,7 +21,7 @@ export interface ArgSpec {
 export interface ActionDef {
   type: string;
   label: string;
-  category: 'Mute' | 'Solo' | 'Fader' | 'Scene' | 'Layer' | 'Monitor' | 'Transport' | 'Plugin';
+  category: 'Mute' | 'Solo' | 'Fader' | 'Scene' | 'Layer' | 'Monitor' | 'Transport' | 'Plugin' | 'Macro';
   args: ArgSpec[];
   run: (s: ConsoleState, a: Record<string, any>) => ConsoleState;
   isOn?: (s: ConsoleState, a: Record<string, any>) => boolean;
@@ -187,6 +187,28 @@ const defs: ActionDef[] = [
         scenes: [...s.scenes, { id, name: `Scene ${s.scenes.length + 1}`, snapshot: takeSnapshot(s) }],
         currentScene: id,
       };
+    },
+  },
+  {
+    type: 'macro.run',
+    label: 'Run macro',
+    category: 'Macro',
+    args: [{ name: 'id', label: 'Macro', kind: 'macro' }],
+    // the timed part runs outside the reducer (services.runMacro); the key lights while it runs
+    run: (s, a) => {
+      queueMicrotask(() => services.runMacro(String(a.id)));
+      return s;
+    },
+    isOn: (s, a) => !!s.macrosRunning?.includes(String(a.id)),
+  },
+  {
+    type: 'macro.stop',
+    label: 'Stop macro',
+    category: 'Macro',
+    args: [{ name: 'id', label: 'Macro', kind: 'macro' }],
+    run: (s, a) => {
+      queueMicrotask(() => services.stopMacro(String(a.id)));
+      return s;
     },
   },
   {

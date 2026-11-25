@@ -990,3 +990,22 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 .lock-btn { font-size: 11px; opacity: 0.55; }
 .lock-btn.on { opacity: 1; border-color: var(--mixminus); }
 .rs-lock { margin-left: auto; font-size: 7px; }
+
+/* macros */
+.macros-panel { gap: 8px; }
+.macro { border: 1px solid var(--border-subtle); border-left: 3px solid var(--kc); border-radius: var(--r-md); background: var(--surface-sunken); }
+.macro-head { display: flex; align-items: center; gap: 8px; padding: 6px; }
+.macro-run { width: 30px; height: 30px; padding: 0; border-radius: 50%; font-size: 12px; color: var(--text-primary); }
+.macro-run.running { background: var(--kc); border-color: var(--kc); color: #fff; animation: blink 1s steps(2) infinite; }
+.macro-title { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; background: transparent; border-color: transparent; box-shadow: none; }
+.macro-title:hover:not(:disabled) { background: var(--surface-control); border-color: transparent; }
+.macro-title .hint { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.macro-editor { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; border-top: 1px solid var(--border-subtle); }
+.macro-name { width: 200px; font-weight: var(--fw-semibold); }
+.macro-steps { display: flex; flex-direction: column; gap: 4px; }
+.macro-step { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 6px; border-radius: var(--r-sm); background: var(--surface-strip); border-left: 2px solid var(--border); }
+.macro-step.fade { border-left-color: var(--accent); }
+.macro-step.action { border-left-color: var(--plugin); }
+.macro-step.wait { border-left-color: var(--text-tertiary); }
+.macro-step select { max-width: 200px; }
+.step-kind { font-weight: var(--fw-semibold); }

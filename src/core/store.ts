@@ -1,5 +1,7 @@
 import { withCreatedBuses } from './buses';
 import { startSceneFade, stopSceneFade } from './sceneFade';
+import { runMacro, stopMacro } from './macros';
+import { services } from './services';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
 import { runActions } from './actions';
@@ -96,7 +98,7 @@ export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => (
 // ---- show files ------------------------------------------------------------
 // JSON has no Infinity; encode -Infinity faders as the string "-inf".
 export function serializeShow(s: ConsoleState): string {
-  const { keyStates: _k, ...rest } = s;
+  const { keyStates: _k, macrosRunning: _m, ...rest } = s;
   return JSON.stringify(
     { format: 'merge-show', version: 1, show: { ...rest, transport: { ...s.transport, playing: false, recording: false } } },
     (_key, v) => (v === -Infinity ? '-inf' : v),
@@ -146,3 +148,11 @@ if (typeof window !== 'undefined') {
     }, 800);
   });
 }
+
+// macros run against the live store
+const macroHost = { get: () => stateOnly(useConsole.getState()), set: (p: Partial<ConsoleState>) => useConsole.getState().update(() => p) };
+services.runMacro = (id) => {
+  const m = useConsole.getState().macros?.find((x) => x.id === id);
+  if (m) void runMacro(macroHost, m);
+};
+services.stopMacro = (id) => stopMacro(macroHost, id);

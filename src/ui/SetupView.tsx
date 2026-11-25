@@ -6,6 +6,7 @@ import type { Layer } from '../core/types';
 import { StripRefSelect } from './Pages';
 import { deletePage } from '../core/layers';
 import { KeyEditor } from './UserKeys';
+import { MacrosPanel } from './MacrosPanel';
 
 
 function LayerEditor() {
@@ -180,11 +181,14 @@ export function SetupView() {
   return (
     <div className="page grid2">
       <div className="col">
-        <MeteringPanel />
-        <LayerEditor />
+        <MacrosPanel />
         <KeyList />
+        <LayerEditor />
       </div>
-      <GroupMatrix />
+      <div className="col">
+        <GroupMatrix />
+        <MeteringPanel />
+      </div>
     </div>
   );
 }
