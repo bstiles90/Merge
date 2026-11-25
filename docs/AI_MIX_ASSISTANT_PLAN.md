@@ -1,5 +1,13 @@
 # AI Mix Assistant: plan
 
+> **Superseded in part by [MERGE_INTELLIGENCE.md](MERGE_INTELLIGENCE.md) (November 2026).**
+> - Production intelligence now runs **locally and offline**, so there is no cloud LLM in
+>   the decision loop.
+> - Source roles are **assigned manually**, not classified automatically.
+>
+> The safety principles, the "use the plugins in your rack" approach and the offline
+> solvers below still apply.
+
 **Goal:** an assistant inside Merge that hears the mix, understands commands like "make
 this sound like Bethel Music", "tame the harsh vocal" or "match this reference", and makes
 (or proposes) the console changes that get there. It has to be safe enough for a live

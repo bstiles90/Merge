@@ -1,0 +1,57 @@
+{
+  "coef_max_abs_err_vs_bs1770_table": 8.881784197001252e-16,
+  "integrated_agreement_LUFS": {
+    "1k_sine_-20dBFS_stereo": {
+      "ours": -19.993,
+      "pyloudnorm": -20.035,
+      "diff": 0.041
+    },
+    "pink_ish_noise_stereo": {
+      "ours": -22.738,
+      "pyloudnorm": -22.781,
+      "diff": 0.042
+    },
+    "synth_vocals_mono_as_stereo": {
+      "ours": -16.419,
+      "pyloudnorm": -16.462,
+      "diff": 0.042
+    },
+    "synth_drums_mono_as_stereo": {
+      "ours": -30.261,
+      "pyloudnorm": -30.298,
+      "diff": 0.038
+    },
+    "synth_bass_mono_as_stereo": {
+      "ours": -23.024,
+      "pyloudnorm": -23.057,
+      "diff": 0.033
+    },
+    "synth_guitars_mono_as_stereo": {
+      "ours": -19.812,
+      "pyloudnorm": -19.854,
+      "diff": 0.042
+    },
+    "synth_keys_mono_as_stereo": {
+      "ours": -23.669,
+      "pyloudnorm": -23.711,
+      "diff": 0.043
+    }
+  },
+  "additivity_short_term_LU": {
+    "mean": -0.034,
+    "p95_abs": 0.322,
+    "max_abs": 0.389
+  },
+  "additivity_pairwise_p95_abs_LU": {
+    "vocals+drums": 0.015,
+    "vocals+bass": 0.358,
+    "vocals+guitars": 0.028,
+    "vocals+keys": 0.004,
+    "drums+bass": 0.104,
+    "drums+guitars": 0.017,
+    "drums+keys": 0.013,
+    "bass+guitars": 0.009,
+    "bass+keys": 0.194,
+    "guitars+keys": 0.025
+  }
+}

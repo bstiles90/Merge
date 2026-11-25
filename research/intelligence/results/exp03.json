@@ -1,0 +1,174 @@
+{
+  "band_centres_hz": [
+    63,
+    125,
+    250,
+    500,
+    1000,
+    2000,
+    4001,
+    8001
+  ],
+  "none": {
+    "level_dev_LU": -0.14,
+    "shape_dev_dB": [
+      0.4,
+      0.1,
+      0.0,
+      -0.0,
+      -0.0,
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "max_band": "63 Hz",
+    "decision": "no action"
+  },
+  "level+3": {
+    "level_dev_LU": 2.86,
+    "shape_dev_dB": [
+      0.4,
+      0.1,
+      0.0,
+      -0.0,
+      -0.0,
+      0.0,
+      -0.0,
+      0.0
+    ],
+    "max_band": "63 Hz",
+    "decision": "fader: -2.9 dB"
+  },
+  "lowmid+5": {
+    "level_dev_LU": 2.6,
+    "shape_dev_dB": [
+      -1.4,
+      0.0,
+      0.6,
+      -0.4,
+      -2.5,
+      -2.8,
+      -2.9,
+      -2.9
+    ],
+    "max_band": "4001 Hz",
+    "decision": "fader: -2.6 dB"
+  },
+  "presence-4": {
+    "level_dev_LU": -0.52,
+    "shape_dev_dB": [
+      0.6,
+      0.3,
+      0.2,
+      0.1,
+      -0.3,
+      -1.9,
+      -2.8,
+      -0.4
+    ],
+    "max_band": "4001 Hz",
+    "decision": "EQ: boost ~2.8 dB near 4001 Hz"
+  },
+  "vocalist-B": {
+    "level_dev_LU": -1.45,
+    "shape_dev_dB": [
+      6.3,
+      44.8,
+      -5.0,
+      -2.3,
+      -0.2,
+      -0.1,
+      -2.7,
+      0.8
+    ],
+    "max_band": "125 Hz",
+    "decision": "EQ: cut ~44.8 dB near 125 Hz"
+  },
+  "part2_action_selection": {
+    "none": {
+      "energy_weighted_vs_reference_stem": {
+        "decision": "no action",
+        "residual_before": 0.03,
+        "residual_after": 0.03
+      },
+      "vs_reference_stem": {
+        "decision": "no action",
+        "residual_before": 0.03,
+        "residual_after": 0.03
+      },
+      "vs_own_baseline": {
+        "decision": "no action",
+        "residual_before": 0.09,
+        "residual_after": 0.09
+      }
+    },
+    "level+3": {
+      "energy_weighted_vs_reference_stem": {
+        "decision": "fader -2.8 dB",
+        "residual_before": 8.25,
+        "residual_after": 0.0
+      },
+      "vs_reference_stem": {
+        "decision": "fader -2.8 dB",
+        "residual_before": 8.06,
+        "residual_after": 0.0
+      },
+      "vs_own_baseline": {
+        "decision": "fader -2.7 dB",
+        "residual_before": 7.39,
+        "residual_after": 0.01
+      }
+    },
+    "lowmid+5": {
+      "energy_weighted_vs_reference_stem": {
+        "decision": "EQ band 250 Hz -3.0 dB",
+        "residual_before": 9.07,
+        "residual_after": 0.45
+      },
+      "vs_reference_stem": {
+        "decision": "EQ band 250 Hz -3.0 dB",
+        "residual_before": 4.87,
+        "residual_after": 0.47
+      },
+      "vs_own_baseline": {
+        "decision": "EQ band 250 Hz -3.0 dB",
+        "residual_before": 4.5,
+        "residual_after": 0.41
+      }
+    },
+    "presence-4": {
+      "energy_weighted_vs_reference_stem": {
+        "decision": "no action",
+        "residual_before": 0.51,
+        "residual_after": 0.51
+      },
+      "vs_reference_stem": {
+        "decision": "EQ band 4000 Hz +3.0 dB",
+        "residual_before": 2.15,
+        "residual_after": 0.3
+      },
+      "vs_own_baseline": {
+        "decision": "EQ band 4000 Hz +3.0 dB",
+        "residual_before": 2.38,
+        "residual_after": 0.39
+      }
+    },
+    "vocalist-B": {
+      "energy_weighted_vs_reference_stem": {
+        "decision": "EQ band 125 Hz -3.0 dB",
+        "residual_before": 448.47,
+        "residual_after": 308.79
+      },
+      "vs_reference_stem": {
+        "decision": "EQ band 125 Hz -3.0 dB",
+        "residual_before": 364.91,
+        "residual_after": 244.45
+      },
+      "vs_own_baseline": {
+        "decision": "no action",
+        "residual_before": 0.11,
+        "residual_after": 0.11
+      }
+    }
+  }
+}

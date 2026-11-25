@@ -1,0 +1,287 @@
+{
+  "input_stats": {
+    "crest_db": 17.52,
+    "st_spread_lu": 10.24,
+    "mom_spread_lu": 14.14
+  },
+  "true_setting": {
+    "threshold_db": -25.0,
+    "ratio": 4.0,
+    "crest_db": 14.22,
+    "st_spread_lu": 6.71,
+    "mom_spread_lu": 3.98,
+    "gr_mean_db": 14.21
+  },
+  "grid_size": 66,
+  "tolerance": {
+    "crest_db": 0.5,
+    "st_spread_lu": 0.5,
+    "mom_spread_lu": 0.5
+  },
+  "settings_indistinguishable_from_true": [],
+  "same_compressor_two_deliveries": {
+    "calm": {
+      "input": {
+        "crest_db": 15.78,
+        "st_spread_lu": 8.11,
+        "mom_spread_lu": 7.45
+      },
+      "output": {
+        "crest_db": 13.58,
+        "st_spread_lu": 6.42,
+        "mom_spread_lu": 2.77
+      }
+    },
+    "dynamic": {
+      "input": {
+        "crest_db": 18.16,
+        "st_spread_lu": 11.92,
+        "mom_spread_lu": 25.08
+      },
+      "output": {
+        "crest_db": 14.8,
+        "st_spread_lu": 6.88,
+        "mom_spread_lu": 8.23
+      }
+    }
+  },
+  "unknown_input_matches": [
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -40.0,
+      "ratio": 2.0,
+      "gr_mean_db": 17.3,
+      "crest_db": 13.97,
+      "st_spread_lu": 7.14,
+      "mom_spread_lu": 4.28
+    },
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -38.5,
+      "ratio": 2.0,
+      "gr_mean_db": 16.6,
+      "crest_db": 13.97,
+      "st_spread_lu": 7.15,
+      "mom_spread_lu": 4.29
+    },
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -37.0,
+      "ratio": 2.0,
+      "gr_mean_db": 15.8,
+      "crest_db": 13.97,
+      "st_spread_lu": 7.16,
+      "mom_spread_lu": 4.29
+    },
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -35.5,
+      "ratio": 2.0,
+      "gr_mean_db": 15.1,
+      "crest_db": 13.97,
+      "st_spread_lu": 7.17,
+      "mom_spread_lu": 4.3
+    },
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -34.0,
+      "ratio": 2.0,
+      "gr_mean_db": 14.3,
+      "crest_db": 13.97,
+      "st_spread_lu": 7.18,
+      "mom_spread_lu": 4.31
+    },
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -32.5,
+      "ratio": 2.0,
+      "gr_mean_db": 13.6,
+      "crest_db": 13.97,
+      "st_spread_lu": 7.19,
+      "mom_spread_lu": 4.32
+    },
+    {
+      "input_dyn": 0.2,
+      "threshold_db": -31.0,
+      "ratio": 2.0,
+      "gr_mean_db": 12.9,
+      "crest_db": 13.98,
+      "st_spread_lu": 7.2,
+      "mom_spread_lu": 4.33
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -34.0,
+      "ratio": 3.0,
+      "gr_mean_db": 18.9,
+      "crest_db": 14.24,
+      "st_spread_lu": 6.73,
+      "mom_spread_lu": 3.91
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -32.5,
+      "ratio": 3.0,
+      "gr_mean_db": 17.9,
+      "crest_db": 13.9,
+      "st_spread_lu": 6.76,
+      "mom_spread_lu": 3.92
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -31.0,
+      "ratio": 3.0,
+      "gr_mean_db": 16.9,
+      "crest_db": 13.75,
+      "st_spread_lu": 6.78,
+      "mom_spread_lu": 3.93
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -29.5,
+      "ratio": 3.0,
+      "gr_mean_db": 15.9,
+      "crest_db": 13.75,
+      "st_spread_lu": 6.81,
+      "mom_spread_lu": 3.94
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -28.0,
+      "ratio": 3.0,
+      "gr_mean_db": 15.0,
+      "crest_db": 13.76,
+      "st_spread_lu": 6.83,
+      "mom_spread_lu": 3.96
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -26.5,
+      "ratio": 3.0,
+      "gr_mean_db": 14.0,
+      "crest_db": 13.76,
+      "st_spread_lu": 6.86,
+      "mom_spread_lu": 3.98
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -25.0,
+      "ratio": 3.0,
+      "gr_mean_db": 13.0,
+      "crest_db": 13.77,
+      "st_spread_lu": 6.88,
+      "mom_spread_lu": 4.0
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -23.5,
+      "ratio": 3.0,
+      "gr_mean_db": 12.0,
+      "crest_db": 13.77,
+      "st_spread_lu": 6.9,
+      "mom_spread_lu": 4.03
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -22.0,
+      "ratio": 3.0,
+      "gr_mean_db": 11.0,
+      "crest_db": 13.78,
+      "st_spread_lu": 6.92,
+      "mom_spread_lu": 4.06
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -20.5,
+      "ratio": 3.0,
+      "gr_mean_db": 10.1,
+      "crest_db": 13.78,
+      "st_spread_lu": 7.01,
+      "mom_spread_lu": 3.89
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -19.0,
+      "ratio": 3.0,
+      "gr_mean_db": 9.1,
+      "crest_db": 13.79,
+      "st_spread_lu": 7.03,
+      "mom_spread_lu": 3.91
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -17.5,
+      "ratio": 3.0,
+      "gr_mean_db": 8.1,
+      "crest_db": 13.8,
+      "st_spread_lu": 7.06,
+      "mom_spread_lu": 3.95
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -16.0,
+      "ratio": 3.0,
+      "gr_mean_db": 7.2,
+      "crest_db": 13.81,
+      "st_spread_lu": 7.08,
+      "mom_spread_lu": 4.06
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -14.5,
+      "ratio": 3.0,
+      "gr_mean_db": 6.2,
+      "crest_db": 13.83,
+      "st_spread_lu": 7.11,
+      "mom_spread_lu": 4.28
+    },
+    {
+      "input_dyn": 0.4,
+      "threshold_db": -13.0,
+      "ratio": 3.0,
+      "gr_mean_db": 5.3,
+      "crest_db": 13.85,
+      "st_spread_lu": 7.13,
+      "mom_spread_lu": 4.38
+    },
+    {
+      "input_dyn": 0.6,
+      "threshold_db": -26.5,
+      "ratio": 4.0,
+      "gr_mean_db": 15.3,
+      "crest_db": 14.53,
+      "st_spread_lu": 6.67,
+      "mom_spread_lu": 3.96
+    },
+    {
+      "input_dyn": 0.6,
+      "threshold_db": -25.0,
+      "ratio": 4.0,
+      "gr_mean_db": 14.2,
+      "crest_db": 14.22,
+      "st_spread_lu": 6.71,
+      "mom_spread_lu": 3.98
+    },
+    {
+      "input_dyn": 0.6,
+      "threshold_db": -23.5,
+      "ratio": 4.0,
+      "gr_mean_db": 13.1,
+      "crest_db": 13.87,
+      "st_spread_lu": 6.74,
+      "mom_spread_lu": 4.05
+    }
+  ],
+  "unknown_input_match_summary": {
+    "n_matches": 25,
+    "distinct_input_dynamics": [
+      0.2,
+      0.4,
+      0.6
+    ],
+    "gr_mean_range_db": [
+      5.3,
+      18.9
+    ]
+  }
+}
