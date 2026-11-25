@@ -922,3 +922,14 @@ input, textarea, select { box-shadow: var(--shadow-pressed); }
 /* fader scale marks are the fader's own (dB of gain), kept dimmer than the meter scale */
 .fader-tick span { color: var(--text-tertiary); }
 .ms-mark.zero { transform: translateY(-1px); }
+/* bottom row: input peak under the meter, fader level under the fader */
+.strip-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 2px; padding: 0 3px; }
+.strip-foot .strip-db { flex: 1; text-align: right; padding-right: 4px; }
+.peak-readout { flex: 0 0 auto; min-width: 26px; padding: 1px 3px; border-radius: var(--r-xs); background: var(--surface-well); font-size: 9.5px; font-weight: var(--fw-semibold); text-align: center; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.peak-readout[data-zone='green'] { color: var(--meter-green); }
+.peak-readout[data-zone='yellow'] { color: var(--meter-yellow); }
+.peak-readout[data-zone='red'] { color: #ff7b7f; }
+.peak-readout[data-zone='clip'] { color: #fff; background: var(--mute); }
+.strip-foot { padding: 0 2px; gap: 1px; }
+.strip-foot .strip-db { font-size: 10.5px; padding-right: 1px; white-space: nowrap; letter-spacing: -0.02em; }
+.peak-readout { min-width: 0; padding: 1px 2px; font-size: 9px; letter-spacing: -0.02em; }

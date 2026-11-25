@@ -93,6 +93,27 @@ export function MeterScale({ height }: { height: number }) {
   );
 }
 
+/** Peak level as a number (dBFS, held briefly), coloured by meter zone. Updated straight from
+ *  the meter loop (no React renders). */
+export function PeakReadout({ id }: { id: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const yellowDb = useConsole((s) => s.meterYellowDb ?? -10);
+  useEffect(
+    () =>
+      registerMeter(id, (m) => {
+        const el = ref.current;
+        if (!el) return;
+        const pk = Math.max(m?.hold ?? -120, m?.holdR ?? -120);
+        const txt = pk <= -60 ? '-∞' : pk >= 0 ? (m?.clip ? 'CLIP' : '0.0') : pk.toFixed(1);
+        if (el.textContent !== txt) el.textContent = txt;
+        const zone = m?.clip ? 'clip' : pk >= METER_RED_DB ? 'red' : pk >= yellowDb ? 'yellow' : pk > -60 ? 'green' : 'off';
+        if (el.dataset.zone !== zone) el.dataset.zone = zone;
+      }),
+    [id, yellowDb],
+  );
+  return <span ref={ref} className="peak-readout" data-zone="off" title="Input peak (dBFS, pre-fader)">-∞</span>;
+}
+
 export function Meter({ id, height = 220, stereo = false, showGr = false }: { id: string; height?: number; stereo?: boolean; showGr?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const yellowDb = useConsole((s) => s.meterYellowDb ?? -10);

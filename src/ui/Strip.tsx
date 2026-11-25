@@ -7,7 +7,7 @@ import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, Send, StripRef } from '../core/types';
 import { applyTapValue, sendTap, tapChoices, tapCode, tapValue } from '../core/sends';
-import { Fader, Knob, Meter, MeterScale, Toggle } from './controls';
+import { Fader, Knob, Meter, MeterScale, PeakReadout, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
 import { createsLoop } from '../core/plan';
 import { sendNative, useNative } from '../native/bridge';
@@ -580,7 +580,10 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         {meter}
         {fader}
       </div>
-      <div className="strip-db">{dbText}</div>
+      <div className="strip-foot">
+        {refr.kind !== 'dca' ? <PeakReadout id={refr.kind === 'main' ? 'main' : refr.id} /> : <span className="peak-readout" data-zone="off" />}
+        <span className="strip-db" title="Fader level (dB)">{dbText}</span>
+      </div>
       {mute}
     </div>
   );
