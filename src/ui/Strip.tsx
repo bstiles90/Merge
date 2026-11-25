@@ -85,7 +85,7 @@ function InputSection({ ch }: { ch: Channel }) {
           </optgroup>
         </select>
       </div>
-      <Knob size={24} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
+      <Knob size={20} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
     </div>
   );
 }

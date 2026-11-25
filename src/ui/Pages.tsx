@@ -87,8 +87,8 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
     <div className={'pages' + (editing ? ' editing' : '')}>
       <div className="pages-title">PAGES</div>
       <div className="seg" title="View: one fader bank, or two independent banks">
-        <button className={!split ? 'on' : ''} onClick={() => split && s.dispatch({ type: 'view.banks.toggle', args: {} })}>1 Bank</button>
-        <button className={split ? 'on' : ''} onClick={() => !split && s.dispatch({ type: 'view.banks.toggle', args: {} })}>2 Banks</button>
+        <button className={!split ? 'on' : ''} onClick={() => split && s.dispatch({ type: 'view.banks.toggle', args: {} })}>1 BANK</button>
+        <button className={split ? 'on' : ''} onClick={() => !split && s.dispatch({ type: 'view.banks.toggle', args: {} })}>2 BANKS</button>
       </div>
       {split && (
         <div className="seg target" title="Which bank the page keys load into (or just touch a bank)">
@@ -219,7 +219,8 @@ export function FaderBank({ editing, bank = 'A' }: { editing: boolean; bank?: 'A
           <b>{bank}</b> {layer.name}
         </div>
       )}
-      <div className="bank-strips">
+      {/* a page is 16 faders that share the width (no scrolling): more faders = another page */}
+      <div className="bank-strips" style={{ gridTemplateColumns: `repeat(${count}, minmax(${split ? 52 : 0}px, 96px))` }}>
         {slots.map((ref, i) => (
           <div
             key={i}

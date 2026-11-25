@@ -536,3 +536,22 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .send-row.on.tap-psp .sr-fill { background: #5b45b8; }
 .sends-big .send { grid-template-columns: 90px 1fr 38px 104px 22px; }
 .tap-select { min-width: 0; width: 100%; font-size: 11px; }
+
+/* ---------------- 16 faders per page, no scrolling: strips share the width, side columns slimmer */
+.bank { overflow: hidden; }
+.bank.split { overflow-x: auto; }
+.bank-strips { display: grid; gap: 3px; flex: 1; min-height: 0; }
+.bank-slot { min-width: 0; }
+.bank-slot .strip { width: auto; flex: 1; min-width: 0; }
+.slot-assign { width: 100%; }
+.pages { width: 96px; flex: 0 0 96px; padding: 5px; }
+.page-key { padding: 5px 6px 4px 8px; min-height: 44px; }
+.page-name { font-size: 11px; }
+.mix-side { width: 312px; flex: 0 0 312px; }
+.mix-side .ukey { min-height: 54px; }
+.pages .seg button { padding: 2px 0; font-size: 9px; letter-spacing: 0.3px; white-space: nowrap; flex: 1; }
+.page-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.15; overflow: hidden; }
+/* narrow strips: input label and gain knob share the row */
+.sec-input { padding: 0 2px; gap: 1px; }
+.sec-src { font-size: 8px; padding: 2px 2px; max-width: none; flex: 1 1 auto; min-width: 0; text-overflow: clip; letter-spacing: -0.2px; }
+.sec-input .knob { flex: 0 0 auto; }
