@@ -9,7 +9,7 @@ namespace merge
 {
 
 constexpr int kNumChannels = 32;
-constexpr int kNumBuses = 8;
+constexpr int kNumBuses = 64; // every bus can be a group, an aux/FX send or a feed: routing decides
 constexpr int kMaxInserts = 8;
 
 class HostedInsert;
@@ -41,6 +41,9 @@ struct ChannelPlan
     float mainGain = 0; // 1 if assigned & routed
     std::array<float, kNumBuses> sendGain {};
     std::array<bool, kNumBuses> sendPre {};
+    /** output assignment (channel → group): panned exactly like the main mix, so a source sounds
+        the same whether it goes to Main LR directly or through a bus */
+    std::array<bool, kNumBuses> sendRoute {};
     float cue = 0;
     bool cuePre = true;
 };
@@ -51,6 +54,7 @@ struct BusPlan
     float cuePre = 0, cuePost = 0;
     float delayMs = 0;
     std::vector<InsertRef> inserts;
+    int to = -1; // where the bus goes after its fader: -1 nowhere (outputs only), -2 Main LR, 0.. another bus
 };
 
 struct MainPlan
@@ -71,6 +75,8 @@ struct MixPlan
 {
     std::array<ChannelPlan, kNumChannels> channels;
     std::array<BusPlan, kNumBuses> buses;
+    /** buses in processing order: every bus comes before the bus it feeds */
+    std::array<int, kNumBuses> busOrder {};
     MainPlan main;
     int monitorSource = -2; // -2 main, -3 cue, 0..7 bus
     float monitorGain = 1;

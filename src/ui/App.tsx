@@ -4,6 +4,7 @@ import { defaultState } from '../core/defaults';
 import { anySolo } from '../core/mix';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { MixView } from './MixView';
+import { RoutingView } from './RoutingView';
 import { PatchView } from './PatchView';
 import { ScenesView } from './ScenesView';
 import { SetupView } from './SetupView';
@@ -14,9 +15,10 @@ import { sendNative, startEmbedded, useNative } from '../native/bridge';
 import { EMBEDDED } from '../native/embedded';
 import { toggleNative } from './NativePanel';
 
-type Tab = 'mix' | 'timeline' | 'scenes' | 'setup' | 'io';
+type Tab = 'mix' | 'routing' | 'timeline' | 'scenes' | 'setup' | 'io';
 const TABS: [Tab, string][] = [
   ['mix', 'Mix'],
+  ['routing', 'Routing'],
   ['timeline', 'Record / Timeline'],
   ['scenes', 'Scenes'],
   ['setup', 'Layers · Keys · Groups'],
@@ -179,6 +181,7 @@ export function App() {
       {!EMBEDDED && !engine && native.status !== 'connected' && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> for the browser engine, or <b>Connect engine</b> for native audio with VST3/AU plugins.</div>}
       <main className="content">
         {tab === 'mix' && <MixView />}
+        {tab === 'routing' && <RoutingView />}
         {tab === 'timeline' && <TimelineView />}
         {tab === 'scenes' && <ScenesView />}
         {tab === 'setup' && <SetupView />}

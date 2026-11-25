@@ -178,6 +178,45 @@ void testMixer()
            juce::String (m.loudness.integrated.load(), 2) + " vs " + juce::String (expected, 2));
 }
 
+/** tonePlan + ch1 routed to `bus` (output assignment, not Main LR) and extra bus definitions. */
+juce::var routedPlan (int numTones, const juce::String& busesJson)
+{
+    auto plan = tonePlan (numTones);
+    auto* c1 = plan["channels"][0].getDynamicObject();
+    c1->setProperty ("main", 0);
+    c1->setProperty ("sends", juce::JSON::parse (R"([{"bus":"bus9","gain":1,"pre":false,"route":true}])"));
+    if (auto* arr = plan["buses"].getArray())
+        if (auto extra = juce::JSON::parse (busesJson); auto* ex = extra.getArray())
+            for (auto& b : *ex) arr->add (b);
+    return plan;
+}
+
+void testRouting()
+{
+    std::cout << "Routing (64 buses)" << std::endl;
+    Mixer m;
+    m.prepare (kSr, kBlock, 0, 4);
+    m.setPlan (parsePlan (routedPlan (1, R"([{"id":"bus9","out":1,"to":"main","inserts":[]}])"), kSr, nullptr, nullptr));
+    auto p = render (m, 100);
+    check (near (p[0], kToneCentre, 0.003) && near (p[1], kToneCentre, 0.003),
+           "channel -> group bus -> Main LR arrives at the same level as going direct", juce::String (p[0], 4));
+
+    m.setPlan (parsePlan (routedPlan (1, R"([{"id":"bus9","out":1,"to":"bus10","inserts":[]},{"id":"bus10","out":0.5,"to":"main","inserts":[]}])"), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], 0.5 * kToneCentre, 0.003), "bus -> bus -> Main LR (Drums -> Band -> Main), each fader applies", juce::String (p[0], 4));
+
+    m.setPlan (parsePlan (routedPlan (1, R"([{"id":"bus9","out":1,"to":"","inserts":[]}])"), kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (p[0] < 1e-4f, "a channel assigned only to an unrouted bus is not in Main LR", juce::String (p[0], 6));
+
+    // a loop (bus9 -> bus10 -> bus9) is broken instead of hanging or feeding back
+    auto loop = routedPlan (1, R"([{"id":"bus9","out":1,"to":"bus10","inserts":[]},{"id":"bus10","out":1,"to":"bus9","inserts":[]}])");
+    loop.getDynamicObject()->setProperty ("busOrder", juce::JSON::parse (R"(["bus9","bus10"])"));
+    m.setPlan (parsePlan (loop, kSr, nullptr, nullptr));
+    p = render (m, 200);
+    check (std::isfinite (p[0]) && p[0] < 1e-4f, "routing loops are cut (no feedback)", juce::String (p[0], 6));
+}
+
 float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }
 
 void testTruePeak()
@@ -354,6 +393,19 @@ void testPluginHosting (const juce::String& pluginPath)
     e.mixer().collectGarbage();
     check (weak.expired(), "removed plugin instance is destroyed");
 
+    // a plugin on a bus: a channel through that bus stays in time with a channel going direct
+    {
+        auto plan = routedPlan (2, "[{\"id\":\"bus9\",\"out\":1,\"to\":\"main\",\"inserts\":[{\"id\":\"slotB\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]}]");
+        e.handleMessage (0, planMsg (plan));
+        for (int i = 0; i < 300 && (e.host().numLoading() > 0 || ! e.host().find ("slotB")); ++i) pump (10);
+        auto pb = render (e.mixer(), 150);
+        check (near (pb[0], 2 * kToneCentre, 0.006), "delay compensation covers plugins on buses (channel via bus vs direct stay in phase)",
+               juce::String (pb[0], 4) + " vs " + juce::String (2 * kToneCentre, 4));
+        e.handleMessage (0, planMsg (tonePlan (2)));
+        render (e.mixer(), 4);
+        e.mixer().collectGarbage();
+    }
+
     // missing plugin reports an error instead of failing the plan
     sent.clear();
     e.handleMessage (0, planMsg (tonePlan (1, R"([{"id":"slotX","pluginId":"vst3:not-installed","bypass":false}])")));
@@ -425,6 +477,7 @@ int runSelfTest (const juce::StringArray& args)
     testProtocolBasics();
     testBigMessages();
     testMixer();
+    testRouting();
     testTruePeak();
     testPluginHosting (pluginPath);
     testWebSocketRoundTrip();

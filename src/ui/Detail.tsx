@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { defaultParams, getPlugin, listPlugins } from '../core/plugins';
 import { newId, PALETTE } from '../core/defaults';
 import { useConsole } from '../core/store';
+import { createsLoop } from '../core/plan';
 import type { Channel, InsertSlot, SourceKind } from '../core/types';
 import { fmtMs, Knob, Toggle } from './controls';
 import { ChannelPanel } from './ChannelPanel';
@@ -287,10 +288,27 @@ function BusDetail({ id }: { id: string }) {
         <ColorPicker value={b.color} onChange={(color) => up({ color })} />
       </div>
       <div className="section">
+        <div className="section-title">Output</div>
+        <div className="row wrap">
+          <select value={b.output ?? 'none'} onChange={(e) => up({ output: e.target.value })} title="Where this bus goes after its fader">
+            <option value="main">Main LR</option>
+            <option value="none">Nowhere (physical outputs only)</option>
+            {s.buses
+              .filter((x) => x.id !== b.id && x.type !== 'mixminus' && !createsLoop(s, b.id, x.id))
+              .map((x) => <option key={x.id} value={x.id}>→ {x.id.slice(3)} · {x.name}</option>)}
+          </select>
+          <span className="hint">
+            Fed by: {[
+              ...s.channels.filter((c) => (c.routes ?? []).includes(b.id)).map((c) => c.name),
+              ...s.buses.filter((x) => x.output === b.id).map((x) => x.name),
+              ...s.channels.filter((c) => c.sends[b.id]?.on).map((c) => `${c.name} (send)`),
+            ].join(', ') || 'nothing yet'}
+          </span>
+        </div>
         <div className="section-title">Bus type</div>
         <div className="row wrap">
           <select value={b.type} onChange={(e) => up({ type: e.target.value as typeof b.type })}>
-            <option value="aux">Aux / IEM / Matrix (sends)</option>
+            <option value="aux">Bus (group, aux, FX, feed: routing decides)</option>
             <option value="mixminus">Mix-minus / N-1 (auto)</option>
           </select>
           {b.type === 'mixminus' && (
