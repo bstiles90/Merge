@@ -30,7 +30,13 @@ export interface InsertSlot {
   pluginName?: string;
   /** opaque plugin state (base64) from a natively hosted plugin, restored on load */
   state?: string;
+  /** scene recall leaves this plugin (and its settings) as it is */
+  recallSafe?: boolean;
 }
+
+/** What a strip's recall safe can protect (LV1-style), down to individual plugin slots. */
+export type SafePart = 'input' | 'fader' | 'mute' | 'pan' | 'sends' | 'routing' | 'groups' | 'inserts' | 'name';
+export type SafeSet = Partial<Record<SafePart, boolean>>;
 
 /** Where a send taps the channel:
  *  input = after gain only (before delay and every plugin)
@@ -73,7 +79,10 @@ export interface Channel {
   recArm: boolean;
   /** live = source, playback = recorded track (virtual soundcheck) */
   inputMode: 'live' | 'playback';
+  /** whole strip safe from scene recalls */
   recallSafe: boolean;
+  /** parts of the strip safe from scene recalls */
+  safe?: SafeSet;
 }
 
 export type BusType = 'aux' | 'mixminus';
@@ -91,6 +100,7 @@ export interface Bus {
   inserts: InsertSlot[];
   muteGroups: MuteGroupId[];
   recallSafe: boolean;
+  safe?: SafeSet;
   /** where the bus goes after its fader: Main LR, another bus, or nowhere (physical outputs only) */
   output?: 'main' | 'none' | BusId;
   /** only created buses appear in routing / sends / outputs (64 slots are available) */
@@ -208,6 +218,8 @@ export interface Scene {
   id: string;
   name: string;
   snapshot: MixSnapshot;
+  /** fade time on recall (ms): faders, sends, pan and gain glide; 0 / missing = instant */
+  fadeMs?: number;
 }
 
 export interface Clip {

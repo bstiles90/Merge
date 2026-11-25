@@ -1,4 +1,5 @@
 import { withCreatedBuses } from './buses';
+import { startSceneFade, stopSceneFade } from './sceneFade';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
 import { runActions } from './actions';
@@ -52,7 +53,17 @@ export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => (
   ...loadAutosave(),
   dispatch: (calls) => {
     const list = Array.isArray(calls) ? calls : [calls];
-    set(runActions(stateOnly(get()), list));
+    const prev = stateOnly(get());
+    const next = runActions(prev, list);
+    // a scene recall with a fade time glides instead of jumping
+    const recalled = list.some((c) => c.type === 'scene.recall' || c.type === 'scene.next' || c.type === 'scene.prev');
+    const scene = recalled ? next.scenes.find((x) => x.id === next.currentScene) : undefined;
+    if (scene?.fadeMs && scene.fadeMs > 0 && (next.currentScene !== prev.currentScene || list.some((c) => c.type === 'scene.recall'))) {
+      startSceneFade(prev, next, scene.fadeMs, () => stateOnly(get()), (p) => set(p));
+      return;
+    }
+    if (recalled) stopSceneFade();
+    set(next);
   },
   update: (fn) => set(fn(stateOnly(get()))),
   updateChannel: (id, patch) =>

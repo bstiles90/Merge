@@ -164,6 +164,23 @@ function startTracing() {
   }, 500);
 }
 
+/** Plugin settings the engine has (per slot): when the show's copy changes for another reason
+ *  (a scene recall, opening a show), the engine is sent the show's settings. */
+const engineState = new Map<string, string>();
+function syncPluginStates() {
+  const s = useConsole.getState();
+  const loaded = useNative.getState().inserts;
+  for (const list of [...s.channels.map((c) => c.inserts), ...s.buses.map((b) => b.inserts), s.main.inserts]) {
+    for (const ins of list) {
+      if (!ins.state || engineState.get(ins.id) === ins.state) continue;
+      const n = loaded[ins.id];
+      if (!n || n.loading || n.error || n.params === undefined) continue; // sent on insert.ready instead
+      engineState.set(ins.id, ins.state);
+      sendNative({ type: 'insert.setState', slotId: ins.id, state: ins.state });
+    }
+  }
+}
+
 function schedulePlan() {
   if (planTimer) return;
   planTimer = setTimeout(() => {
@@ -254,7 +271,10 @@ function onMessage(m: any) {
     case 'insert.ready': {
       setInsert(m.slotId, { loading: false, name: m.name, latency: m.latency, hasEditor: m.hasEditor, params: m.params, error: undefined });
       const slot = findSlot(stateOnly(useConsole.getState()), m.slotId);
-      if (slot?.state) sendNative({ type: 'insert.setState', slotId: m.slotId, state: slot.state });
+      if (slot?.state) {
+        engineState.set(m.slotId, slot.state);
+        sendNative({ type: 'insert.setState', slotId: m.slotId, state: slot.state });
+      }
       if (slot && slot.pluginName !== m.name) patchSlot(m.slotId, { pluginName: m.name });
       break;
     }
@@ -266,6 +286,7 @@ function onMessage(m: any) {
       break;
     }
     case 'insert.state':
+      engineState.set(m.slotId, m.state);
       patchSlot(m.slotId, { state: m.state });
       break;
     case 'insert.bypass': // bypass switched in the plugin's own window
@@ -370,7 +391,15 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
       if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
       lastPlanJson = '';
       schedulePlan();
-      unsubscribe = useConsole.subscribe(schedulePlan);
+      engineState.clear();
+      const offPlan = useConsole.subscribe(schedulePlan);
+      const offStates = useConsole.subscribe((st, prev) => {
+        if (st.currentScene !== prev.currentScene || st.channels !== prev.channels || st.buses !== prev.buses || st.main !== prev.main) syncPluginStates();
+      });
+      unsubscribe = () => {
+        offPlan();
+        offStates();
+      };
       resolve();
     };
     sock.onmessage = (e) => {

@@ -217,6 +217,7 @@ function RackSection({ inserts, onSelect, onAdd, onBypass }: { inserts?: InsertS
                 />
               )}
               {ins ? name : addable ? '+' : ''}
+              {ins?.recallSafe && <span className="rs-lock" title="Recall safe">🔒</span>}
             </div>
           );
         })}

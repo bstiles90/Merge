@@ -142,6 +142,13 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
               >
                 {ins.bypass ? 'BYP' : 'ON'}
               </button>
+              <button
+                className={'icon-btn lock-btn' + (ins.recallSafe ? ' on' : '')}
+                title={ins.recallSafe ? 'Recall safe: scenes leave this plugin and its settings as they are (click to release)' : 'Make this plugin recall safe (scenes leave it as it is)'}
+                onClick={() => onChange(inserts.map((x) => (x.id === ins.id ? { ...x, recallSafe: !x.recallSafe } : x)))}
+              >
+                {ins.recallSafe ? '🔒' : '🔓'}
+              </button>
               <button className="icon-btn" disabled={i === 0} title="Move up" onClick={() => {
                 const n = inserts.slice();
                 [n[i - 1], n[i]] = [n[i], n[i - 1]];
