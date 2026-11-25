@@ -56,7 +56,13 @@ export function buildMixPlan(s: ConsoleState) {
       const g = computeChannelGains(s, ch);
       return {
         id: ch.id,
-        src: { kind: ch.source.kind, freq: ch.source.freq, input: ch.source.kind === 'input' ? ch.source.deviceChannel ?? 0 : -1 },
+        src: {
+          kind: ch.source.kind,
+          freq: ch.source.freq,
+          input: ch.source.kind === 'input' ? ch.source.deviceChannel ?? 0 : -1,
+          ...(ch.stereo && ch.source.kind === 'input' ? { inputR: ch.source.deviceChannelR ?? (ch.source.deviceChannel ?? 0) + 1 } : {}),
+        },
+        ...(ch.stereo ? { stereo: true } : {}),
         playback: ch.inputMode === 'playback',
         gain: r(dbToGain(ch.gainDb) * (ch.phaseInvert ? -1 : 1)),
         delayMs: ch.delayMs,

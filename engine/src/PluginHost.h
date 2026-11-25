@@ -115,6 +115,7 @@ private:
     struct Slot
     {
         juce::String pluginId, strip;
+        int channels = 2;
         std::shared_ptr<HostedInsert> insert;
         std::unique_ptr<juce::DocumentWindow> editor;
         int lastStateSent = 0;

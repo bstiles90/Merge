@@ -40,8 +40,10 @@ const isControl = (t: EventTarget | null) =>
 function sourceLabel(ch: Channel) {
   if (ch.inputMode === 'playback') return 'PB';
   switch (ch.source.kind) {
-    case 'input':
-      return `IN ${(ch.source.deviceChannel ?? 0) + 1}`;
+    case 'input': {
+      const l = (ch.source.deviceChannel ?? 0) + 1;
+      return ch.stereo ? `IN ${l}/${(ch.source.deviceChannelR ?? l) + 1}` : `IN ${l}`;
+    }
     case 'tone':
       return 'TONE';
     case 'noise':
@@ -53,6 +55,34 @@ function sourceLabel(ch: Channel) {
   }
 }
 
+/** Logic-style mono / stereo switch: one circle (mono) or two linked circles (stereo). */
+export function MonoStereoSwitch({ ch, size = 16 }: { ch: Channel; size?: number }) {
+  const s = useConsole();
+  const st = !!ch.stereo;
+  return (
+    <button
+      className={'ms-switch' + (st ? ' stereo' : '')}
+      title={st ? 'Stereo channel (click for mono)' : 'Mono channel (click for stereo)'}
+      onClick={(e) => {
+        e.stopPropagation();
+        // switching to stereo on an interface input takes the next input as the right side
+        s.updateChannel(ch.id, st ? { stereo: false } : { stereo: true, pan: 0, source: { ...ch.source, deviceChannelR: undefined } });
+      }}
+    >
+      <svg width={size} height={size * 0.7} viewBox="0 0 20 14">
+        {st ? (
+          <>
+            <circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <circle cx="13" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+          </>
+        ) : (
+          <circle cx="10" cy="7" r="5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        )}
+      </svg>
+    </button>
+  );
+}
+
 const gainColor = (db: number) => (db > 0.05 ? '#f2a33c' : db < -0.05 ? '#3cc6d9' : '#8b929b');
 
 /** The strip's input label is also a menu: pick an interface input (or a test source) right here. */
@@ -61,12 +91,15 @@ function InputSection({ ch }: { ch: Channel }) {
   const device = useNative((st) => (st.status === 'connected' ? st.device : undefined));
   const value = ch.source.kind === 'input' ? `in:${ch.source.deviceChannel ?? 0}` : ch.source.kind;
   const choose = (v: string) => {
-    if (v.startsWith('in:')) s.updateChannel(ch.id, { source: { ...ch.source, kind: 'input', deviceId: device ? 'native' : ch.source.deviceId, deviceChannel: Number(v.slice(3)) } });
+    if (v.startsWith('in:'))
+      s.updateChannel(ch.id, { source: { ...ch.source, kind: 'input', deviceId: device ? 'native' : ch.source.deviceId, deviceChannel: Number(v.slice(3)), deviceChannelR: undefined } });
     else s.updateChannel(ch.id, { source: { ...ch.source, kind: v as Channel['source']['kind'] } });
   };
   const inputs = device?.inputs ?? [];
   return (
     <div className="sec sec-input">
+      <div className="src-row">
+      <MonoStereoSwitch ch={ch} />
       <div className="sec-src pickable" title={`Input: ${sourceLabel(ch)}. Click to change`} onClick={(e) => e.stopPropagation()}>
         {sourceLabel(ch)}
         {ch.phaseInvert && <span className="phase">Ø</span>}
@@ -74,11 +107,19 @@ function InputSection({ ch }: { ch: Channel }) {
           <option value="none">— No source</option>
           {inputs.length > 0 && (
             <optgroup label={device?.inputDevice || 'Interface inputs'}>
-              {inputs.map((name, i) => (
-                <option key={i} value={`in:${i}`}>
-                  IN {i + 1}{name && name !== `In ${i + 1}` ? ` · ${name}` : ''}
-                </option>
-              ))}
+              {inputs.map((name, i) =>
+                ch.stereo ? (
+                  i + 1 < inputs.length && (
+                    <option key={i} value={`in:${i}`}>
+                      IN {i + 1}/{i + 2}{name && name !== `In ${i + 1}` ? ` · ${name}` : ''}
+                    </option>
+                  )
+                ) : (
+                  <option key={i} value={`in:${i}`}>
+                    IN {i + 1}{name && name !== `In ${i + 1}` ? ` · ${name}` : ''}
+                  </option>
+                ),
+              )}
             </optgroup>
           )}
           {!inputs.length && ch.source.kind === 'input' && <option value={value}>{sourceLabel(ch)}</option>}
@@ -88,6 +129,7 @@ function InputSection({ ch }: { ch: Channel }) {
             <option value="speech">Speech sim</option>
           </optgroup>
         </select>
+      </div>
       </div>
       <Knob
         size={34}
@@ -392,7 +434,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <SendsSection ch={ch} />
         <ChannelOutput ch={ch} />
         <div className="sec sec-pan">
-          <Knob size={30} value={ch.pan} min={-1} max={1} defaultValue={0} format={panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
+          <Knob size={30} value={ch.pan} min={-1} max={1} defaultValue={0} format={ch.stereo ? (p) => `BAL ${panText(p)}` : panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
         </div>
         <div className="sec sec-groups">
           {s.muteGroups.map((g) => (
@@ -410,7 +452,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         </Toggle>
       </>
     );
-    meter = <Meter id={ch.id} height={faderH} />;
+    meter = <Meter id={ch.id} height={faderH} stereo={!!ch.stereo} />;
     fader = <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={faderH} />;
     dbText = formatDb(ch.faderDb);
     mute = (

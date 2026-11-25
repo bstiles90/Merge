@@ -32,6 +32,9 @@ struct ChannelPlan
     Source source = Source::none;
     float toneFreq = 1000.0f;
     int inputChannel = -1;
+    /** stereo channel: two signals (L/R) through the whole strip; pan becomes balance */
+    bool stereo = false;
+    int inputChannelR = -1;
     bool playback = false;
     float gain = 1.0f; // linear, includes polarity
     float delayMs = 0.0f;
@@ -101,6 +104,7 @@ struct InsertSpec
     juce::String slotId;
     juce::String pluginId;
     bool bypass = false;
+    int channels = 2; // the strip's width: 1 for mono channels, 2 for stereo channels / buses / main
 };
 
 /**

@@ -22,13 +22,13 @@ static int busIndex (const juce::String& id) // "bus3" -> 2
 
 static std::vector<InsertRef> parseInserts (const juce::var& arr, const juce::String& strip,
                                            const std::function<std::shared_ptr<HostedInsert> (const juce::String&)>& resolve,
-                                           std::vector<InsertSpec>* out)
+                                           std::vector<InsertSpec>* out, int channels = 2)
 {
     std::vector<InsertRef> refs;
     if (auto* a = arr.getArray())
         for (auto& ins : *a)
         {
-            InsertSpec spec { strip, ins["id"].toString(), ins["pluginId"].toString(), (bool) ins["bypass"] };
+            InsertSpec spec { strip, ins["id"].toString(), ins["pluginId"].toString(), (bool) ins["bypass"], channels };
             if (out) out->push_back (spec);
             if ((int) refs.size() < kMaxInserts) refs.push_back ({ spec.slotId, resolve ? resolve (spec.slotId) : nullptr });
         }
@@ -56,12 +56,14 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
                                        : ChannelPlan::Source::none;
             p.toneFreq = num (src, "freq", 1000);
             p.inputChannel = (int) num (src, "input", -1);
+            p.stereo = flag (c, "stereo", false);
+            p.inputChannelR = (int) num (src, "inputR", p.inputChannel >= 0 ? (float) (p.inputChannel + 1) : -1.0f);
             p.playback = flag (c, "playback", false);
             p.gain = num (c, "gain", 1);
             p.delayMs = num (c, "delayMs", 0);
 
 
-            p.inserts = parseInserts (c["inserts"], "ch" + juce::String (i + 1), resolve, insertsOut);
+            p.inserts = parseInserts (c["inserts"], "ch" + juce::String (i + 1), resolve, insertsOut, p.stereo ? 2 : 1);
             p.pan = juce::jlimit (-1.0f, 1.0f, num (c, "pan", 0));
             p.post = num (c, "post", 0);
             p.mainGain = num (c, "main", 0);

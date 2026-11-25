@@ -234,7 +234,7 @@ function onMessage(m: any) {
       break;
     case 'meters': {
       const next = new Map<string, MeterReading>();
-      (m.ch as [number, number][]).forEach(([peak, gr], i) => next.set(`ch${i + 1}`, { peak, gr }));
+      (m.ch as [number, number, number?][]).forEach(([peak, gr, r], i) => next.set(`ch${i + 1}`, { peak, gr, peakR: r ?? peak }));
       (m.bus as [number, number][]).forEach(([l, r], i) => next.set(`bus${i + 1}`, { peak: l, peakR: r }));
       next.set('main', { peak: m.main[0], peakR: m.main[1] });
       next.set('monitor', { peak: m.mon[0], peakR: m.mon[1] });

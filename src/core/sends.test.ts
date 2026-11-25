@@ -38,3 +38,16 @@ describe('send tap points', () => {
     expect(tapCode({ inserts: [ins('a'), ins('c')] }, send)).toBe('PRE');
   });
 });
+
+describe('stereo channels', () => {
+  it('plan carries stereo and the right input (next input by default)', () => {
+    const s = defaultState();
+    const st: ConsoleState = { ...s, channels: s.channels.map((c) => (c.id === 'ch1' ? { ...c, stereo: true, source: { kind: 'input', freq: 1000, deviceId: 'native', deviceChannel: 4 } } : c)) };
+    const p = buildMixPlan(st).channels[0] as any;
+    expect(p.stereo).toBe(true);
+    expect(p.src.input).toBe(4);
+    expect(p.src.inputR).toBe(5);
+    const mono = buildMixPlan(s).channels[0] as any;
+    expect(mono.stereo).toBeUndefined();
+  });
+});

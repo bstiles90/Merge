@@ -10,6 +10,7 @@ import { useEngineInputs } from './useEngine';
 import { sendNative, useNative } from '../native/bridge';
 import { usePluginsVersion } from './NativePanel';
 import { PluginPicker } from './PluginPicker';
+import { MonoStereoSwitch } from './Strip';
 import { createLink, linkInfo, naturalPartner, removeLink, setLinkOption, type LinkOption } from '../core/links';
 
 const MAX_INSERTS = 8;
@@ -176,6 +177,9 @@ export function SourcePicker({ ch }: { ch: Channel }) {
   const set = (patch: Partial<Channel['source']>) => s.updateChannel(ch.id, { source: { ...ch.source, ...patch } });
   return (
     <div className="row wrap">
+      <span className="ms-label">
+        <MonoStereoSwitch ch={ch} size={20} /> {ch.stereo ? 'Stereo' : 'Mono'}
+      </span>
       <select value={ch.source.kind} onChange={(e) => set({ kind: e.target.value as SourceKind })}>
         <option value="none">No source</option>
         <option value="input">Live input (interface)</option>
@@ -196,13 +200,22 @@ export function SourcePicker({ ch }: { ch: Channel }) {
               </option>
             ))}
           </select>
-          <select value={ch.source.deviceChannel ?? 0} onChange={(e) => set({ deviceChannel: Number(e.target.value) })}>
+          <select value={ch.source.deviceChannel ?? 0} onChange={(e) => set({ deviceChannel: Number(e.target.value), deviceChannelR: undefined })} title={ch.stereo ? 'Left input' : 'Input'}>
             {Array.from({ length: inputs.channelsFor(ch.source.deviceId) }, (_, i) => (
               <option key={i} value={i}>
-                {inputs.channelName(ch.source.deviceId, i)}
+                {ch.stereo ? 'L: ' : ''}{inputs.channelName(ch.source.deviceId, i)}
               </option>
             ))}
           </select>
+          {ch.stereo && (
+            <select value={ch.source.deviceChannelR ?? (ch.source.deviceChannel ?? 0) + 1} onChange={(e) => set({ deviceChannelR: Number(e.target.value) })} title="Right input">
+              {Array.from({ length: inputs.channelsFor(ch.source.deviceId) }, (_, i) => (
+                <option key={i} value={i}>
+                  R: {inputs.channelName(ch.source.deviceId, i)}
+                </option>
+              ))}
+            </select>
+          )}
         </>
       )}
     </div>

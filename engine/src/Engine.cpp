@@ -354,8 +354,8 @@ void Engine::timerCallback()
     for (int c = 0; c < kNumChannels; ++c)
     {
         auto& m = mix.meters[(size_t) c];
-        chans.add (arr ({ round3 (m.l.exchange (0)), round3 (m.gr.load()) }));
-        m.r.store (0);
+        // [left / mono, gain reduction, right] (right differs only on stereo channels)
+        chans.add (arr ({ round3 (m.l.exchange (0)), round3 (m.gr.load()), round3 (m.r.exchange (0)) }));
     }
     for (int b = 0; b < kNumBuses; ++b)
     {

@@ -16,6 +16,8 @@ export interface SourceConfig {
   /** live input: device id + channel index on that device */
   deviceId?: string;
   deviceChannel?: number;
+  /** stereo channels: the right input (defaults to the one after deviceChannel) */
+  deviceChannelR?: number;
 }
 
 /** A plugin instance in an insert slot. `pluginId` refers to the plugin registry. */
@@ -56,7 +58,9 @@ export interface Channel {
   phaseInvert: boolean;
   delayMs: number;
   inserts: InsertSlot[];
-  pan: number; // -1..1
+  pan: number; // -1..1 (balance on a stereo channel)
+  /** stereo channel: two inputs (L/R) through the whole strip; pan works as balance */
+  stereo?: boolean;
   faderDb: number;
   mute: boolean;
   solo: boolean;

@@ -224,6 +224,31 @@ void testSendTaps()
     check (near (p[0], tone, 0.003), "older shows: pre flag still means pre-fader", juce::String (p[0], 4));
 }
 
+void testStereoChannels()
+{
+    std::cout << "Stereo channels" << std::endl;
+    const float tone = 0.125f;
+    Mixer m;
+    m.prepare (kSr, kBlock, 0, 4);
+    auto plan = tonePlan (1);
+    auto* c1 = plan["channels"][0].getDynamicObject();
+    c1->setProperty ("stereo", true);
+    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+    auto p = render (m, 100);
+    check (near (p[0], tone, 0.003) && near (p[1], tone, 0.003), "stereo channel at centre: unity on both sides (balance, no pan law)", juce::String (p[0], 4) + " / " + juce::String (p[1], 4));
+    c1->setProperty ("pan", -1.0);
+    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], tone, 0.003) && p[1] < 1e-4f, "balance hard left: left side unchanged, right side off", juce::String (p[0], 4) + " / " + juce::String (p[1], 5));
+    c1->setProperty ("pan", 0.0);
+    c1->setProperty ("main", 0);
+    c1->setProperty ("sends", juce::JSON::parse (R"([{"bus":"bus9","gain":1,"tap":"pre"}])"));
+    plan["buses"].getArray()->add (juce::JSON::parse (R"({"id":"bus9","out":1,"to":"main","inserts":[]})"));
+    m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+    p = render (m, 100);
+    check (near (p[0], tone, 0.003) && near (p[1], tone, 0.003), "stereo send: left to left, right to right", juce::String (p[0], 4) + " / " + juce::String (p[1], 4));
+}
+
 void testRouting()
 {
     std::cout << "Routing (64 buses)" << std::endl;
@@ -530,6 +555,7 @@ int runSelfTest (const juce::StringArray& args)
     testMixer();
     testRouting();
     testSendTaps();
+    testStereoChannels();
     testTruePeak();
     testPluginHosting (pluginPath);
     testWebSocketRoundTrip();

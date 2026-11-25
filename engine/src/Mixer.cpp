@@ -83,9 +83,10 @@ void Mixer::prepare (double sr, int block, int, int)
     smoothCoef = (float) (1.0 - std::exp (-1.0 / (0.010 * sr))); // ~10 ms
     for (auto& c : ch)
     {
-        c.delay.prepare ((int) sr + 1);    // up to 1 s channel delay
-        c.pdc.prepare (16384);             // plugin delay compensation
-        for (auto& d : c.tapPdc) d.prepare (16384);
+        for (auto& d : c.delay) d.prepare ((int) sr + 1); // up to 1 s channel delay
+        for (auto& d : c.pdc) d.prepare (16384);          // plugin delay compensation
+        for (auto& side : c.tapPdc)
+            for (auto& d : side) d.prepare (16384);
     }
     for (auto& b : bus)
     {
@@ -95,8 +96,8 @@ void Mixer::prepare (double sr, int block, int, int)
     }
     for (auto& d : mainDirectPdc) d.prepare (16384);
     for (auto& d : mainDelay) d.prepare ((int) (2 * sr) + 1); // lip-sync up to 2 s
-    chanBuf.setSize (kNumChannels, maxBlock);
-    tapBuf.setSize (kMaxInserts, maxBlock);
+    chanBuf.setSize (kNumChannels * 2, maxBlock);
+    tapBuf.setSize (kMaxInserts * 2, maxBlock);
     busBuf.setSize (kNumBuses * 2, maxBlock);
     busFeed.setSize (kNumBuses * 2, maxBlock);
     mainFromBuses.setSize (2, maxBlock);
@@ -246,8 +247,9 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             const float panAngle = (cp.pan + 1.0f) * juce::MathConstants<float>::pi * 0.25f;
             st.post.set (cp.post);
             st.main.set (cp.mainGain);
-            st.panL.set (std::cos (panAngle));
-            st.panR.set (std::sin (panAngle));
+            // mono: equal-power pan; stereo: balance (unity at centre, the far side turns down)
+            st.panL.set (cp.stereo ? juce::jmin (1.0f, 1.0f - cp.pan) : std::cos (panAngle));
+            st.panR.set (cp.stereo ? juce::jmin (1.0f, 1.0f + cp.pan) : std::sin (panAngle));
             st.cue.set (cp.cue);
             for (int b = 0; b < kNumBuses; ++b) st.sends[(size_t) b].set (cp.sendGain[(size_t) b]);
 
@@ -257,50 +259,66 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 continue; // nothing patched: skip DSP
             }
 
-            float* x = chanBuf.getWritePointer (c);
+            const bool stereo = cp.stereo;
+            const int nch = stereo ? 2 : 1;
+            float* xs[2] = { chanBuf.getWritePointer (c * 2), chanBuf.getWritePointer (c * 2 + 1) };
             const int delaySamples = (int) (cp.delayMs * 0.001 * sampleRate);
             const uint32_t taps = cp.tapMask;
-            float* tapIn = (taps & 1u) ? tapBuf.getWritePointer (0) : nullptr;
+            auto tapPtr = [this] (int side, int slot) { return tapBuf.getWritePointer (side * kMaxInserts + slot); };
+            float* tapIn[2] = { (taps & 1u) ? tapPtr (0, 0) : nullptr, (taps & 1u) && stereo ? tapPtr (1, 0) : nullptr };
+            const bool inR = stereo && cp.source == ChannelPlan::Source::input && ! cp.playback;
             // Channels have no built-in processing: input gain/polarity and delay, then the plugin rack.
             for (int i = 0; i < n; ++i)
             {
                 float smp = sourceSample (st, cp, inPtrs, ni, i) * cp.gain;
-                if (tapIn) tapIn[i] = smp; // INPUT tap: gain only
-                if (delaySamples > 0) smp = st.delay.run (smp, delaySamples);
-                x[i] = smp;
+                float smpR = smp; // test sources: the same signal on both sides
+                if (inR) smpR = (cp.inputChannelR >= 0 && cp.inputChannelR < ni && inPtrs[cp.inputChannelR] ? inPtrs[cp.inputChannelR][i] : 0.0f) * cp.gain;
+                if (tapIn[0]) tapIn[0][i] = smp; // INPUT tap: gain only
+                if (tapIn[1]) tapIn[1][i] = smpR;
+                if (delaySamples > 0)
+                {
+                    smp = st.delay[0].run (smp, delaySamples);
+                    if (stereo) smpR = st.delay[1].run (smpR, delaySamples);
+                }
+                xs[0][i] = smp;
+                if (stereo) xs[1][i] = smpR;
             }
             // the rack, capturing mid-rack PRE taps (after k plugins) on the way
             int latSoFar = 0;
             int tapLat[kMaxInserts] {};
-            for (int k = 0; k < (int) cp.inserts.size(); ++k)
+            for (int slot = 0; slot < (int) cp.inserts.size(); ++slot)
             {
-                if (k > 0 && k < kMaxInserts && (taps & (1u << k)))
+                if (slot > 0 && slot < kMaxInserts && (taps & (1u << slot)))
                 {
-                    juce::FloatVectorOperations::copy (tapBuf.getWritePointer (k), x, n);
-                    tapLat[k] = latSoFar;
+                    for (int sd = 0; sd < nch; ++sd) juce::FloatVectorOperations::copy (tapPtr (sd, slot), xs[sd], n);
+                    tapLat[slot] = latSoFar;
                 }
-                if (auto& r = cp.inserts[(size_t) k]; r.insert)
+                if (auto& r = cp.inserts[(size_t) slot]; r.insert)
                 {
-                    r.insert->process (&x, 1, n);
+                    r.insert->process (xs, nch, n);
                     latSoFar += r.insert->getLatency();
                 }
             }
             const int comp = maxLat - chanLat[c];
             if (comp > 0)
-                for (int i = 0; i < n; ++i) x[i] = st.pdc.run (x[i], comp);
+                for (int sd = 0; sd < nch; ++sd)
+                    for (int i = 0; i < n; ++i) xs[sd][i] = st.pdc[(size_t) sd].run (xs[sd][i], comp);
             // earlier taps get the rest of the delay, so every tap stays in time with everything else
-            for (int k = 0; k < kMaxInserts; ++k)
+            for (int slot = 0; slot < kMaxInserts; ++slot)
             {
-                if (! (taps & (1u << k))) continue;
-                const int tc = juce::jlimit (0, 16000, maxLat - tapLat[k]);
-                float* t = tapBuf.getWritePointer (k);
+                if (! (taps & (1u << slot))) continue;
+                const int tc = juce::jlimit (0, 16000, maxLat - tapLat[slot]);
                 if (tc > 0)
-                    for (int i = 0; i < n; ++i) t[i] = st.tapPdc[(size_t) k].run (t[i], tc);
+                    for (int sd = 0; sd < nch; ++sd)
+                    {
+                        float* t = tapPtr (sd, slot);
+                        for (int i = 0; i < n; ++i) t[i] = st.tapPdc[(size_t) sd][(size_t) slot].run (t[i], tc);
+                    }
             }
 
             // only the sends that are on (or still fading out): 64 buses, most unused per channel
             int active[kNumBuses];
-            const float* src[kNumBuses];
+            const float* src[kNumBuses][2];
             int numActive = 0;
             for (int b = 0; b < kNumBuses; ++b)
             {
@@ -309,47 +327,55 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 {
                     const auto tap = cp.sendTap[(size_t) b];
                     const int after = cp.sendAfter[(size_t) b];
-                    src[numActive] = tap == ChannelPlan::Tap::input ? tapBuf.getReadPointer (0)
-                                   : tap == ChannelPlan::Tap::pre && after < kMaxInserts && (taps & (1u << after)) ? tapBuf.getReadPointer (after)
-                                                                                                                 : x;
+                    const int kk = tap == ChannelPlan::Tap::input ? 0
+                                 : tap == ChannelPlan::Tap::pre && after < kMaxInserts && (taps & (1u << after)) ? after
+                                                                                                               : -1;
+                    for (int sd = 0; sd < 2; ++sd)
+                    {
+                        const int side = stereo ? sd : 0;
+                        src[numActive][sd] = kk >= 0 ? tapBuf.getReadPointer (side * kMaxInserts + kk) : xs[side];
+                    }
                     active[numActive++] = b;
                 }
                 else sm.cur = 0.0f;
             }
 
-            float peak = 0;
+            float peakL = 0, peakR = 0;
             constexpr float sqrt2 = juce::MathConstants<float>::sqrt2;
+            const float* xl = xs[0];
+            const float* xr = stereo ? xs[1] : xs[0];
             for (int i = 0; i < n; ++i)
             {
-                const float s = x[i];
-                peak = juce::jmax (peak, std::abs (s));
+                const float sl = xl[i], sr = xr[i];
+                peakL = juce::jmax (peakL, std::abs (sl));
+                peakR = juce::jmax (peakR, std::abs (sr));
                 const float post = st.post.next (k);
                 const float pl = st.panL.next (k), pr = st.panR.next (k);
-                const float m = s * post * st.main.next (k);
-                mainL[i] += m * pl;
-                mainR[i] += m * pr;
+                const float m = post * st.main.next (k);
+                mainL[i] += sl * m * pl;
+                mainR[i] += sr * m * pr;
                 const float cue = st.cue.next (k);
                 if (cue != 0)
                 {
-                    if (cp.cuePre) { cueL[i] += s * cue; cueR[i] += s * cue; }
-                    else { cueL[i] += s * cue * pl; cueR[i] += s * cue * pr; }
+                    if (cp.cuePre) { cueL[i] += sl * cue; cueR[i] += sr * cue; }
+                    else { cueL[i] += sl * cue * pl; cueR[i] += sr * cue * pr; }
                 }
                 for (int a = 0; a < numActive; ++a)
                 {
                     const int b = active[a];
                     const float g = st.sends[(size_t) b].next (k);
                     if (g == 0) continue;
-                    // route: panned exactly like Main LR; psp: panned, unity at centre;
-                    // input / pre / post: mono into both sides of the bus
+                    // route: panned exactly like Main LR; psp: panned, unity at centre (stereo: balance);
+                    // input / pre / post: straight in (mono: both sides; stereo: L to L, R to R)
                     const auto tap = cp.sendTap[(size_t) b];
-                    const float gl = tap == ChannelPlan::Tap::route ? pl : tap == ChannelPlan::Tap::psp ? pl * sqrt2 : 1.0f;
-                    const float gr = tap == ChannelPlan::Tap::route ? pr : tap == ChannelPlan::Tap::psp ? pr * sqrt2 : 1.0f;
-                    const float v = src[a][i] * g;
-                    busBuf.getWritePointer (b * 2)[i] += v * gl;
-                    busBuf.getWritePointer (b * 2 + 1)[i] += v * gr;
+                    const float pspK = stereo ? 1.0f : sqrt2;
+                    const float gl = tap == ChannelPlan::Tap::route ? pl : tap == ChannelPlan::Tap::psp ? pl * pspK : 1.0f;
+                    const float gr = tap == ChannelPlan::Tap::route ? pr : tap == ChannelPlan::Tap::psp ? pr * pspK : 1.0f;
+                    busBuf.getWritePointer (b * 2)[i] += src[a][0][i] * g * gl;
+                    busBuf.getWritePointer (b * 2 + 1)[i] += src[a][1][i] * g * gr;
                 }
             }
-            meters[(size_t) c].raise (peak, peak);
+            meters[(size_t) c].raise (peakL, peakR);
         }
 
         // ------------------------------------------------------------ talkback

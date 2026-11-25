@@ -459,7 +459,9 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
     for (auto it = slots.begin(); it != slots.end();)
     {
         auto w = wanted.find (it->first);
-        if (w == wanted.end() || w->second->pluginId != it->second.pluginId || w->second->strip != it->second.strip)
+        // a channel switched mono <-> stereo: reload the plugin at the new width (the console restores its state)
+        if (w == wanted.end() || w->second->pluginId != it->second.pluginId || w->second->strip != it->second.strip
+            || w->second->channels != it->second.channels)
         {
             if (it->first == dockedSlot) undock();
             it->second.editor.reset(); // editor must go before the instance (instance lives on in old plans briefly)
@@ -483,6 +485,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         Slot slot;
         slot.pluginId = s.pluginId;
         slot.strip = s.strip;
+        slot.channels = s.channels;
         slot.bypass = s.bypass;
         slot.generation = nextGeneration++;
         const auto desc = findDescription (s.pluginId);
@@ -499,13 +502,14 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         // activation window, and must never stall the engine. Plugins are always created and shown on
         // the message thread, which is what copy-protection dialogs expect.
         slot.loading = true;
-        const auto slotId = s.slotId, pluginId = s.pluginId, strip = s.strip;
+        const auto slotId = s.slotId, pluginId = s.pluginId;
+        const int stripChannels = s.channels;
         const auto gen = slot.generation;
         slots[slotId] = std::move (slot);
         std::cout << "[insert] loading " << desc->name << " (" << slotId << ")" << std::endl;
         send (obj ({ { "type", "insert.loading" }, { "slotId", slotId }, { "pluginId", pluginId } }));
         formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
-            [this, slotId, pluginId, strip, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
+            [this, slotId, pluginId, stripChannels, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
                 auto it = slots.find (slotId);
                 if (it == slots.end() || it->second.generation != gen) return; // slot removed/replaced meanwhile
                 auto& sl = it->second;
@@ -517,7 +521,6 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
                                  { "message", err.isNotEmpty() ? err : juce::String ("Plugin failed to load (check its licence / authorisation)") } }));
                     return;
                 }
-                const int stripChannels = strip.startsWith ("ch") ? 1 : 2;
                 sl.insert = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
                 sl.insert->bypass = sl.bypass;
                 auto& p = sl.insert->plugin();
