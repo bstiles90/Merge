@@ -83,7 +83,7 @@ jobs:
           PID=$!
           for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
           osascript -e "tell application \"System Events\" to set frontmost of (first process whose unix id is $PID) to true" || true
-          for i in $(seq 1 30); do grep -q "\[insert\] ready Merge" app.log && break; sleep 1; done
+          for i in $(seq 1 60); do grep -q "\[insert\] ready Merge" app.log && break; sleep 1; done
           sleep 3
           screencapture -x app-screenshot.png || true
           kill $PID || true
