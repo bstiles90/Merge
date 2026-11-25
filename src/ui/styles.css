@@ -1044,3 +1044,37 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 /* narrow strips: compact bottom numbers */
 .strip-foot .strip-db { font-size: 9.5px; }
 .peak-readout { font-size: 8.5px; }
+
+/* ---- routing grid (INPUT / INTERNAL / OUTPUT) */
+.routing-panel { gap: 8px; }
+.rg-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.rg-views { display: flex; padding: 2px; gap: 2px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-md); }
+.rg-view { padding: 5px 16px; font-size: var(--fs-sm); font-weight: var(--fw-bold); letter-spacing: var(--tracking-caps); color: var(--text-secondary); background: transparent; border-color: transparent; box-shadow: none; border-radius: var(--r-sm); }
+.rg-view:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-control); border-color: transparent; }
+.rg-view.on { color: var(--text-primary); background: var(--surface-control); border-color: var(--border); box-shadow: var(--shadow-control), inset 0 -2px 0 var(--accent); }
+.rg-toolbar .hint { flex: 1; min-width: 240px; }
+.rg-scroll { overflow: auto; max-height: calc(100vh - 210px); border: 1px solid var(--border-subtle); border-radius: var(--r-md); }
+.rgrid { border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); }
+.rgrid thead th { position: sticky; top: 0; z-index: 3; background: var(--surface-strip); }
+.rg-corner { position: sticky; left: 0; z-index: 4 !important; min-width: 250px; text-align: left; padding: 6px 8px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); letter-spacing: 0.1em; color: var(--text-tertiary); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
+.rg-col-head { min-width: 40px; max-width: 64px; padding: 4px 3px; vertical-align: bottom; border-top: 3px solid var(--border-subtle); border-bottom: 1px solid var(--border); text-align: center; }
+.rg-col-head.group-start { border-left: 1px solid var(--border); }
+.rg-col-label { display: block; font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rg-col-sub { display: block; font-size: var(--fs-2xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rg-row-head { position: sticky; left: 0; z-index: 2; background: var(--surface-strip); display: flex; align-items: center; gap: 6px; padding: 2px 8px; min-width: 250px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border-subtle); text-align: left; font-weight: var(--fw-regular); }
+.rg-n { width: 24px; color: var(--text-tertiary); font-size: var(--fs-xs); text-align: right; font-variant-numeric: tabular-nums; }
+.rg-row-name { flex: 1; min-width: 0; padding: 2px 4px; background: transparent; border-color: transparent; box-shadow: none; font-weight: var(--fw-medium); }
+.rg-row-name:hover, .rg-row-name:focus { background: var(--surface-control); border-color: var(--border); }
+.rg-row-head.out { height: 27px; }
+.rg-out-name { flex: 1; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-x { width: 40px; height: 27px; text-align: center; cursor: pointer; border-bottom: 1px solid var(--border-subtle); border-left: 1px solid rgba(255, 255, 255, 0.03); color: #fff; font-weight: var(--fw-bold); font-size: 11px; }
+.rg-x.group-start { border-left: 1px solid var(--border); }
+.rg-x:hover { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.rg-x.right { opacity: 0.8; }
+.rg-x.send { color: var(--text-secondary); }
+.rg-x.na { cursor: not-allowed; background: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255, 255, 255, 0.03) 3px, rgba(255, 255, 255, 0.03) 6px); }
+.rg-x.na:hover { box-shadow: none; }
+.rgrid tr:hover .rg-row-head { background: var(--surface-raised); }
+.rgrid tr.offline .rg-row-head, .rgrid tr.offline .rg-x { opacity: 0.45; }
+.rg-sep td { position: sticky; left: 0; padding: 8px 8px 4px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); background: var(--surface-sunken); }
+.rg-empty { padding: 10px; }
