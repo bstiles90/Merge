@@ -29,11 +29,61 @@ const TAB_HINTS: Partial<Record<Tab, string>> = { setup: 'Fader pages (layers), 
 
 /** Workspaces share one show and engine; each shows the pages for that job. */
 type Workspace = 'live' | 'studio' | 'record';
-const WORKSPACES: { id: Workspace; label: string; tabs: Tab[]; ready: boolean }[] = [
-  { id: 'live', label: 'Live', tabs: ['mix', 'routing', 'scenes', 'setup', 'io'], ready: true },
-  { id: 'studio', label: 'Studio', tabs: [], ready: false },
-  { id: 'record', label: 'Record', tabs: ['timeline', 'routing', 'io'], ready: true },
+const WORKSPACES: { id: Workspace; label: string; tabs: Tab[]; ready: boolean; about: string }[] = [
+  { id: 'live', label: 'Live', tabs: ['mix', 'routing', 'scenes', 'setup', 'io'], ready: true, about: 'Mix the service: faders, routing, scenes' },
+  { id: 'studio', label: 'Studio', tabs: [], ready: false, about: 'Coming later' },
+  { id: 'record', label: 'Record', tabs: ['timeline', 'routing', 'io'], ready: true, about: 'Record and play back: timeline, transport' },
 ];
+
+/** The wordmark is the workspace switcher: MERGE | LIVE ▾ (click the workspace name to change it). */
+function WorkspaceSwitcher({ current, onChoose }: { current: Workspace; onChoose: (w: (typeof WORKSPACES)[number]) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const ws = WORKSPACES.find((w) => w.id === current)!;
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  return (
+    <div className="brand" ref={ref}>
+      <span className="brand-word">MERGE</span>
+      <span className="brand-sep" />
+      <button className={'brand-ws' + (open ? ' open' : '')} aria-haspopup="menu" aria-expanded={open} title="Change workspace" onClick={() => setOpen(!open)}>
+        {ws.label.toUpperCase()}
+        <span className="brand-caret">▾</span>
+      </button>
+      {open && (
+        <div className="ws-menu" role="menu">
+          <div className="ws-menu-title">Workspace</div>
+          {WORKSPACES.map((w) => (
+            <button
+              key={w.id}
+              role="menuitemradio"
+              aria-checked={w.id === current}
+              className={'ws-item' + (w.id === current ? ' on' : '')}
+              disabled={!w.ready}
+              onClick={() => {
+                onChoose(w);
+                setOpen(false);
+              }}
+            >
+              <span className="ws-item-name">{w.label.toUpperCase()}</span>
+              <span className="ws-item-about">{w.about}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 const loadWorkspace = (): Workspace => {
   try {
     const v = localStorage.getItem('merge.workspace');
@@ -131,25 +181,8 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand" aria-label={`Merge ${ws.label}`}>
-          <span className="brand-word">MERGE</span>
-          <span className="brand-sep" />
-          <span className="brand-ws">{ws.label.toUpperCase()}</span>
-        </div>
-        <div className="workspaces" role="tablist" aria-label="Workspace">
-          {WORKSPACES.map((w) => (
-            <button
-              key={w.id}
-              role="tab"
-              aria-selected={w.id === workspace}
-              className={'ws-btn' + (w.id === workspace ? ' on' : '')}
-              disabled={!w.ready}
-              title={w.ready ? `${w.label} workspace` : `${w.label} workspace: coming in a later build`}
-              onClick={() => chooseWorkspace(w)}
-            >
-              {w.label.toUpperCase()}
-            </button>
-          ))}
+        <div className="tb-left">
+          <WorkspaceSwitcher current={workspace} onChoose={chooseWorkspace} />
         </div>
         <nav className="tabs" aria-label="View">
           {ws.tabs.map((id) => [id, TABS.find((t) => t[0] === id)![1]] as const).map(([id, label]) => (
@@ -158,7 +191,7 @@ export function App() {
             </button>
           ))}
         </nav>
-        <div className="spacer" />
+        <div className="tb-right">
         {anySolo(s) && (
           <button className="solo-flash" onClick={() => s.dispatch({ type: 'solo.clear', args: {} })} title="A channel or bus is soloed — the monitor is on the cue/PFL bus. Click to clear.">
             SOLO
@@ -230,6 +263,7 @@ export function App() {
             }
           }}
         />
+      </div>
       </header>
       {err && <div className="error-bar">Audio engine failed to start: {err}</div>}
       {native.notice && <div className="notice-bar">{native.notice}</div>}
