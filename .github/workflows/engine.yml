@@ -5,7 +5,14 @@ on:
     paths: ['engine/**', 'src/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', '.github/workflows/engine.yml']
   pull_request:
     paths: ['engine/**', 'src/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts', '.github/workflows/engine.yml']
+  # Actions → engine → Run workflow: give a version (e.g. 1.0.1) to publish that build as a
+  # stable release; leave it empty for a normal beta build
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Stable version to publish (e.g. 1.0.1); empty = beta'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -26,7 +33,7 @@ jobs:
         shell: bash
         env:
           # shown in the app: "1.0.0" for a stable release (tag v1.0.0), "Beta abc1234" otherwise
-          MERGE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('Beta {0}', github.sha) }}
+          MERGE_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || format('Beta {0}', github.sha) }}
         run: |
           case "$MERGE_VERSION" in v*) export MERGE_VERSION="${MERGE_VERSION#v}";; Beta*) export MERGE_VERSION="${MERGE_VERSION:0:12}";; esac
           npm ci
@@ -132,7 +139,8 @@ jobs:
           path: engine/build/MergeEngine_artefacts/Release
 
   # Every push publishes the rolling "Beta" pre-release (replaced each time). A version tag
-  # (git tag v1.0.0) publishes a permanent stable release, "Merge 1.0.0", marked Latest.
+  # (git tag v1.0.0), or Run workflow with a version, publishes a permanent stable release,
+  # "Merge 1.0.0", marked Latest.
   release:
     # one publish at a time (several pushes close together would otherwise race)
     concurrency:
@@ -160,10 +168,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          STABLE: ${{ inputs.version || (github.ref_type == 'tag' && github.ref_name) || '' }}
         run: |
           SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "$STABLE" ]; then
+            VERSION="${STABLE#v}"
             HEADLINE="Stable release **Merge $VERSION** ($SHORT)."
             WARN="*Not signed by Apple, so a new version needs \"Open Anyway\" once.*"
           else
@@ -187,9 +196,10 @@ jobs:
           NOTES
           # GitHub's API sometimes answers 500/502: retry a few times before giving up
           for attempt in 1 2 3 4 5; do
-            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-              gh release delete "$GITHUB_REF_NAME" --yes || true
-              gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "Merge $VERSION" --notes-file notes.md --latest && exit 0
+            if [ -n "$STABLE" ]; then
+              # creates the tag v<version> on this build if it doesn't exist yet
+              gh release delete "v$VERSION" --yes || true
+              gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" --title "Merge $VERSION" --notes-file notes.md --latest && exit 0
             else
               # the old rolling release name, replaced by "beta"
               gh release delete latest-build --yes --cleanup-tag || true
