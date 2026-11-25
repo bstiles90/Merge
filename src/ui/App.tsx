@@ -305,6 +305,7 @@ export function App() {
               <div className="show-menu-info">
                 <span className="hint">Scene</span> <b>{scene?.name ?? 'none'}</b>
                 {native.showPath && <div className="hint show-path">{native.showPath}</div>}
+                <div className="hint">Merge {__MERGE_VERSION__}</div>
               </div>
               <button className="menu-item" onClick={() => { save(); setShowOpen(false); }}>Save show</button>
               <button className="menu-item" onClick={() => { setShowOpen(false); EMBEDDED ? sendNative({ type: 'show.open' }) : fileRef.current?.click(); }}>{EMBEDDED ? 'Open show…' : 'Load show…'}</button>

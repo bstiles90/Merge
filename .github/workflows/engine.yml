@@ -23,7 +23,12 @@ jobs:
           node-version: 22
           cache: npm
       - name: Build console UI
+        shell: bash
+        env:
+          # shown in the app: "1.0.0" for a stable release (tag v1.0.0), "Beta abc1234" otherwise
+          MERGE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('Beta {0}', github.sha) }}
         run: |
+          case "$MERGE_VERSION" in v*) export MERGE_VERSION="${MERGE_VERSION#v}";; Beta*) export MERGE_VERSION="${MERGE_VERSION:0:12}";; esac
           npm ci
           npm test
           npm run build
@@ -126,8 +131,8 @@ jobs:
           name: merge-${{ runner.os }}
           path: engine/build/MergeEngine_artefacts/Release
 
-  # Publish a rolling "Latest build" pre-release (replaced on every successful push),
-  # so builds can be downloaded from the Releases page without signing in.
+  # Every push publishes the rolling "Beta" pre-release (replaced each time). A version tag
+  # (git tag v1.0.0) publishes a permanent stable release, "Merge 1.0.0", marked Latest.
   release:
     # one publish at a time (several pushes close together would otherwise race)
     concurrency:
@@ -151,14 +156,22 @@ jobs:
           (cd artifacts/merge-Linux && zip -qr ../../dist/Merge-Linux.zip .)
           ls -l dist
 
-      - name: Publish "Latest build"
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            HEADLINE="Stable release **Merge $VERSION** ($SHORT)."
+            WARN="*Not signed by Apple, so a new version needs \"Open Anyway\" once.*"
+          else
+            HEADLINE="Beta build of \`$GITHUB_REF_NAME\` at $SHORT: the newest work, not yet marked stable. For Sunday services use the release marked **Latest**."
+            WARN="*Beta build, not signed by Apple, so each new version needs \"Open Anyway\" once.*"
+          fi
           cat > notes.md <<NOTES
-          Automatic build of \`$GITHUB_REF_NAME\` at $SHORT. All self-tests passed on macOS, Windows and Linux,
+          $HEADLINE All self-tests passed on macOS, Windows and Linux,
           and the Mac app was launched and its console connected to the engine.
 
           **Install on a Mac**
@@ -170,17 +183,18 @@ jobs:
 
           That's it: one app, no browser or Node.js needed. Your show reopens automatically next time.
 
-          *Test build, not signed by Apple, so each new version needs "Open Anyway" once.*
+          $WARN
           NOTES
           # GitHub's API sometimes answers 500/502: retry a few times before giving up
           for attempt in 1 2 3 4 5; do
-            gh release delete latest-build --yes --cleanup-tag || true
-            if gh release create latest-build dist/* \
-                 --target "$GITHUB_SHA" \
-                 --title "Latest build ($SHORT)" \
-                 --notes-file notes.md \
-                 --prerelease; then
-              exit 0
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              gh release delete "$GITHUB_REF_NAME" --yes || true
+              gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "Merge $VERSION" --notes-file notes.md --latest && exit 0
+            else
+              # the old rolling release name, replaced by "beta"
+              gh release delete latest-build --yes --cleanup-tag || true
+              gh release delete beta --yes --cleanup-tag || true
+              gh release create beta dist/* --target "$GITHUB_SHA" --title "Beta ($SHORT)" --notes-file notes.md --prerelease --latest=false && exit 0
             fi
             echo "publish attempt $attempt failed; retrying in $((attempt * 15)) s"
             sleep $((attempt * 15))
