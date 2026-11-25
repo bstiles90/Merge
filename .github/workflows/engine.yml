@@ -143,8 +143,9 @@ jobs:
   # "Merge 1.0.0", marked Latest.
   release:
     # one publish at a time (several pushes close together would otherwise race)
+    # stable releases queue separately: a newer beta push must never replace a waiting stable publish
     concurrency:
-      group: latest-build-release
+      group: release-${{ (inputs.version || github.ref_type == 'tag') && 'stable' || 'beta' }}
       cancel-in-progress: false
     needs: build
     if: github.event_name != 'pull_request'
