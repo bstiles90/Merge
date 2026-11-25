@@ -3,7 +3,7 @@
 
 import { createContext, useContext, useState } from 'react';
 import { LAYER_SLOTS, newId, PALETTE } from '../core/defaults';
-import { setLayout, useUi, type LayoutPref } from './uiState';
+import { setLayout, toggleRack, useUi, type LayoutPref } from './uiState';
 import { addToPage, deletePage, focusedLayerId, moveSlot } from '../core/layers';
 import { useConsole } from '../core/store';
 import type { ConsoleState, Layer, StripRef } from '../core/types';
@@ -70,6 +70,7 @@ export const useFaderHeight = () => useContext(FaderHeight);
 
 export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing: (b: boolean) => void }) {
   const layoutPref = useUi((u) => u.layout);
+  const rackHidden = useUi((u) => u.rackHidden);
   const s = useConsole();
   const split = s.bankLayout === 'split';
   const focusedId = focusedLayerId(s);
@@ -99,6 +100,9 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
         <option value="split">2 banks</option>
         <option value="pinned">1 bank + channel</option>
       </select>
+      <button className={'rack-toggle' + (rackHidden ? '' : ' on')} onClick={toggleRack} title={rackHidden ? 'Show the plugin rack on the strips' : 'Hide the plugin rack (just mix)'}>
+        {rackHidden ? '▸ RACK' : '▾ RACK'}
+      </button>
       {split && (
         <div className="seg target" title="Which bank the page keys load into (or just touch a bank)">
           <button className={s.focusBank === 'A' ? 'on a' : ''} onClick={() => s.update(() => ({ focusBank: 'A' }))}>→ A</button>

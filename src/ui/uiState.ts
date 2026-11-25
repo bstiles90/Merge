@@ -15,6 +15,8 @@ interface UiState {
   layout: LayoutPref;
   /** the layout in effect right now (auto resolved against the window width) */
   mode: LayoutMode;
+  /** hide the plugin rack on the strips (mixing a live show) */
+  rackHidden: boolean;
 }
 
 const loadLayout = (): LayoutPref => {
@@ -33,8 +35,24 @@ export const resolveLayout = (pref: LayoutPref, width: number): LayoutMode => (p
 
 export const useUi = create<UiState>(() => {
   const layout = loadLayout();
-  return { drawerOpen: false, editKey: null, layout, mode: resolveLayout(layout, typeof window === 'undefined' ? 1500 : window.innerWidth) };
+  let rackHidden = false;
+  try {
+    rackHidden = localStorage.getItem('merge.rackHidden') === '1';
+  } catch {
+    /* storage unavailable */
+  }
+  return { drawerOpen: false, editKey: null, layout, mode: resolveLayout(layout, typeof window === 'undefined' ? 1500 : window.innerWidth), rackHidden };
 });
+
+export function toggleRack() {
+  const rackHidden = !useUi.getState().rackHidden;
+  try {
+    localStorage.setItem('merge.rackHidden', rackHidden ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+  useUi.setState({ rackHidden });
+}
 
 export const openDrawer = () => useUi.setState({ drawerOpen: true, editKey: null });
 export const closeDrawer = () => useUi.setState({ drawerOpen: false, editKey: null });

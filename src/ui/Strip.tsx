@@ -11,7 +11,7 @@ import { Fader, Knob, Meter, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
 import { createsLoop } from '../core/plan';
 import { sendNative, useNative } from '../native/bridge';
-import { closeDrawer, openDrawer, useUi } from './uiState';
+import { closeDrawer, openDrawer, toggleRack, useUi } from './uiState';
 
 export function sameRef(a: StripRef | null, b: StripRef | null) {
   if (!a || !b) return false;
@@ -95,6 +95,7 @@ function InputSection({ ch }: { ch: Channel }) {
 /** Rack slots: click a plugin to open (or close) its own floating window;
  *  click the next empty slot to pick a plugin for it. */
 function RackSection({ inserts, onSelect, onAdd }: { inserts?: InsertSlot[]; onSelect?: () => void; onAdd?: (p: PluginDescriptor) => void }) {
+  const hidden = useUi((u) => u.rackHidden);
   const nativeOn = useNative((st) => st.status === 'connected');
   const native = useNative((st) => st.inserts);
   const [picker, setPicker] = useState<DOMRect | null>(null);
@@ -111,6 +112,23 @@ function RackSection({ inserts, onSelect, onAdd }: { inserts?: InsertSlot[]; onS
   };
   const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
   const nextFree = inserts ? inserts.length : -1;
+  if (hidden) {
+    const n = inserts?.length ?? 0;
+    const open = inserts?.some((x) => native[x.id]?.editorOpen);
+    return (
+      <div
+        className={'sec sec-rack folded' + (n ? ' used' : '') + (open ? ' open' : '')}
+        title={inserts ? `${n} plugin${n === 1 ? '' : 's'} (rack hidden): click to show the rack` : ''}
+        onClick={(e) => {
+          if (!inserts) return;
+          e.stopPropagation();
+          toggleRack();
+        }}
+      >
+        {inserts ? (n ? `FX ${n}` : '') : ''}
+      </div>
+    );
+  }
   return (
     <div className="sec sec-rack">
       {inserts &&
