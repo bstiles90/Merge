@@ -49,7 +49,7 @@ function sourceLabel(ch: Channel) {
     case 'noise':
       return 'NOISE';
     case 'speech':
-      return 'SPCH';
+      return 'SPEECH';
     default:
       return '—';
   }
@@ -132,7 +132,7 @@ function InputSection({ ch }: { ch: Channel }) {
       </div>
       </div>
       <Knob
-        size={34}
+        size={30}
         value={ch.gainDb}
         min={-24}
         max={48}
@@ -140,7 +140,7 @@ function InputSection({ ch }: { ch: Channel }) {
         // gain colour: amber when boosting, cyan when cutting, grey at 0 dB
         color={gainColor(ch.gainDb)}
         valueColor={Math.abs(ch.gainDb) < 0.05 ? undefined : gainColor(ch.gainDb)}
-        format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`}
+        format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`}
         onChange={(gainDb) => s.updateChannel(ch.id, { gainDb: Math.abs(gainDb) < 0.3 ? 0 : gainDb })}
       />
     </div>
@@ -203,6 +203,7 @@ function RackSection({ inserts, onSelect, onAdd }: { inserts?: InsertSlot[]; onS
               }
               onClick={(e) => click(e, ins)}
             >
+              {ins && <i className="rs-dot" />}
               {ins ? name : addable ? '+' : ''}
             </div>
           );
@@ -416,9 +417,9 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     const mr = channelMuteReason(s, ch);
     const link = linkInfo(s, ch.id);
     head = (
-      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: ch.color }}>
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ '--cc': ch.color } as React.CSSProperties}>
         <span className="strip-num">
-          {ch.id.replace('ch', '')}
+          {ch.id.replace('ch', '').padStart(2, '0')}
           {link && <span className="link-badge" title={`Stereo linked with ${s.channels.find((c) => c.id === link.partner)?.name}`}>{link.side === 'L' ? '⟦L' : 'R⟧'}</span>}
           {ch.inputMode === 'playback' && <span className="mini-tag pb">PB</span>}
           {ch.recArm && <span className="mini-tag rec">REC</span>}
@@ -470,7 +471,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     const mr = busMuteReason(s, b);
     cls += ' bus';
     head = (
-      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: b.color }}>
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ '--cc': b.color } as React.CSSProperties}>
         <span className="strip-num">{b.type === 'mixminus' ? 'N-1' : 'MIX'}</span>
         <span className="strip-name">{b.name}</span>
       </div>
@@ -506,7 +507,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     const members = s.channels.filter((c) => c.dcas.includes(d.id));
     cls += ' dca';
     head = (
-      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: d.color }}>
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ '--cc': d.color } as React.CSSProperties}>
         <span className="strip-num">DCA</span>
         <span className="strip-name">{d.name}</span>
       </div>
@@ -533,7 +534,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
   } else {
     cls += ' main';
     head = (
-      <div className="strip-head" draggable title="Drag to move this strip" style={{ background: '#c9ccd1', color: '#111' }}>
+      <div className="strip-head" draggable title="Drag to move this strip" style={{ '--cc': '#c9ccd1' } as React.CSSProperties}>
         <span className="strip-num">PGM</span>
         <span className="strip-name">Main LR</span>
       </div>

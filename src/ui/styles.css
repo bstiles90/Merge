@@ -717,3 +717,36 @@ input, textarea, select { box-shadow: var(--shadow-pressed); }
 .page-preview { height: 4px; gap: 1px; }
 .page-preview i { border-radius: 1px; outline: none; filter: saturate(var(--channel-saturation)); }
 .pages-actions button { font-size: var(--fs-sm); border-radius: var(--r-sm); }
+
+/* ======================================================================================
+   Design system step 4: cleaner strip header and rack slots (after the strip sample)
+   ====================================================================================== */
+/* dark scribble block with the channel colour as a bar across the top */
+.strip-head {
+  filter: none; background: var(--surface-strip); color: var(--text-primary); text-shadow: none;
+  border-top: 4px solid color-mix(in srgb, var(--cc) 82%, var(--surface-strip));
+  padding: 4px 6px 3px; min-height: 40px;
+}
+.strip-num { font-size: var(--fs-xs); font-weight: var(--fw-medium); color: var(--text-secondary); opacity: 1; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.strip-name { font-size: 12px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+.strip.selected .strip-head { border-top-color: var(--cc); }
+.link-badge { background: var(--surface-control); color: var(--text-secondary); }
+/* rack slots: a status dot before the plugin name */
+.rack-slot { display: flex; align-items: center; gap: 4px; }
+.rack-slot .rs-dot { flex: 0 0 auto; width: 5px; height: 5px; border-radius: 50%; background: #8f7fe0; }
+.rack-slot.used { background: var(--surface-control); color: var(--text-primary); }
+.rack-slot.byp .rs-dot { background: var(--text-tertiary); }
+.rack-slot.open { background: var(--accent-muted); color: var(--text-on-accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.rack-slot.open .rs-dot { background: var(--accent); }
+.rack-slot.err { background: var(--mute-soft); }
+.rack-slot.err .rs-dot { background: var(--mute); }
+/* source label reads as a plain word */
+.sec-src { font-weight: var(--fw-semibold); letter-spacing: 0.06em; }
+/* mute off: tinted, clearly a mute button but calm */
+.mute-btn { background: #2a1d1f; border-color: #4a2a2d; color: #c98d8f; }
+/* the mono/stereo switch sits beside the gain knob, so the source label gets the full width */
+.sec-input { position: relative; }
+.sec-input .ms-switch { position: absolute; left: 4px; top: 24px; }
+.sec-input .sec-src { text-overflow: clip; }
+.sec-input .ms-switch { left: 3px; top: 30px; width: 14px; height: 13px; }
+.sec-input .ms-switch svg { width: 12px; height: 9px; }
