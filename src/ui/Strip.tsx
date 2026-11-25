@@ -53,6 +53,8 @@ function sourceLabel(ch: Channel) {
   }
 }
 
+const gainColor = (db: number) => (db > 0.05 ? '#f2a33c' : db < -0.05 ? '#3cc6d9' : '#8b929b');
+
 /** The strip's input label is also a menu: pick an interface input (or a test source) right here. */
 function InputSection({ ch }: { ch: Channel }) {
   const s = useConsole();
@@ -87,7 +89,18 @@ function InputSection({ ch }: { ch: Channel }) {
           </optgroup>
         </select>
       </div>
-      <Knob size={24} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
+      <Knob
+        size={34}
+        value={ch.gainDb}
+        min={-24}
+        max={48}
+        defaultValue={0}
+        // gain colour: amber when boosting, cyan when cutting, grey at 0 dB
+        color={gainColor(ch.gainDb)}
+        valueColor={Math.abs(ch.gainDb) < 0.05 ? undefined : gainColor(ch.gainDb)}
+        format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`}
+        onChange={(gainDb) => s.updateChannel(ch.id, { gainDb: Math.abs(gainDb) < 0.3 ? 0 : gainDb })}
+      />
     </div>
   );
 }

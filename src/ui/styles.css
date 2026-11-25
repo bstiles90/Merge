@@ -600,3 +600,6 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .sec-rack.folded.used { color: #ddd6ff; background: #2a2350; }
 .sec-rack.folded.open { background: #4a3cb0; color: #fff; }
 .sec-rack.folded { cursor: pointer; }
+/* bigger gain rotary under the input label */
+.sec-input { height: 76px; }
+.sec-input .knob-value { font-size: 9px; font-weight: 700; margin-top: -2px; }

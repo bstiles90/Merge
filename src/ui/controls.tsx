@@ -157,6 +157,7 @@ export function Knob({
   defaultValue,
   step,
   color = '#4aa3ff',
+  valueColor,
 }: {
   value: number;
   min: number;
@@ -169,6 +170,7 @@ export function Knob({
   defaultValue?: number;
   step?: number;
   color?: string;
+  valueColor?: string;
 }) {
   const toT = (v: number) => (log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min));
   const fromT = (t: number) => {
@@ -222,7 +224,7 @@ export function Knob({
         />
       </svg>
       {label && <div className="knob-label">{label}</div>}
-      <div className="knob-value">{format ? format(value) : value.toFixed(1)}</div>
+      <div className="knob-value" style={valueColor ? { color: valueColor } : undefined}>{format ? format(value) : value.toFixed(1)}</div>
     </div>
   );
 }
