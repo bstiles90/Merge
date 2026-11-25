@@ -286,6 +286,8 @@ void PluginHost::startNextScanJob()
         saveList();
         std::cout << "[scan] finished: " << known.getNumTypes() << " plugin(s) known"
                   << (scanProblems.isEmpty() ? juce::String() : ", skipped: " + scanProblems.joinIntoString (", ")) << std::endl;
+        // a small 'finished' message first, so the console knows even if the full list can't arrive
+        send (obj ({ { "type", "plugins.scanDone" }, { "count", known.getNumTypes() }, { "skipped", scanProblems.size() } }));
         sendPluginList();
         return;
     }
@@ -304,7 +306,7 @@ void PluginHost::startNextScanJob()
         finishScanJob (false);
         return;
     }
-    send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) },
+    send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) }, { "index", (int) scanIndex + 1 }, { "total", (int) scanQueue.size() },
                  { "file", job.id }, { "format", job.format }, { "seconds", 0 } }));
 }
 
@@ -333,6 +335,8 @@ void PluginHost::finishScanJob (bool timedOut)
         std::cout << "[scan] " << name << ": " << why << ", skipped" << std::endl;
     }
     ++scanIndex;
+    // show what's been found so far, every 10 plugin files
+    if (scanIndex % 10 == 0 && scanIndex < scanQueue.size()) sendPluginList();
     startNextScanJob();
 }
 
@@ -351,7 +355,7 @@ void PluginHost::scanStep()
     {
         scanLastReportMs = now;
         const auto& job = scanQueue[scanIndex];
-        send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) },
+        send (obj ({ { "type", "plugins.scan" }, { "progress", (double) scanIndex / (double) juce::jmax ((size_t) 1, scanQueue.size()) }, { "index", (int) scanIndex + 1 }, { "total", (int) scanQueue.size() },
                      { "file", job.id }, { "format", job.format }, { "seconds", (int) ((now - scanStartedMs) / 1000) } }));
     }
 }

@@ -106,8 +106,9 @@ export function NativePanel() {
             <div className="scan">
               <div className="scan-bar"><div style={{ width: `${Math.round(n.scan.progress * 100)}%` }} /></div>
               <span className="hint">
+                {n.scan.total ? `Plugin ${n.scan.index} of ${n.scan.total} · ` : ''}
                 {n.scan.format} · {n.scan.file.split(/[\\/]/).pop()}
-                {(n.scan.seconds ?? 0) >= 3 && ` · ${n.scan.seconds}s`}
+                {(n.scan.seconds ?? 0) >= 2 && ` · ${n.scan.seconds}s`}
               </span>
               {(n.scan.seconds ?? 0) >= 5 && (
                 <button className="small" onClick={() => sendNative({ type: 'plugins.skip' })} title="Give up on this plugin (it's skipped until a full rescan)">
@@ -116,6 +117,7 @@ export function NativePanel() {
               )}
             </div>
           )}
+          {!n.scanning && n.scanResult && <p className="hint">{n.scanResult}</p>}
           <div className="row">
             <input placeholder="Add a plugin file… e.g. /Library/Audio/Plug-Ins/VST3/Foo.vst3" value={path} onChange={(e) => setPath(e.target.value)} style={{ flex: 1 }} />
             <button disabled={!path} onClick={() => { sendNative({ type: 'plugins.addFile', path }); setPath(''); }}>Add</button>

@@ -54,7 +54,9 @@ interface NativeState {
   version?: string;
   error?: string;
   device?: NativeDevice;
-  scan?: { progress: number; file: string; format?: string; seconds?: number };
+  scan?: { progress: number; file: string; format?: string; seconds?: number; index?: number; total?: number };
+  /** result of the last plugin scan, e.g. "Scan finished: 152 plugins found" */
+  scanResult?: string;
   scanning: boolean;
   blacklisted: string[];
   pdc: number;
@@ -158,10 +160,13 @@ function onMessage(m: any) {
           params: [],
         })),
       );
-      useNative.setState({ scanning: !!m.scanning, blacklisted: m.blacklisted ?? [], scan: m.scanning ? useNative.getState().scan : undefined });
+      useNative.setState((st) => ({ scanning: !!m.scanning && st.scanning, blacklisted: m.blacklisted ?? [], scan: m.scanning && st.scanning ? st.scan : undefined }));
       break;
     case 'plugins.scan':
-      useNative.setState({ scanning: true, scan: { progress: m.progress, file: m.file, format: m.format, seconds: m.seconds } });
+      useNative.setState({ scanning: true, scanResult: undefined, scan: { progress: m.progress, file: m.file, format: m.format, seconds: m.seconds, index: m.index, total: m.total } });
+      break;
+    case 'plugins.scanDone':
+      useNative.setState({ scanning: false, scan: undefined, scanResult: `Scan finished: ${m.count} plugin${m.count === 1 ? '' : 's'} found${m.skipped ? `, ${m.skipped} skipped` : ''}` });
       break;
     case 'meters': {
       const next = new Map<string, MeterReading>();
