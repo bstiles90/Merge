@@ -1,7 +1,7 @@
 import { withCreatedBuses } from './buses';
 import { startSceneFade, stopSceneFade } from './sceneFade';
-import { runMacro, stopMacro } from './macros';
-import { services } from './services';
+import { runMacro } from './macros';
+import { timedSteps } from './actions';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
 import { runActions } from './actions';
@@ -55,6 +55,11 @@ export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => (
   ...loadAutosave(),
   dispatch: (calls) => {
     const list = Array.isArray(calls) ? calls : [calls];
+    const steps = timedSteps(list);
+    if (steps) {
+      void runMacro(macroHost, { id: 'dispatch', name: '', color: '', steps });
+      return;
+    }
     const prev = stateOnly(get());
     const next = runActions(prev, list);
     // a scene recall with a fade time glides instead of jumping
@@ -81,6 +86,13 @@ export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => (
     const s = get();
     const key = s.userKeys.find((k) => k.id === id);
     if (!key || s.keyStates[id]) return; // ignore auto-repeat while held
+    // fades / waits: the key's actions run as a timed sequence (the key is lit until it's done)
+    const steps = timedSteps(key.actions);
+    if (steps) {
+      set({ keyStates: { ...s.keyStates, [id]: true } });
+      void runMacro(macroHost, { id: key.id, name: key.label, color: key.color, steps });
+      return;
+    }
     const next = runActions(stateOnly(s), key.actions);
     set({ ...next, keyStates: { ...s.keyStates, [id]: true } });
   },
@@ -88,8 +100,8 @@ export const useConsole = create<ConsoleStore>()(withStereoLinks((set, get) => (
     const s = get();
     const key = s.userKeys.find((k) => k.id === id);
     if (!key || !s.keyStates[id]) return;
-    // Momentary keys fire their actions again on release (toggle back).
-    const next = key.mode === 'momentary' ? runActions(stateOnly(s), key.actions) : stateOnly(s);
+    // Momentary keys fire their actions again on release (toggle back); timed keys just finish.
+    const next = key.mode === 'momentary' && !timedSteps(key.actions) ? runActions(stateOnly(s), key.actions) : stateOnly(s);
     set({ ...next, keyStates: { ...s.keyStates, [id]: false } });
   },
   loadShow: (show) => set({ ...defaultState(), ...show, keyStates: {} }),
@@ -149,10 +161,5 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// macros run against the live store
+// timed key sequences (fades / waits) run against the live store
 const macroHost = { get: () => stateOnly(useConsole.getState()), set: (p: Partial<ConsoleState>) => useConsole.getState().update(() => p) };
-services.runMacro = (id) => {
-  const m = useConsole.getState().macros?.find((x) => x.id === id);
-  if (m) void runMacro(macroHost, m);
-};
-services.stopMacro = (id) => stopMacro(macroHost, id);

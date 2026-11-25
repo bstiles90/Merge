@@ -7,9 +7,9 @@ import { applyScene, takeSnapshot } from './scenes';
 import { newId } from './defaults';
 import { focusedLayerId, setFocusedLayer } from './layers';
 import { services } from './services';
-import type { ActionCall, Bus, Channel, ConsoleState } from './types';
+import type { ActionCall, Bus, Channel, ConsoleState, MacroStep, StripRef } from './types';
 
-export type ArgKind = 'channel' | 'bus' | 'dca' | 'muteGroup' | 'scene' | 'layer' | 'macro' | 'number' | 'boolean';
+export type ArgKind = 'channel' | 'bus' | 'dca' | 'muteGroup' | 'scene' | 'layer' | 'number' | 'boolean';
 
 export interface ArgSpec {
   name: string;
@@ -21,7 +21,7 @@ export interface ArgSpec {
 export interface ActionDef {
   type: string;
   label: string;
-  category: 'Mute' | 'Solo' | 'Fader' | 'Scene' | 'Layer' | 'Monitor' | 'Transport' | 'Plugin' | 'Macro';
+  category: 'Mute' | 'Solo' | 'Fader' | 'Scene' | 'Layer' | 'Monitor' | 'Transport' | 'Plugin' | 'Timing';
   args: ArgSpec[];
   run: (s: ConsoleState, a: Record<string, any>) => ConsoleState;
   isOn?: (s: ConsoleState, a: Record<string, any>) => boolean;
@@ -146,8 +146,37 @@ const defs: ActionDef[] = [
     args: [
       { name: 'id', label: 'Channel', kind: 'channel' },
       { name: 'db', label: 'Level (dB)', kind: 'number', default: 0 },
+      { name: 'sec', label: 'over (s)', kind: 'number', default: 0 },
     ],
     run: (s, a) => mapChannel(s, a.id, (c) => ({ ...c, faderDb: Number(a.db) <= -90 ? -Infinity : Number(a.db) })),
+  },
+  {
+    type: 'bus.fader.set',
+    label: 'Set bus fader',
+    category: 'Fader',
+    args: [
+      { name: 'id', label: 'Bus', kind: 'bus' },
+      { name: 'db', label: 'Level (dB)', kind: 'number', default: 0 },
+      { name: 'sec', label: 'over (s)', kind: 'number', default: 0 },
+    ],
+    run: (s, a) => mapBus(s, a.id, (b) => ({ ...b, faderDb: Number(a.db) <= -90 ? -Infinity : Number(a.db) })),
+  },
+  {
+    type: 'main.fader.set',
+    label: 'Set Main LR fader',
+    category: 'Fader',
+    args: [
+      { name: 'db', label: 'Level (dB)', kind: 'number', default: 0 },
+      { name: 'sec', label: 'over (s)', kind: 'number', default: 0 },
+    ],
+    run: (s, a) => ({ ...s, main: { ...s.main, faderDb: Number(a.db) <= -90 ? -Infinity : Number(a.db) } }),
+  },
+  {
+    type: 'wait',
+    label: 'Wait (pause before the next action)',
+    category: 'Timing',
+    args: [{ name: 'sec', label: 'seconds', kind: 'number', default: 1 }],
+    run: (s) => s, // timing only: the key runs its actions as a timed sequence
   },
   {
     type: 'dca.fader.set',
@@ -156,6 +185,7 @@ const defs: ActionDef[] = [
     args: [
       { name: 'id', label: 'DCA', kind: 'dca' },
       { name: 'db', label: 'Level (dB)', kind: 'number', default: 0 },
+      { name: 'sec', label: 'over (s)', kind: 'number', default: 0 },
     ],
     run: (s, a) => ({
       ...s,
@@ -187,28 +217,6 @@ const defs: ActionDef[] = [
         scenes: [...s.scenes, { id, name: `Scene ${s.scenes.length + 1}`, snapshot: takeSnapshot(s) }],
         currentScene: id,
       };
-    },
-  },
-  {
-    type: 'macro.run',
-    label: 'Run macro',
-    category: 'Macro',
-    args: [{ name: 'id', label: 'Macro', kind: 'macro' }],
-    // the timed part runs outside the reducer (services.runMacro); the key lights while it runs
-    run: (s, a) => {
-      queueMicrotask(() => services.runMacro(String(a.id)));
-      return s;
-    },
-    isOn: (s, a) => !!s.macrosRunning?.includes(String(a.id)),
-  },
-  {
-    type: 'macro.stop',
-    label: 'Stop macro',
-    category: 'Macro',
-    args: [{ name: 'id', label: 'Macro', kind: 'macro' }],
-    run: (s, a) => {
-      queueMicrotask(() => services.stopMacro(String(a.id)));
-      return s;
     },
   },
   {
@@ -358,7 +366,7 @@ export function keyIsOn(s: ConsoleState, calls: ActionCall[]): boolean | undefin
 export function describeAction(s: ConsoleState, call: ActionCall): string {
   const def = ACTIONS.get(call.type);
   if (!def) return call.type;
-  const parts = def.args.map((a) => {
+  const parts = def.args.filter((a) => !(a.name === 'sec' && call.type !== 'wait' && !Number(call.args.sec))).map((a) => {
     const v = call.args[a.name];
     switch (a.kind) {
       case 'channel':
@@ -374,8 +382,27 @@ export function describeAction(s: ConsoleState, call: ActionCall): string {
       case 'layer':
         return s.layers.find((c) => c.id === v)?.name ?? String(v);
       default:
+        if (a.name === 'sec') return call.type === 'wait' ? `${v} s` : `over ${v} s`;
+        if (a.name === 'db') return `${Number(v) <= -90 ? '-∞' : v} dB`;
         return `${a.label}: ${v}`;
     }
   });
   return parts.length ? `${def.label} — ${parts.join(', ')}` : def.label;
+}
+
+/** A key's actions as a timed sequence, if any action is timed (a fade or a wait); else null.
+ *  Fader sets with a fade time glide (alongside the next actions); waits pause. */
+export function timedSteps(calls: ActionCall[]): MacroStep[] | null {
+  const timed = calls.some((c) => c.type === 'wait' || (/\.fader\.set$/.test(c.type) && Number(c.args.sec) > 0));
+  if (!timed) return null;
+  return calls.map((c): MacroStep => {
+    if (c.type === 'wait') return { kind: 'wait', sec: Number(c.args.sec) || 0 };
+    const sec = Number(c.args.sec) || 0;
+    if (sec > 0 && /\.fader\.set$/.test(c.type)) {
+      const kind = c.type.split('.')[0] as 'channel' | 'bus' | 'dca' | 'main';
+      const target: StripRef = kind === 'main' ? { kind: 'main' } : { kind, id: String(c.args.id) };
+      return { kind: 'fade', target, db: Number(c.args.db), sec };
+    }
+    return { kind: 'action', call: c };
+  });
 }

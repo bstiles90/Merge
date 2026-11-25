@@ -12,7 +12,7 @@ export function UserKeyGrid({ onEdit }: { onEdit?: (id: string) => void }) {
   return (
     <div className="ukeys">
       {s.userKeys.map((k, i) => {
-        const lit = keyIsOn(s, k.actions) ?? !!s.keyStates[k.id];
+        const lit = !!s.macrosRunning?.includes(k.id) || (keyIsOn(s, k.actions) ?? !!s.keyStates[k.id]);
         return (
           <button
             key={k.id}
@@ -66,8 +66,6 @@ export function ArgInput({ spec, value, onChange, s }: { spec: ArgSpec; value: a
       return opts(s.scenes);
     case 'layer':
       return opts(s.layers);
-    case 'macro':
-      return opts(s.macros ?? []);
     case 'boolean':
       return (
         <label className="row">
@@ -123,7 +121,8 @@ export function KeyEditor({ id, onClose }: { id: string; onClose: () => void }) 
           </select>
         </label>
         <div className="form-group">
-          <div className="section-title">Actions (run in order — a macro)</div>
+          <div className="section-title">Actions (run in order)</div>
+          <p className="hint">Give a "Set fader" action a time ("over … s") and the fader glides there; several fades run together. Add "Wait" to space actions out. Example: bed down over 4 s, Host 1 up over 2 s, wait 1 s, unmute Audience. The key stays lit until it's done.</p>
           {key.actions.map((a, i) => {
             const def = ACTIONS.get(a.type);
             return (

@@ -26,7 +26,7 @@ function useWidth() {
   return [ref, w] as const;
 }
 
-export function StripOverview({ refr }: { refr: StripRef }) {
+export function StripOverview({ refr, meter = true }: { refr: StripRef; meter?: boolean }) {
   const s = useConsole();
   const [ref] = useWidth();
   if (refr.kind === 'channel') {
@@ -38,8 +38,8 @@ export function StripOverview({ refr }: { refr: StripRef }) {
     return (
       <div className="overview" ref={ref}>
         <div className="ov-meter">
-          <MeterScale height={H} />
-          <Meter id={ch.id} height={H} stereo={!!ch.stereo} />
+          {meter && <MeterScale height={H} />}
+          {meter && <Meter id={ch.id} height={H} stereo={!!ch.stereo} />}
           <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={H} />
         </div>
         <div className="ov-controls">
@@ -92,4 +92,26 @@ export function StripOverview({ refr }: { refr: StripRef }) {
     );
   }
   return null;
+}
+
+/** The inspector's tall meter: runs the full height of the panel (dBFS scale + peak number). */
+export function TallMeter({ id, stereo }: { id: string; stereo: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [h, setH] = useState(300);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setH(Math.max(120, Math.round(e.contentRect.height))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className="tall-meter">
+      <PeakReadout id={id} />
+      <div className="tall-meter-body" ref={ref}>
+        <MeterScale height={h} />
+        <Meter id={id} height={h} stereo={stereo} />
+      </div>
+    </div>
+  );
 }

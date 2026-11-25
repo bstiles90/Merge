@@ -1078,3 +1078,17 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 .rgrid tr.offline .rg-row-head, .rgrid tr.offline .rg-x { opacity: 0.45; }
 .rg-sep td { position: sticky; left: 0; padding: 8px 8px 4px; font-size: var(--fs-2xs); font-weight: var(--fw-bold); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); background: var(--surface-sunken); }
 .rg-empty { padding: 10px; }
+
+/* channel inspector: a tall meter down the left, the rest scrolls beside it */
+.drawer-body:has(> .chpanel) { overflow: hidden; display: flex; flex-direction: column; }
+.detail.chpanel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chp-split { flex: 1; min-height: 0; display: flex; gap: 8px; }
+.chp-main { flex: 1; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; }
+.tall-meter { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px 8px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); }
+.tall-meter .peak-readout { font-size: 11px; padding: 2px 4px; min-width: 38px; }
+.tall-meter-body { flex: 1; min-height: 0; display: flex; gap: 3px; align-items: stretch; }
+.tall-meter-body .meter-scale { width: 14px; flex-basis: 14px; }
+.tall-meter-body .ms-mark { font-size: 8.5px; }
+.tall-meter-body canvas.meter { width: 14px !important; }
+.tall-meter-body canvas.meter[style*="14px"] { width: 24px !important; }
+.chp-main .overview { margin-top: 0; }
