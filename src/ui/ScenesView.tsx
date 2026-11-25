@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { SAFE_PARTS, isSafe, takeSnapshot } from '../core/scenes';
 import type { SafePart } from '../core/types';
 import { createdBuses } from '../core/buses';
@@ -5,6 +6,7 @@ import { newId } from '../core/defaults';
 import { useConsole } from '../core/store';
 import type { SceneScope } from '../core/types';
 import { Toggle } from './controls';
+import { Pager } from './Pager';
 
 const SCOPE_LABELS: Record<keyof SceneScope, string> = { channels: 'Channels', buses: 'Buses', main: 'Main LR', dcas: 'DCAs', muteGroups: 'Mute groups' };
 
@@ -111,9 +113,17 @@ function SafesPanel() {
     }
   };
   const busParts: SafePart[] = ['input', 'fader', 'mute', 'routing', 'groups', 'inserts', 'name'];
+  // 16 rows at a time: channels 1-16, 17-32, then buses
+  const groups = [strips.filter((x) => x.kind === 'channel').slice(0, 16), strips.filter((x) => x.kind === 'channel').slice(16, 32), strips.filter((x) => x.kind === 'bus')].filter((g) => g.length);
+  const labels = ['Ch 1–16', 'Ch 17–32', 'Buses'].filter((_, i) => [strips.filter((x) => x.kind === 'channel').slice(0, 16), strips.filter((x) => x.kind === 'channel').slice(16, 32), strips.filter((x) => x.kind === 'bus')][i].length);
+  const [pg, setPg] = useState(0);
+  const shown = groups[Math.min(pg, groups.length - 1)] ?? [];
   return (
     <div className="panel safes-panel">
-      <div className="panel-title">Recall safes</div>
+      <div className="panel-title row between">
+        <span>Recall safes</span>
+        <Pager labels={labels} page={Math.min(pg, groups.length - 1)} onPage={setPg} />
+      </div>
       <div className="safes-scroll">
         <table className="safes">
           <thead>
@@ -124,7 +134,7 @@ function SafesPanel() {
             </tr>
           </thead>
           <tbody>
-            {strips.map((st) => (
+            {shown.map((st) => (
               <tr key={st.id} className={st.all ? 'all-safe' : ''}>
                 <td className="sf-name"><span className="dot" style={{ background: st.color }} /> {st.name}</td>
                 <td className={'sf-cell all' + (st.all ? ' on' : '')} onClick={() => toggle(st, 'all')}>{st.all ? '●' : ''}</td>

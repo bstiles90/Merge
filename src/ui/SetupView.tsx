@@ -6,6 +6,7 @@ import type { Layer } from '../core/types';
 import { StripRefSelect } from './Pages';
 import { deletePage } from '../core/layers';
 import { KeyEditor } from './UserKeys';
+import { Pager, rangeLabels, usePages } from './Pager';
 
 
 function LayerEditor() {
@@ -76,9 +77,13 @@ function GroupMatrix() {
   const s = useConsole();
   const toggle = (chId: string, field: 'muteGroups' | 'dcas', gid: string) =>
     s.updateChannel(chId, (c) => ({ [field]: c[field].includes(gid) ? c[field].filter((x) => x !== gid) : [...c[field], gid] }));
+  const rows = usePages(s.channels, 16, 'setup.groups');
   return (
     <div className="panel">
-      <div className="panel-title">Mute groups &amp; DCAs</div>
+      <div className="panel-title row between">
+        <span>Mute groups &amp; DCAs</span>
+        <Pager labels={rangeLabels(s.channels.length).map((l) => `Ch ${l}`)} page={rows.page} onPage={rows.setPage} />
+      </div>
       <div className="matrix-wrap">
         <table className="matrix">
           <thead>
@@ -98,7 +103,7 @@ function GroupMatrix() {
             </tr>
           </thead>
           <tbody>
-            {s.channels.map((c) => (
+            {rows.slice.map((c) => (
               <tr key={c.id}>
                 <td className="row-label">
                   <span className="dot" style={{ background: c.color }} /> {c.id.replace('ch', '')} {c.name}

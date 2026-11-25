@@ -1180,3 +1180,32 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 .ins-flags { flex: 0 0 auto; }
 .ins-flags > * { flex: 1; }
 .inspector .tall-meter { flex: 0 0 auto; }
+.pager { display: inline-flex; padding: 2px; gap: 2px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-md); }
+.pager-btn { padding: 3px 10px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; color: var(--text-secondary); background: transparent; border-color: transparent; box-shadow: none; border-radius: var(--r-sm); }
+.pager-btn:hover:not(:disabled) { background: var(--surface-control); border-color: transparent; color: var(--text-primary); }
+.pager-btn.on { background: var(--surface-control); border-color: var(--border); color: var(--text-primary); box-shadow: var(--shadow-control); }
+.rg-pagers { display: flex; gap: 8px; padding: 6px; position: sticky; left: 0; } .rg-pagers:empty { display: none; }
+/* inspector fills its height: the plugin rack grows (taller slots), bigger type throughout */
+.ins-main { gap: 8px; }
+.ins-block { padding: 8px 10px; gap: 6px; }
+.ins-label { font-size: var(--fs-xs); }
+.ins-name-input { font-size: 15px; }
+.ins-source { font-size: var(--fs-lg); padding: 5px 8px; }
+.ins-knobs .knob-label { font-size: var(--fs-xs); }
+.ins-knobs .knob-value { font-size: 11.5px; }
+.ins-mute > * { padding: 9px 0; font-size: var(--fs-md); }
+.ins-rack-block { flex: 1 1 auto; min-height: 0; }
+.ins-rack { flex: 1; min-height: 0; grid-template-rows: repeat(8, minmax(20px, 34px)); align-content: start; gap: 3px; }
+.ins-slot { height: auto; min-height: 20px; font-size: var(--fs-md); padding: 0 4px 0 6px; border-radius: var(--r-sm); }
+.ins-name { font-size: var(--fs-md); font-weight: var(--fw-medium); }
+.ins-dot { flex-basis: 18px; width: 18px; height: 18px; }
+.ins-dot::after { left: 5px; top: 5px; width: 8px; height: 8px; }
+.ins-slot.byp .ins-dot::after { left: 4.5px; top: 4.5px; }
+.ins-lock, .ins-x { font-size: 11px; padding: 0 4px; }
+.ins-sends .send-row { height: 22px; flex-basis: 22px; }
+.ins-sends .sr-name { font-size: var(--fs-md); line-height: 22px; }
+.ins-sends .sr-tap { line-height: 22px; font-size: 9px; }
+.ins-add-send { font-size: var(--fs-md); padding: 3px 6px; }
+.ins-block .out-pill { height: 26px; line-height: 26px; font-size: var(--fs-md); }
+.ins-chip { padding: 4px 0; font-size: var(--fs-sm); }
+.ins-flags .tgl { padding: 6px 0; font-size: var(--fs-sm); }

@@ -11,6 +11,7 @@ import type { Bus, Channel, OutputSource } from '../core/types';
 import { useNative } from '../native/bridge';
 import { MonoStereoSwitch } from './Strip';
 import { useEngine, useEngineInputs } from './useEngine';
+import { Pager, rangeLabels, usePages } from './Pager';
 
 type View = 'input' | 'internal' | 'output';
 
@@ -66,8 +67,17 @@ const ColHead = ({ label, sub, color, title, group }: { label: string; sub?: str
 function InputGrid() {
   const s = useConsole();
   const { devices, channelsFor, channelName } = useEngineInputs();
-  const cols: { key: string; deviceId: string; n: number; label: string; dev: string }[] = [];
-  for (const d of devices) for (let i = 0; i < channelsFor(d.deviceId); i++) cols.push({ key: `${d.deviceId}:${i}`, deviceId: d.deviceId, n: i, label: channelName(d.deviceId, i), dev: d.label || d.deviceId });
+  const allCols: { key: string; deviceId: string; n: number; label: string; dev: string }[] = [];
+  for (const d of devices) for (let i = 0; i < channelsFor(d.deviceId); i++) allCols.push({ key: `${d.deviceId}:${i}`, deviceId: d.deviceId, n: i, label: channelName(d.deviceId, i), dev: d.label || d.deviceId });
+  const rows = usePages(s.channels, 16, 'rg.in.rows');
+  const colPages = usePages(allCols, 16, 'rg.in.cols');
+  const cols = colPages.slice;
+  const pagers = (
+    <div className="rg-pagers">
+      <Pager labels={rangeLabels(s.channels.length).map((l) => `Ch ${l}`)} page={rows.page} onPage={rows.setPage} />
+      <Pager labels={rangeLabels(allCols.length).map((l) => `In ${l}`)} page={colPages.page} onPage={colPages.setPage} />
+    </div>
+  );
   const tests: { kind: Channel['source']['kind']; label: string }[] = [
     { kind: 'tone', label: 'Tone' },
     { kind: 'noise', label: 'Noise' },
@@ -78,6 +88,8 @@ function InputGrid() {
     s.updateChannel(ch.id, { source: cur ? { ...ch.source, kind: 'none' } : { ...ch.source, kind: 'input', deviceId, deviceChannel: n, deviceChannelR: undefined } });
   };
   return (
+    <>
+    {pagers}
     <table className="rgrid">
       <thead>
         <tr>
@@ -87,7 +99,7 @@ function InputGrid() {
         </tr>
       </thead>
       <tbody>
-        {s.channels.map((ch) => {
+        {rows.slice.map((ch) => {
           const l = ch.source.kind === 'input' ? ch.source.deviceChannel ?? 0 : -1;
           const r = ch.stereo ? ch.source.deviceChannelR ?? l + 1 : -1;
           return (
@@ -123,6 +135,7 @@ function InputGrid() {
         })}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -130,9 +143,13 @@ function InputGrid() {
 function InternalGrid() {
   const s = useConsole();
   const buses = routableBuses(s);
+  const rows = usePages(s.channels, 16, 'rg.int.rows');
+  const pagers = <div className="rg-pagers"><Pager labels={rangeLabels(s.channels.length).map((l) => `Ch ${l}`)} page={rows.page} onPage={rows.setPage} /></div>;
   const toggleRoute = (chId: string, busId: string) =>
     s.updateChannel(chId, (c) => ({ routes: (c.routes ?? []).includes(busId) ? (c.routes ?? []).filter((x) => x !== busId) : [...(c.routes ?? []), busId] }));
   return (
+    <>
+    {pagers}
     <table className="rgrid">
       <thead>
         <tr>
@@ -142,7 +159,7 @@ function InternalGrid() {
         </tr>
       </thead>
       <tbody>
-        {s.channels.map((c) => (
+        {rows.slice.map((c) => (
           <tr key={c.id}>
             <ChannelHead ch={c} />
             <td className={'rg-x group-start' + (c.mainAssign ? ' on' : '')} style={c.mainAssign ? { background: 'var(--ok)' } : undefined} onClick={() => s.updateChannel(c.id, { mainAssign: !c.mainAssign })} title={`${c.name} → Main LR`}>
@@ -189,6 +206,7 @@ function InternalGrid() {
         })}
       </tbody>
     </table>
+    </>
   );
 }
 
@@ -210,6 +228,8 @@ function OutputGrid() {
       { src: b.id, side: 1 as const, label: b.name, sub: 'R', color: b.color },
     ]),
   ];
+  const outs = usePages(Array.from({ length: rows }, (_, i) => i), 16, 'rg.out.rows');
+  const pagers = <div className="rg-pagers"><Pager labels={rangeLabels(rows).map((l) => `Out ${l}`)} page={outs.page} onPage={outs.setPage} /></div>;
   const set = (i: number, o: OutputSource | null) =>
     s.update((st) => {
       const patch = st.io.outputPatch.slice();
@@ -218,6 +238,8 @@ function OutputGrid() {
       return { io: { ...st.io, outputPatch: patch } };
     });
   return (
+    <>
+    {pagers}
     <table className="rgrid">
       <thead>
         <tr>
@@ -226,7 +248,7 @@ function OutputGrid() {
         </tr>
       </thead>
       <tbody>
-        {Array.from({ length: rows }, (_, i) => {
+        {outs.slice.map((i) => {
           const cur = s.io.outputPatch[i];
           return (
             <tr key={i} className={i >= max ? 'offline' : ''}>
@@ -249,6 +271,7 @@ function OutputGrid() {
         })}
       </tbody>
     </table>
+    </>
   );
 }
 

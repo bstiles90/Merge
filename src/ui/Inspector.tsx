@@ -189,7 +189,7 @@ export function Inspector({ ch, closable = true }: { ch: Channel; closable?: boo
               <button className={'tgl tgl-solo' + (ch.solo ? ' on' : '')} onClick={() => s.dispatch({ type: 'channel.solo.toggle', args: { id: ch.id } })}>{s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}</button>
             </div>
           </div>
-          <div className="ins-block">
+          <div className="ins-block ins-rack-block">
             <span className="ins-label">PLUGINS</span>
             <Rack ch={ch} />
           </div>
