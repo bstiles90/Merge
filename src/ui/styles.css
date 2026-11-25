@@ -750,3 +750,48 @@ input, textarea, select { box-shadow: var(--shadow-pressed); }
 .sec-input .sec-src { text-overflow: clip; }
 .sec-input .ms-switch { left: 3px; top: 30px; width: 14px; height: 13px; }
 .sec-input .ms-switch svg { width: 12px; height: 9px; }
+
+/* ======================================================================================
+   Design system step 5: wordmark + workspace selector (Live / Studio / Record)
+   ====================================================================================== */
+.brand { display: flex; align-items: center; gap: 8px; color: var(--text-primary); letter-spacing: 0; }
+.brand-word { font-weight: var(--fw-bold); font-size: 13px; letter-spacing: 0.32em; background: linear-gradient(180deg, #f2f4f6, #9aa3ad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand-sep { width: 1px; height: 16px; background: var(--accent); }
+.brand-ws { font-weight: var(--fw-semibold); font-size: 11px; letter-spacing: 0.32em; color: var(--accent); min-width: 52px; }
+.workspaces { display: flex; padding: 2px; gap: 2px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-md); }
+.ws-btn { padding: 3px 10px; font-size: var(--fs-xs); font-weight: var(--fw-bold); letter-spacing: var(--tracking-caps); color: var(--text-secondary); background: transparent; border-color: transparent; box-shadow: none; border-radius: var(--r-sm); }
+.ws-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-control); border-color: transparent; }
+.ws-btn.on { color: var(--text-primary); background: var(--surface-control); border-color: var(--border); box-shadow: var(--shadow-control), inset 0 -2px 0 var(--accent); }
+.ws-btn:disabled { opacity: 0.4; }
+
+/* ---- page navigator, after the layer sample: inner colour bar, page-coloured slot dots */
+.pages { background: #121417; }
+.page-keys { gap: 6px; }
+.page-key {
+  position: relative; min-height: 48px; padding: 7px 18px 7px 14px; justify-content: center;
+  background: var(--surface-strip); border: none; border-radius: var(--r-lg); box-shadow: none;
+}
+.page-key::before { content: ''; position: absolute; left: 6px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: color-mix(in srgb, var(--pc) 80%, var(--text-tertiary)); }
+.page-key:hover:not(:disabled) { background: var(--surface-raised); }
+.page-key.on { background: color-mix(in srgb, var(--pc) 18%, var(--surface-strip)); border: none; box-shadow: none; }
+.page-key.on::before { background: var(--pc); }
+.page-key.shown { background: color-mix(in srgb, var(--pc) 9%, var(--surface-strip)); }
+.page-num { position: absolute; top: 50%; right: 7px; transform: translateY(-50%); font-size: 11px; font-weight: var(--fw-regular); color: var(--text-secondary); }
+.page-name { font-size: 12px; font-weight: var(--fw-medium); padding-right: 0; }
+.page-preview { display: grid; grid-template-columns: repeat(16, 1fr); gap: 1px; height: 4px; width: 100%; }
+.page-preview i { background: var(--surface-control); border-radius: 1px; filter: none; }
+.page-preview i.used { background: color-mix(in srgb, var(--pc) 85%, var(--text-tertiary)); }
+.page-key.on .page-preview i.used { background: var(--pc); }
+.pages-actions { justify-content: space-between; align-items: center; padding: 2px 2px 0; }
+.pages-actions .link-btn { flex: 0 0 auto; box-shadow: none; background: none; border: none; padding: 2px 0; font-size: var(--fs-md); }
+.pages-actions .new-page { color: var(--accent); font-weight: var(--fw-medium); }
+.pages-actions .edit-pages { color: var(--text-secondary); }
+.pages-actions .edit-pages.on { color: var(--accent); background: none; }
+.pages-actions .link-btn:hover:not(:disabled) { background: none; color: var(--text-primary); }
+/* keep the top bar on one row */
+.topbar { flex-wrap: nowrap; gap: 8px; min-width: 0; }
+.topbar .show-name { width: 120px; flex: 0 1 120px; min-width: 60px; }
+.tabs { min-width: 0; overflow: hidden; flex: 0 1 auto; }
+.tab { padding: 4px 8px; white-space: nowrap; }
+.topbar > * { flex-shrink: 0; }
+.topbar > .tabs, .topbar > .show-name, .topbar > .spacer { flex-shrink: 1; }

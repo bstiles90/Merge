@@ -6,7 +6,7 @@ import { LAYER_SLOTS, newId, PALETTE } from '../core/defaults';
 import { setLayout, toggleRack, useUi, type LayoutPref } from './uiState';
 import { addToPage, deletePage, focusedLayerId, moveSlot } from '../core/layers';
 import { useConsole } from '../core/store';
-import type { ConsoleState, Layer, StripRef } from '../core/types';
+import type { Layer, StripRef } from '../core/types';
 import { ColorPicker } from './Detail';
 import { Strip } from './Strip';
 
@@ -49,15 +49,6 @@ export function StripRefSelect({ value, onChange, className }: { value: StripRef
       <option value="main">Main LR</option>
     </select>
   );
-}
-
-/** Colour of whatever sits in a slot, for the page-key preview. */
-function refColor(s: ConsoleState, r: StripRef | null): string | null {
-  if (!r) return null;
-  if (r.kind === 'channel') return s.channels.find((c) => c.id === r.id)?.color ?? null;
-  if (r.kind === 'bus') return s.buses.find((c) => c.id === r.id)?.color ?? null;
-  if (r.kind === 'dca') return s.dcas.find((c) => c.id === r.id)?.color ?? null;
-  return '#c9ccd1';
 }
 
 export function layerColor(l: Layer, i: number) {
@@ -150,7 +141,7 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
               <span className="page-name">{l.name.replace(/-/g, "\u2011") /* keep "1-16" together */}</span>
               <span className="page-preview">
                 {l.slots.map((r, j) => (
-                  <i key={j} style={{ background: refColor(s, r) ?? 'transparent' }} />
+                  <i key={j} className={r ? 'used' : ''} title={r ? undefined : 'empty slot'} />
                 ))}
               </span>
             </button>
@@ -159,6 +150,7 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
       </div>
       <div className="pages-actions">
         <button
+          className="link-btn new-page"
           onClick={() => {
             const id = newId('L');
             setLayers([...s.layers, { id, name: `Page ${s.layers.length + 1}`, slots: Array(LAYER_SLOTS).fill(null) }]);
@@ -168,7 +160,7 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
         >
           + New
         </button>
-        <button className={editing ? 'on' : ''} onClick={() => setEditing(!editing)}>
+        <button className={'link-btn edit-pages' + (editing ? ' on' : '')} onClick={() => setEditing(!editing)}>
           {editing ? 'Done' : 'Edit'}
         </button>
       </div>

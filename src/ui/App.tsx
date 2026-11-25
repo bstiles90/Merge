@@ -21,9 +21,27 @@ const TABS: [Tab, string][] = [
   ['routing', 'Routing'],
   ['timeline', 'Record / Timeline'],
   ['scenes', 'Scenes'],
-  ['setup', 'Layers · Keys · Groups'],
-  ['io', 'I/O · Patch · MIDI'],
+  ['setup', 'Setup'],
+  ['io', 'I/O'],
 ];
+
+const TAB_HINTS: Partial<Record<Tab, string>> = { setup: 'Fader pages (layers), user keys, mute groups, DCAs, metering', io: 'Audio devices, input / output patch, plugins, MIDI' };
+
+/** Workspaces share one show and engine; each shows the pages for that job. */
+type Workspace = 'live' | 'studio' | 'record';
+const WORKSPACES: { id: Workspace; label: string; tabs: Tab[]; ready: boolean }[] = [
+  { id: 'live', label: 'Live', tabs: ['mix', 'routing', 'scenes', 'setup', 'io'], ready: true },
+  { id: 'studio', label: 'Studio', tabs: [], ready: false },
+  { id: 'record', label: 'Record', tabs: ['timeline', 'routing', 'io'], ready: true },
+];
+const loadWorkspace = (): Workspace => {
+  try {
+    const v = localStorage.getItem('merge.workspace');
+    return v === 'record' ? 'record' : 'live';
+  } catch {
+    return 'live';
+  }
+};
 
 function TransportMini() {
   const t = useConsole((s) => s.transport);
@@ -50,7 +68,19 @@ function TransportMini() {
 }
 
 export function App() {
-  const [tab, setTab] = useState<Tab>('mix');
+  const [workspace, setWorkspace] = useState<Workspace>(loadWorkspace);
+  const ws = WORKSPACES.find((w) => w.id === workspace)!;
+  const [tab, setTab] = useState<Tab>(() => ws.tabs[0]);
+  const chooseWorkspace = (w: (typeof WORKSPACES)[number]) => {
+    if (!w.ready) return;
+    setWorkspace(w.id);
+    if (!w.tabs.includes(tab)) setTab(w.tabs[0]);
+    try {
+      localStorage.setItem('merge.workspace', w.id);
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const engine = useEngine();
   const native = useNative();
   const [starting, setStarting] = useState(false);
@@ -101,11 +131,30 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">MERGE</div>
+        <div className="brand" aria-label={`Merge ${ws.label}`}>
+          <span className="brand-word">MERGE</span>
+          <span className="brand-sep" />
+          <span className="brand-ws">{ws.label.toUpperCase()}</span>
+        </div>
+        <div className="workspaces" role="tablist" aria-label="Workspace">
+          {WORKSPACES.map((w) => (
+            <button
+              key={w.id}
+              role="tab"
+              aria-selected={w.id === workspace}
+              className={'ws-btn' + (w.id === workspace ? ' on' : '')}
+              disabled={!w.ready}
+              title={w.ready ? `${w.label} workspace` : `${w.label} workspace: coming in a later build`}
+              onClick={() => chooseWorkspace(w)}
+            >
+              {w.label.toUpperCase()}
+            </button>
+          ))}
+        </div>
         <input className="show-name" value={s.showName} onChange={(e) => s.update(() => ({ showName: e.target.value }))} />
         <nav className="tabs">
-          {TABS.map(([id, label]) => (
-            <button key={id} className={'tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>
+          {ws.tabs.map((id) => [id, TABS.find((t) => t[0] === id)![1]] as const).map(([id, label]) => (
+            <button key={id} className={'tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)} title={TAB_HINTS[id]}>
               {label}
             </button>
           ))}
