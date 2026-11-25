@@ -26,7 +26,7 @@ export function Fader({
     // so a stray click can never jump a live fader.
     const rect = ref.current!.getBoundingClientRect();
     const capTop = rect.top + (1 - pos) * travel;
-    const onCap = e.clientY >= capTop - 4 && e.clientY <= capTop + capHeight + 4;
+    const onCap = e.clientY >= capTop && e.clientY <= capTop + capHeight;
     if (!onCap) return;
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -39,11 +39,6 @@ export function Fader({
     onChange(faderPosToDb(Math.min(1, Math.max(0, p))));
   };
   const end = () => (drag.current = null);
-  const onWheel = (e: React.WheelEvent) => {
-    const step = e.deltaY < 0 ? 0.5 : -0.5;
-    const base = isFinite(db) ? db : -60;
-    onChange(Math.min(10, base + step));
-  };
 
   return (
     <div
@@ -57,9 +52,8 @@ export function Fader({
       onDoubleClick={(e) => {
         const rect = ref.current!.getBoundingClientRect();
         const capTop = rect.top + (1 - pos) * travel;
-        if (e.clientY >= capTop - 4 && e.clientY <= capTop + capHeight + 4) onChange(0);
+        if (e.clientY >= capTop && e.clientY <= capTop + capHeight) onChange(0);
       }}
-      onWheel={onWheel}
       title={`${formatDb(db)} dB — drag the cap to move, double-click the cap for 0 dB, shift-drag for fine`}
     >
       <div className="fader-slot" />
@@ -208,7 +202,6 @@ export function Knob({
         }}
         onPointerUp={() => (drag.current = null)}
         onDoubleClick={() => defaultValue !== undefined && onChange(defaultValue)}
-        onWheel={(e) => onChange(fromT(t + (e.deltaY < 0 ? 0.02 : -0.02)))}
       >
         <path d={arc(a0, a1)} stroke="#2a2f35" strokeWidth={3} fill="none" />
         {Math.abs(ang - ca) > 0.5 && <path d={ang > ca ? arc(ca, ang) : arc(ang, ca)} stroke={color} strokeWidth={3} fill="none" />}

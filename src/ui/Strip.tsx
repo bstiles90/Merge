@@ -34,7 +34,7 @@ function useHeight<T extends HTMLElement>() {
 }
 
 const isControl = (t: EventTarget | null) =>
-  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader, .knob, .rack-slot, .send-row, .out-pill, .plugin-picker');
+  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader-cap, .knob, .rack-slot, .send-row, .out-pill, .plugin-picker');
 
 // ------------------------------------------------------------------ strip sections
 function sourceLabel(ch: Channel) {
@@ -405,7 +405,6 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     );
     buttons = (
       <>
-        <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
         <Toggle kind="solo" on={ch.solo} onClick={() => s.dispatch({ type: 'channel.solo.toggle', args: { id: ch.id } })} small>
           {s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}
         </Toggle>
@@ -446,7 +445,6 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     );
     buttons = (
       <>
-        <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>
         <Toggle kind="solo" on={b.solo} onClick={() => s.updateBus(b.id, { solo: !b.solo })} small>
           {s.monitor.soloMode === 'pfl' ? 'PFL' : 'AFL'}
         </Toggle>
@@ -481,7 +479,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <div className="sec sec-groups" />
       </>
     );
-    buttons = <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>;
+    buttons = null;
     meter = <div className="meter-spacer" />;
     fader = <Fader db={d.faderDb} onChange={(db) => setStripFader(refr, db)} color={d.color} height={faderH} />;
     dbText = formatDb(d.faderDb);
@@ -508,7 +506,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         <div className="sec sec-groups" />
       </>
     );
-    buttons = <Toggle kind="sel" on={selected} onClick={select} small>SEL</Toggle>;
+    buttons = null;
     meter = <Meter id="main" height={faderH} stereo />;
     fader = <Fader db={s.main.faderDb} onChange={(db) => setStripFader(refr, db)} color="#fff" height={faderH} />;
     dbText = formatDb(s.main.faderDb);

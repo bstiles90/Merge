@@ -603,3 +603,4 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 /* bigger gain rotary under the input label */
 .sec-input { height: 76px; }
 .sec-input .knob-value { font-size: 9px; font-weight: 700; margin-top: -2px; }
+.strip-btns:empty { min-height: 20px; }
