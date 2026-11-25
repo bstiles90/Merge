@@ -78,6 +78,21 @@ function dbToY(db: number, h: number) {
 /** Meter colour zones, console style: green, yellow from the gain-setting point, red near clip. */
 export const METER_RED_DB = -3;
 
+/** dBFS marks for a meter (digital full scale, like LV1 / Audition), drawn beside it. */
+export const METER_MARKS = [0, -6, -12, -18, -24, -36, -48];
+export function MeterScale({ height }: { height: number }) {
+  const yellowDb = useConsole((s) => s.meterYellowDb ?? -10);
+  return (
+    <div className="meter-scale" style={{ height }} title="Meter scale: dBFS (0 = digital full scale)">
+      {METER_MARKS.map((db) => (
+        <span key={db} className={'ms-mark' + (db === 0 ? ' zero' : '') + (db >= yellowDb ? ' hot' : '')} style={{ top: dbToY(db, height) }}>
+          {db === 0 ? '0' : -db}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function Meter({ id, height = 220, stereo = false, showGr = false }: { id: string; height?: number; stereo?: boolean; showGr?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const yellowDb = useConsole((s) => s.meterYellowDb ?? -10);

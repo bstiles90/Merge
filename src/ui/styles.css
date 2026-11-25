@@ -910,3 +910,15 @@ input, textarea, select { box-shadow: var(--shadow-pressed); }
 .rate-btn.on { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
 .buffer-select { margin: 0 6px; }
 .engine-note { padding: 6px 8px; }
+
+/* meter dBFS scale (left of the meter): numbers are dBFS below full scale (0, 6, 12, 18...) */
+.meter-scale { position: relative; width: 11px; flex: 0 0 11px; }
+.ms-mark { position: absolute; right: 0; transform: translateY(-50%); font-size: 7px; line-height: 1; font-weight: var(--fw-medium); color: var(--text-secondary); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.ms-mark.hot { color: #b9a34f; }
+.ms-mark.zero { color: #d8a0a2; }
+.strip-body { gap: 2px; padding: 0 2px; }
+.strip-body .fader { width: 36px; }
+.strip-body .fader-cap { width: 28px; margin-left: -14px; }
+/* fader scale marks are the fader's own (dB of gain), kept dimmer than the meter scale */
+.fader-tick span { color: var(--text-tertiary); }
+.ms-mark.zero { transform: translateY(-1px); }

@@ -7,7 +7,7 @@ import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, Send, StripRef } from '../core/types';
 import { applyTapValue, sendTap, tapChoices, tapCode, tapValue } from '../core/sends';
-import { Fader, Knob, Meter, Toggle } from './controls';
+import { Fader, Knob, Meter, MeterScale, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
 import { createsLoop } from '../core/plan';
 import { sendNative, useNative } from '../native/bridge';
@@ -464,7 +464,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         </Toggle>
       </>
     );
-    meter = <Meter id={ch.id} height={faderH} stereo={!!ch.stereo} />;
+    meter = <><MeterScale height={faderH} /><Meter id={ch.id} height={faderH} stereo={!!ch.stereo} /></>;
     fader = <Fader db={ch.faderDb} onChange={(db) => setStripFader(refr, db)} color={ch.color} height={faderH} />;
     dbText = formatDb(ch.faderDb);
     mute = (
@@ -504,7 +504,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
         </Toggle>
       </>
     );
-    meter = <Meter id={b.id} height={faderH} stereo />;
+    meter = <><MeterScale height={faderH} /><Meter id={b.id} height={faderH} stereo /></>;
     fader = <Fader db={b.faderDb} onChange={(db) => setStripFader(refr, db)} color={b.color} height={faderH} />;
     dbText = formatDb(b.faderDb);
     mute = (
@@ -561,7 +561,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
       </>
     );
     buttons = null;
-    meter = <Meter id="main" height={faderH} stereo />;
+    meter = <><MeterScale height={faderH} /><Meter id="main" height={faderH} stereo /></>;
     fader = <Fader db={s.main.faderDb} onChange={(db) => setStripFader(refr, db)} color="#fff" height={faderH} />;
     dbText = formatDb(s.main.faderDb);
     mute = (
