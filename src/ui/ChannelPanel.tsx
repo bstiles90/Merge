@@ -12,8 +12,6 @@ import { fmtDb, fmtMs, Knob, Toggle } from './controls';
 import { ColorPicker, Inserts, LinkSection, SourcePicker } from './Detail';
 import { StripOverview, TallMeter } from './StripOverview';
 
-type Tab = 'in' | 'fx' | 'sends' | 'assign';
-let lastTab: Tab = 'fx'; // remembered while moving between channels
 
 
 // ------------------------------------------------------------------ other tabs
@@ -25,7 +23,6 @@ function InTab({ ch }: { ch: Channel }) {
       <div className="section-title">Source</div>
       <SourcePicker ch={ch} />
       <div className="in-row">
-        <Knob size={56} label="Gain" value={ch.gainDb} min={-24} max={48} defaultValue={0} format={fmtDb} onChange={(gainDb) => up({ gainDb })} />
         <Knob size={40} label="Delay" value={ch.delayMs} min={0} max={500} defaultValue={0} format={fmtMs} onChange={(delayMs) => up({ delayMs })} />
         <div className="col">
           <Toggle on={ch.phaseInvert} onClick={() => up({ phaseInvert: !ch.phaseInvert })} title="Polarity invert">Ø</Toggle>
@@ -136,21 +133,45 @@ function AssignTab({ ch }: { ch: Channel }) {
 }
 
 // ------------------------------------------------------------------ the panel
+/** Collapsible inspector section (open / closed remembered while moving between channels). */
+const closedSections = new Set<string>(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem('merge.inspector.closed') ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  })(),
+);
+function Section({ id, title, badge, children }: { id: string; title: string; badge?: string | false; children: React.ReactNode }) {
+  const [open, setOpen] = useState(!closedSections.has(id));
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) closedSections.delete(id);
+    else closedSections.add(id);
+    try {
+      localStorage.setItem('merge.inspector.closed', JSON.stringify([...closedSections]));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  return (
+    <section className={'insp-sec' + (open ? ' open' : '')}>
+      <button className="insp-sec-head" onClick={toggle} aria-expanded={open}>
+        <span className="insp-caret">{open ? '▾' : '▸'}</span>
+        <span className="insp-sec-title">{title}</span>
+        {badge && <span className="chp-badge count">{badge}</span>}
+      </button>
+      {open && <div className="insp-sec-body">{children}</div>}
+    </section>
+  );
+}
+
 export function ChannelPanel({ ch }: { ch: Channel }) {
   const s = useConsole();
-  const [tab, setTabState] = useState<Tab>(lastTab);
-  const setTab = (t: Tab) => {
-    lastTab = t;
-    setTabState(t);
-  };
   const link = linkInfo(s, ch.id);
   const sendCount = Object.values(ch.sends).filter((x) => x.on).length;
-  const tabs: [Tab, string, boolean | string][] = [
-    ['in', 'IN', ch.gainDb !== 0 || ch.phaseInvert || ch.delayMs > 0],
-    ['fx', 'RACK', ch.inserts.length ? String(ch.inserts.length) : false],
-    ['sends', 'SENDS', sendCount ? String(sendCount) : false],
-    ['assign', 'ASSIGN', false],
-  ];
   return (
     <div className="detail chpanel">
       <div className="chp-head" style={{ borderColor: ch.color }}>
@@ -162,26 +183,20 @@ export function ChannelPanel({ ch }: { ch: Channel }) {
       <div className="chp-split">
         <TallMeter id={ch.id} stereo={!!ch.stereo} refr={{ kind: 'channel', id: ch.id }} faderDb={ch.faderDb} color={ch.color} />
         <div className="chp-main">
-        <StripOverview refr={{ kind: 'channel', id: ch.id }} meter={false} />
-      <div className="chp-tabs">
-        {tabs.map(([id, label, badge]) => (
-          <button key={id} className={'chp-tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>
-            {label}
-            {badge && <span className={'chp-badge' + (typeof badge === 'string' ? ' count' : '')}>{typeof badge === 'string' ? badge : ''}</span>}
-          </button>
-        ))}
-      </div>
-      <div className="chp-content">
-        {tab === 'in' && <InTab ch={ch} />}
-        {tab === 'fx' && (
-          <div className="tab-body">
+          <StripOverview refr={{ kind: 'channel', id: ch.id }} meter={false} />
+          <Section id="in" title="Input">
+            <InTab ch={ch} />
+          </Section>
+          <Section id="fx" title="Plugins" badge={ch.inserts.length ? String(ch.inserts.length) : false}>
             <Inserts inserts={ch.inserts} onChange={(inserts) => s.updateChannel(ch.id, { inserts })} />
-          </div>
-        )}
-        {tab === 'sends' && <SendsTab ch={ch} />}
-        {tab === 'assign' && <AssignTab ch={ch} />}
-      </div>
-      </div>
+          </Section>
+          <Section id="sends" title="Sends" badge={sendCount ? String(sendCount) : false}>
+            <SendsTab ch={ch} />
+          </Section>
+          <Section id="assign" title="Output &amp; groups">
+            <AssignTab ch={ch} />
+          </Section>
+        </div>
       </div>
     </div>
   );

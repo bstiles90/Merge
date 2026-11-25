@@ -1099,3 +1099,29 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 .tall-meter { padding: 6px 6px 8px; }
 /* without its own meter / fader, the overview's controls use the full width */
 .chp-main .overview { padding: 8px 10px; }
+
+/* inspector: stacked sections (no tabs), so the panel fills with what the channel has */
+.insp-sec { border: 1px solid var(--border-subtle); border-radius: var(--r-lg); background: var(--surface-sunken); }
+.insp-sec-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 10px; background: transparent; border: none; box-shadow: none; border-radius: var(--r-lg); text-align: left; }
+.insp-sec-head:hover:not(:disabled) { background: var(--surface-control); }
+.insp-caret { width: 10px; color: var(--text-tertiary); font-size: 10px; }
+.insp-sec-title { flex: 1; font-size: var(--fs-xs); font-weight: var(--fw-bold); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-secondary); }
+.insp-sec.open .insp-sec-title { color: var(--text-primary); }
+.insp-sec-body { padding: 0 10px 10px; }
+.insp-sec-body .tab-body, .insp-sec-body .section { padding: 0; border: none; background: transparent; }
+.insp-sec-body .section-title:first-child { display: none; }
+.chp-main { gap: 8px; }
+/* overview: room to breathe */
+.chp-main .overview { flex-direction: column; gap: 10px; padding: 10px 12px; }
+.chp-main .ov-knobs .knob svg { width: 52px; height: 52px; }
+.chp-main .ov-buttons .mute-btn, .chp-main .ov-buttons .tgl { padding: 9px 0; font-size: var(--fs-md); }
+.insp-sec-head .chp-badge { position: static; transform: none; margin: 0; }
+/* sends in the narrow inspector column: name / level / remove, then the slider, then the tap point */
+.insp-sec-body .sends-big .send { grid-template-columns: minmax(0, 1fr) 40px 22px; grid-auto-rows: auto; row-gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border-subtle); }
+.insp-sec-body .sends-big .send > :nth-child(1) { grid-column: 1; grid-row: 1; justify-self: start; max-width: 100%; }
+.insp-sec-body .sends-big .send > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+.insp-sec-body .sends-big .send > :nth-child(3) { grid-column: 2; grid-row: 1; text-align: right; }
+.insp-sec-body .sends-big .send > :nth-child(4) { grid-column: 1 / -1; grid-row: 3; }
+.insp-sec-body .sends-big .send > :nth-child(5) { grid-column: 3; grid-row: 1; }
+.insp-sec-body .sends-big .send.mm { display: flex; }
+.insp-sec-body .row > select { max-width: 100%; }
