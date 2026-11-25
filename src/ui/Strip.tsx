@@ -325,6 +325,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
   const selected = sameRef(s.selected, refr);
   const select = () => {
     // selecting a strip opens its settings drawer; selecting it again closes the drawer
+    if (useUi.getState().mode === 'pinned') return s.select(refr); // the channel panel is always open
     if (selected && useUi.getState().drawerOpen) return closeDrawer();
     s.select(refr);
     openDrawer();

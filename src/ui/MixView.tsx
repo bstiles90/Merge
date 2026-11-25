@@ -7,7 +7,7 @@ import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
 import { FaderBank, PageKeys } from './Pages';
 import { ChannelDrawer } from './ChannelDrawer';
-import { editUserKey } from './uiState';
+import { editUserKey, useLayoutMode } from './uiState';
 import { UserKeyGrid } from './UserKeys';
 
 
@@ -141,6 +141,12 @@ function Monitor() {
 export function MixView() {
   const [editPages, setEditPages] = useState(false);
   const split = useConsole((s) => s.bankLayout === 'split');
+  const mode = useLayoutMode();
+  // the screen layout decides one or two banks (a user key can still flip banks until the layout changes)
+  useEffect(() => {
+    const want = mode === 'split' ? 'split' : 'single';
+    if (useConsole.getState().bankLayout !== want) useConsole.getState().update(() => ({ bankLayout: want }));
+  }, [mode]);
   return (
     <div className="mix">
       <div className="mix-main">
@@ -150,6 +156,7 @@ export function MixView() {
           {split && <FaderBank editing={editPages} bank="B" />}
         </div>
       </div>
+      {mode === 'pinned' && <ChannelDrawer pinned />}
       <div className="mix-side">
         <Loudness />
         <Monitor />
@@ -162,7 +169,7 @@ export function MixView() {
           <UserKeyGrid onEdit={editUserKey} />
         </div>
       </div>
-      <ChannelDrawer />
+      {mode !== 'pinned' && <ChannelDrawer />}
     </div>
   );
 }

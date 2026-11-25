@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useState } from 'react';
 import { LAYER_SLOTS, newId, PALETTE } from '../core/defaults';
+import { setLayout, useUi, type LayoutPref } from './uiState';
 import { addToPage, deletePage, focusedLayerId, moveSlot } from '../core/layers';
 import { useConsole } from '../core/store';
 import type { ConsoleState, Layer, StripRef } from '../core/types';
@@ -68,6 +69,7 @@ export const FaderHeight = createContext(230);
 export const useFaderHeight = () => useContext(FaderHeight);
 
 export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing: (b: boolean) => void }) {
+  const layoutPref = useUi((u) => u.layout);
   const s = useConsole();
   const split = s.bankLayout === 'split';
   const focusedId = focusedLayerId(s);
@@ -86,10 +88,17 @@ export function PageKeys({ editing, setEditing }: { editing: boolean; setEditing
   return (
     <div className={'pages' + (editing ? ' editing' : '')}>
       <div className="pages-title">PAGES</div>
-      <div className="seg" title="View: one fader bank, or two independent banks">
-        <button className={!split ? 'on' : ''} onClick={() => split && s.dispatch({ type: 'view.banks.toggle', args: {} })}>1 BANK</button>
-        <button className={split ? 'on' : ''} onClick={() => !split && s.dispatch({ type: 'view.banks.toggle', args: {} })}>2 BANKS</button>
-      </div>
+      <select
+        className="layout-select"
+        value={layoutPref}
+        title="Screen layout. Auto: one bank on a laptop, one bank + the channel panel pinned open on a big screen"
+        onChange={(e) => setLayout(e.target.value as LayoutPref)}
+      >
+        <option value="auto">Auto layout</option>
+        <option value="single">1 bank</option>
+        <option value="split">2 banks</option>
+        <option value="pinned">1 bank + channel</option>
+      </select>
       {split && (
         <div className="seg target" title="Which bank the page keys load into (or just touch a bank)">
           <button className={s.focusBank === 'A' ? 'on a' : ''} onClick={() => s.update(() => ({ focusBank: 'A' }))}>→ A</button>
@@ -220,7 +229,7 @@ export function FaderBank({ editing, bank = 'A' }: { editing: boolean; bank?: 'A
         </div>
       )}
       {/* a page is 16 faders that share the width (no scrolling): more faders = another page */}
-      <div className="bank-strips" style={{ gridTemplateColumns: `repeat(${count}, minmax(${split ? 52 : 0}px, 96px))` }}>
+      <div className="bank-strips" style={{ gridTemplateColumns: `repeat(${count}, minmax(${split ? 52 : 0}px, 120px))` }}>
         {slots.map((ref, i) => (
           <div
             key={i}
