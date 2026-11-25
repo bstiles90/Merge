@@ -155,6 +155,23 @@ export function App() {
   };
 
   const [confirmNew, setConfirmNew] = useState(false);
+  const [showOpen, setShowOpen] = useState(false);
+  const showRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showOpen) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !showRef.current?.contains(e.target as Node)) {
+        setShowOpen(false);
+        setConfirmNew(false);
+      }
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close);
+    };
+  }, [showOpen]);
   useEffect(() => {
     if (!confirmNew) return;
     const t = setTimeout(() => setConfirmNew(false), 3000);
@@ -197,37 +214,46 @@ export function App() {
             SOLO
           </button>
         )}
-        {/* Live: the current scene. Record / Studio: transport and timecode. */}
-        {workspace === 'live' ? (
-          <div className="scene-mini" title="Current scene">
-            <span className="tb-label">SCENE</span> <span className="scene-name">{scene?.name ?? '—'}</span>
-          </div>
-        ) : (
-          <TransportMini />
-        )}
-        <div className="show-block" title={native.showPath ?? 'Show file'}>
-          <span className="tb-label">SHOW</span>
-          <input className="show-name" value={s.showName} onChange={(e) => s.update(() => ({ showName: e.target.value }))} aria-label="Show name" />
-        </div>
-        <div className="file-btns">
-          <button onClick={save}>Save</button>
-          <button onClick={() => (EMBEDDED ? sendNative({ type: 'show.open' }) : fileRef.current?.click())}>{EMBEDDED ? 'Open' : 'Load'}</button>
-          <button
-            className={confirmNew ? 'confirm' : ''}
-            title="Start from the default show (unsaved changes are lost)"
-            onClick={() => {
-              if (!confirmNew) return setConfirmNew(true);
-              setConfirmNew(false);
-              s.loadShow(defaultState());
-              useNative.setState({ showPath: undefined });
-            }}
-          >
-            {confirmNew ? 'Click again to reset' : 'New'}
+        {/* Record / Studio: transport and timecode (Live shows the scene in the show chip) */}
+        {workspace !== 'live' && <TransportMini />}
+        <div className="show-chip-wrap" ref={showRef}>
+          <button className={'show-chip' + (showOpen ? ' open' : '')} onClick={() => setShowOpen(!showOpen)} title={native.showPath ?? 'Show: name, save, open, new'} aria-haspopup="menu" aria-expanded={showOpen}>
+            <span className="show-chip-text">
+              <span className="show-chip-name">{s.showName || 'Untitled show'}</span>
+              <span className="show-chip-sub">Scene · {scene?.name ?? 'none'}</span>
+            </span>
+            <span className="brand-caret">▾</span>
           </button>
+          {showOpen && (
+            <div className="show-menu" role="menu">
+              <div className="ws-menu-title">Show</div>
+              <input className="show-name-edit" value={s.showName} onChange={(e) => s.update(() => ({ showName: e.target.value }))} aria-label="Show name" placeholder="Show name" />
+              <div className="show-menu-info">
+                <span className="hint">Scene</span> <b>{scene?.name ?? 'none'}</b>
+                {native.showPath && <div className="hint show-path">{native.showPath}</div>}
+              </div>
+              <button className="menu-item" onClick={() => { save(); setShowOpen(false); }}>Save show</button>
+              <button className="menu-item" onClick={() => { setShowOpen(false); EMBEDDED ? sendNative({ type: 'show.open' }) : fileRef.current?.click(); }}>{EMBEDDED ? 'Open show…' : 'Load show…'}</button>
+              <button
+                className={'menu-item' + (confirmNew ? ' danger' : '')}
+                title="Start from the default show (unsaved changes are lost)"
+                onClick={() => {
+                  if (!confirmNew) return setConfirmNew(true);
+                  setConfirmNew(false);
+                  setShowOpen(false);
+                  s.loadShow(defaultState());
+                  useNative.setState({ showPath: undefined });
+                }}
+              >
+                {confirmNew ? 'Click again to start a new show' : 'New show'}
+              </button>
+            </div>
+          )}
         </div>
         {EMBEDDED ? (
           <span className={'engine-on native' + (native.status === 'connected' ? '' : ' offline')} title={native.showPath ?? ''}>
-            {native.status === 'connected' ? `● ENGINE ${native.device ? `${native.device.sampleRate / 1000}k` : ''}` : '○ STARTING…'}
+            <i className="eng-dot" />
+            {native.status === 'connected' ? (native.device ? `${native.device.sampleRate / 1000}k` : 'ON') : 'Starting…'}
           </span>
         ) : native.status === 'connected' ? (
           <button className="engine-on native" onClick={toggleNative} title={`Native engine at ${native.url} — click to disconnect`}>

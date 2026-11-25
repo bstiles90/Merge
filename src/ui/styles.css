@@ -879,3 +879,23 @@ input, textarea, select { box-shadow: var(--shadow-pressed); }
   .tb-label { display: none; }
   .show-block .show-name { width: 120px; flex-basis: 120px; }
 }
+
+/* ---- show chip (name + scene) with a menu for Save / Open / New */
+.show-chip-wrap { position: relative; min-width: 0; }
+.show-chip { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; max-width: 240px; background: transparent; border: 1px solid transparent; box-shadow: none; border-radius: var(--r-md); text-align: left; }
+.show-chip:hover:not(:disabled), .show-chip.open { background: var(--surface-control); border-color: var(--border-subtle); }
+.show-chip-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.show-chip-name { font-weight: var(--fw-semibold); font-size: 12px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.show-chip-sub { font-size: var(--fs-xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.show-chip .brand-caret { color: var(--text-secondary); }
+.show-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: 260px; padding: 6px; display: flex; flex-direction: column; gap: 2px; background: var(--surface-sunken); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-popup); }
+.show-name-edit { margin: 0 4px 4px; font-weight: var(--fw-semibold); }
+.show-menu-info { padding: 4px 8px 8px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 4px; font-size: var(--fs-sm); }
+.show-path { margin-top: 3px; word-break: break-all; }
+.menu-item { text-align: left; padding: 7px 10px; background: transparent; border: 1px solid transparent; box-shadow: none; border-radius: var(--r-sm); font-weight: var(--fw-medium); }
+.menu-item:hover:not(:disabled) { background: var(--surface-control); border-color: transparent; }
+.menu-item.danger { background: var(--mute-soft); color: #ffb4b4; }
+/* engine: a small status dot + sample rate */
+.engine-on.native { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-secondary); background: transparent; border: 1px solid var(--border-subtle); border-radius: 999px; }
+.eng-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px rgba(63, 154, 86, 0.7); }
+.engine-on.native.offline .eng-dot { background: var(--warn); box-shadow: none; }
