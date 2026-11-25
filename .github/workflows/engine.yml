@@ -129,6 +129,10 @@ jobs:
   # Publish a rolling "Latest build" pre-release (replaced on every successful push),
   # so builds can be downloaded from the Releases page without signing in.
   release:
+    # one publish at a time (several pushes close together would otherwise race)
+    concurrency:
+      group: latest-build-release
+      cancel-in-progress: false
     needs: build
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
@@ -168,9 +172,17 @@ jobs:
 
           *Test build, not signed by Apple, so each new version needs "Open Anyway" once.*
           NOTES
-          gh release delete latest-build --yes --cleanup-tag || true
-          gh release create latest-build dist/* \
-            --target "$GITHUB_SHA" \
-            --title "Latest build ($SHORT)" \
-            --notes-file notes.md \
-            --prerelease
+          # GitHub's API sometimes answers 500/502: retry a few times before giving up
+          for attempt in 1 2 3 4 5; do
+            gh release delete latest-build --yes --cleanup-tag || true
+            if gh release create latest-build dist/* \
+                 --target "$GITHUB_SHA" \
+                 --title "Latest build ($SHORT)" \
+                 --notes-file notes.md \
+                 --prerelease; then
+              exit 0
+            fi
+            echo "publish attempt $attempt failed; retrying in $((attempt * 15)) s"
+            sleep $((attempt * 15))
+          done
+          exit 1
