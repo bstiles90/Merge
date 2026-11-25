@@ -10,6 +10,7 @@ import { getPlugin } from '../core/plugins';
 import { applyTapValue, tapChoices, tapValue } from '../core/sends';
 import { fmtDb, fmtMs, Knob, Toggle } from './controls';
 import { ColorPicker, Inserts, LinkSection, SourcePicker } from './Detail';
+import { StripOverview } from './StripOverview';
 
 type Tab = 'in' | 'fx' | 'sends' | 'assign';
 let lastTab: Tab = 'fx'; // remembered while moving between channels
@@ -158,6 +159,7 @@ export function ChannelPanel({ ch }: { ch: Channel }) {
         {link && <span className="hint">stereo {link.side} ↔ {s.channels.find((c) => c.id === link.partner)?.name}</span>}
       </div>
       <ColorPicker value={ch.color} onChange={(color) => s.updateChannel(ch.id, { color })} />
+      <StripOverview refr={{ kind: 'channel', id: ch.id }} />
       <div className="chp-tabs">
         {tabs.map(([id, label, badge]) => (
           <button key={id} className={'chp-tab' + (tab === id ? ' on' : '')} onClick={() => setTab(id)}>

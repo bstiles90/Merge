@@ -1009,3 +1009,38 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 .macro-step.wait { border-left-color: var(--text-tertiary); }
 .macro-step select { max-width: 200px; }
 .step-kind { font-weight: var(--fw-semibold); }
+
+/* inspector overview: big meter + fader, gain / pan, mute / PFL, in / out */
+.overview { display: flex; gap: 10px; padding: 8px; margin: 2px 0 4px; background: var(--surface-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); }
+.ov-meter { display: flex; gap: 3px; align-items: stretch; }
+.ov-meter .meter { width: 12px !important; }
+.ov-meter canvas.meter[style*="14px"] { width: 22px !important; }
+.ov-meter .meter-scale { width: 13px; flex-basis: 13px; }
+.ov-meter .ms-mark { font-size: 8px; }
+.ov-meter .fader { width: 38px; }
+.ov-controls { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; justify-content: space-between; }
+.ov-readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ov-readouts > div { display: flex; flex-direction: column; gap: 2px; }
+.ov-label { font-size: var(--fs-2xs); font-weight: var(--fw-bold); letter-spacing: 0.12em; color: var(--text-tertiary); }
+.ov-readouts .peak-readout { font-size: 15px; padding: 3px 6px; text-align: left; }
+.ov-val { font-size: 15px; font-weight: var(--fw-semibold); padding: 3px 0; }
+.ov-knobs { display: flex; justify-content: space-around; }
+.ov-knobs .knob-value { font-size: 10px; }
+.ov-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ov-buttons .mute-btn { margin: 0; padding: 6px 0; }
+.ov-buttons .tgl { padding: 6px 0; font-size: var(--fs-sm); }
+.ov-flow { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: baseline; font-size: var(--fs-sm); }
+.ov-flow b { font-weight: var(--fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Main LR always on screen at the far right of the Mix view */
+.mix-master { flex: 0 0 76px; width: 76px; padding: 6px 6px 6px 0; display: flex; }
+.mix-master .strip { width: 100%; flex: 1; }
+.mix-side { width: 296px; flex: 0 0 296px; }
+/* slimmer right column: keep the loudness readout inside it */
+.mix-side .lufs { gap: 6px; flex-wrap: wrap; }
+.mix-side .lufs-val { font-size: 13px; }
+.mix-side .lufs-val.big { font-size: 20px; }
+.mix-master { flex-basis: 72px; width: 72px; }
+/* narrow strips: compact bottom numbers */
+.strip-foot .strip-db { font-size: 9.5px; }
+.peak-readout { font-size: 8.5px; }

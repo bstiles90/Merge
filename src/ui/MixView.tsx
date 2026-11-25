@@ -8,6 +8,7 @@ import { Knob, Meter, Toggle, fmtDb } from './controls';
 import { registerLoudness } from './meterLoop';
 import { FaderBank, PageKeys } from './Pages';
 import { ChannelDrawer } from './ChannelDrawer';
+import { Strip } from './Strip';
 import { editUserKey, useLayoutMode } from './uiState';
 import { UserKeyGrid } from './UserKeys';
 
@@ -169,6 +170,10 @@ export function MixView() {
           </div>
           <UserKeyGrid onEdit={editUserKey} />
         </div>
+      </div>
+      {/* Main LR is always on screen, whatever page is up */}
+      <div className="mix-master" aria-label="Main LR">
+        <Strip refr={{ kind: 'main' }} index={0} />
       </div>
       {mode !== 'pinned' && <ChannelDrawer />}
     </div>

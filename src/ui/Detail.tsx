@@ -11,6 +11,7 @@ import { useEngineInputs } from './useEngine';
 import { sendNative, useNative } from '../native/bridge';
 import { usePluginsVersion } from './NativePanel';
 import { PluginPicker } from './PluginPicker';
+import { StripOverview } from './StripOverview';
 import { MonoStereoSwitch } from './Strip';
 import { createLink, linkInfo, naturalPartner, removeLink, setLinkOption, type LinkOption } from '../core/links';
 
@@ -300,6 +301,7 @@ function BusDetail({ id }: { id: string }) {
         <span className="hint">{b.id.toUpperCase()}</span>
         <ColorPicker value={b.color} onChange={(color) => up({ color })} />
       </div>
+      <StripOverview refr={{ kind: 'bus', id: b.id }} />
       <div className="section">
         <div className="section-title">Output</div>
         <div className="row wrap">
