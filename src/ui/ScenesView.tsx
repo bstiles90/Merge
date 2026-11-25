@@ -1,4 +1,5 @@
 import { takeSnapshot } from '../core/scenes';
+import { createdBuses } from '../core/buses';
 import { newId } from '../core/defaults';
 import { useConsole } from '../core/store';
 import type { SceneScope } from '../core/types';
@@ -81,7 +82,7 @@ export function ScenesView() {
                 {c.name}
               </button>
             ))}
-            {s.buses.map((b) => (
+            {createdBuses(s).map((b) => (
               <button key={b.id} className={'chip safe' + (b.recallSafe ? ' on' : '')} onClick={() => s.updateBus(b.id, { recallSafe: !b.recallSafe })}>
                 {b.name}
               </button>

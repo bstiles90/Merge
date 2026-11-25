@@ -4,8 +4,7 @@ import { defaultState } from '../core/defaults';
 import { anySolo } from '../core/mix';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { MixView } from './MixView';
-import { RoutingView } from './RoutingView';
-import { PatchView } from './PatchView';
+import { IOView } from './IOView';
 import { ScenesView } from './ScenesView';
 import { SetupView } from './SetupView';
 import { fmtTime, TimelineView } from './TimelineView';
@@ -15,24 +14,23 @@ import { sendNative, startEmbedded, useNative } from '../native/bridge';
 import { EMBEDDED } from '../native/embedded';
 import { toggleNative } from './NativePanel';
 
-type Tab = 'mix' | 'routing' | 'timeline' | 'scenes' | 'setup' | 'io';
+type Tab = 'mix' | 'timeline' | 'scenes' | 'setup' | 'io';
 const TABS: [Tab, string][] = [
   ['mix', 'Mix'],
-  ['routing', 'Routing'],
   ['timeline', 'Record / Timeline'],
   ['scenes', 'Scenes'],
   ['setup', 'Setup'],
   ['io', 'I/O'],
 ];
 
-const TAB_HINTS: Partial<Record<Tab, string>> = { setup: 'Fader pages (layers), user keys, mute groups, DCAs, metering', io: 'Audio devices, input / output patch, plugins, MIDI' };
+const TAB_HINTS: Partial<Record<Tab, string>> = { setup: 'Fader pages (layers), user keys, mute groups, DCAs, metering', io: 'Channel names, inputs and routing; buses; output patch; devices, plugins, MIDI' };
 
 /** Workspaces share one show and engine; each shows the pages for that job. */
 type Workspace = 'live' | 'studio' | 'record';
 const WORKSPACES: { id: Workspace; label: string; tabs: Tab[]; ready: boolean; about: string }[] = [
-  { id: 'live', label: 'Live', tabs: ['mix', 'routing', 'scenes', 'setup', 'io'], ready: true, about: 'Mix the service: faders, routing, scenes' },
+  { id: 'live', label: 'Live', tabs: ['mix', 'scenes', 'setup', 'io'], ready: true, about: 'Mix the service: faders, scenes, I/O and routing' },
   { id: 'studio', label: 'Studio', tabs: [], ready: false, about: 'Coming later' },
-  { id: 'record', label: 'Record', tabs: ['timeline', 'routing', 'io'], ready: true, about: 'Record and play back: timeline, transport' },
+  { id: 'record', label: 'Record', tabs: ['timeline', 'io'], ready: true, about: 'Record and play back: timeline, transport' },
 ];
 
 /** Engine status dot + sample rate; click for a quick audio menu (rate, buffer, device). */
@@ -368,11 +366,10 @@ export function App() {
       {!EMBEDDED && !engine && native.status !== 'connected' && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> for the browser engine, or <b>Connect engine</b> for native audio with VST3/AU plugins.</div>}
       <main className="content">
         {tab === 'mix' && <MixView />}
-        {tab === 'routing' && <RoutingView />}
         {tab === 'timeline' && <TimelineView />}
         {tab === 'scenes' && <ScenesView />}
         {tab === 'setup' && <SetupView />}
-        {tab === 'io' && <PatchView />}
+        {tab === 'io' && <IOView />}
       </main>
     </div>
   );

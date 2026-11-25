@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createdBuses, routableBuses } from '../core/buses';
 import { useConsole } from '../core/store';
 import type { OutputSource, StripRef } from '../core/types';
 import { enableMidi, midiStatus, onMidiChange, startLearn } from '../control/midi';
@@ -7,7 +8,7 @@ import { useEngine, useEngineInputs } from './useEngine';
 import { NativePanel } from './NativePanel';
 import { useNative } from '../native/bridge';
 
-function DevicesPanel() {
+export function DevicesPanel() {
   const engine = useEngine();
   const { devices, outputs } = useEngineInputs();
   const s = useConsole();
@@ -95,7 +96,7 @@ function DevicesPanel() {
   );
 }
 
-function InputPatch() {
+export function InputPatch() {
   const s = useConsole();
   const { devices, channelsFor, channelName } = useEngineInputs();
   const [bulk, setBulk] = useState({ deviceId: '', from: 1, to: 1, count: 8 });
@@ -173,7 +174,7 @@ function InputPatch() {
   );
 }
 
-function OutputPatch() {
+export function OutputPatch() {
   const s = useConsole();
   const engine = useEngine();
   const native = useNative();
@@ -192,7 +193,7 @@ function OutputPatch() {
       }
       return { io: { ...st.io, outputPatch: patch } };
     });
-  const sources = [{ id: 'monitor', name: 'Monitor (CR)' }, { id: 'main', name: 'Main LR (PGM)' }, ...s.buses.map((b) => ({ id: b.id, name: b.name }))];
+  const sources = [{ id: 'monitor', name: 'Monitor (CR)' }, { id: 'main', name: 'Main LR (PGM)' }, ...createdBuses(s).map((b) => ({ id: b.id, name: b.name }))];
   return (
     <div className="panel">
       <div className="panel-title">Output patch</div>
@@ -217,7 +218,7 @@ function OutputPatch() {
   );
 }
 
-function TalkbackPanel() {
+export function TalkbackPanel() {
   const s = useConsole();
   const { devices, channelsFor, channelName } = useEngineInputs();
   const tb = s.talkback;
@@ -244,7 +245,7 @@ function TalkbackPanel() {
         <Toggle on={tb.active} onClick={() => up({ active: !tb.active })}>TALK</Toggle>
       </div>
       <div className="chips">
-        {s.buses.map((b) => (
+        {routableBuses(s).map((b) => (
           <button
             key={b.id}
             className={'chip' + (tb.destinations.includes(b.id) ? ' on' : '')}
@@ -259,7 +260,7 @@ function TalkbackPanel() {
   );
 }
 
-function MidiPanel() {
+export function MidiPanel() {
   const s = useConsole();
   const [, force] = useState(0);
   useEffect(() => onMidiChange(() => force((x) => x + 1)), []);
@@ -284,7 +285,7 @@ function MidiPanel() {
               {s.channels.map((c) => (
                 <option key={c.id} value={`channel:${c.id}`}>{c.name}</option>
               ))}
-              {s.buses.map((b) => (
+              {createdBuses(s).map((b) => (
                 <option key={b.id} value={`bus:${b.id}`}>{b.name}</option>
               ))}
               {s.dcas.map((d) => (

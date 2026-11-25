@@ -2,6 +2,7 @@
 // Channels have no built-in processing: filtering, EQ and dynamics come from plugins in the rack.
 
 import { useState } from 'react';
+import { createdBuses, routableBuses } from '../core/buses';
 import { useConsole } from '../core/store';
 import { linkInfo } from '../core/links';
 import type { Channel, Send } from '../core/types';
@@ -49,14 +50,14 @@ function SendsTab({ ch }: { ch: Channel }) {
       <div className="row">
         <select value="" onChange={(e) => e.target.value && up({ sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false, tap: 'post' } } })}>
           <option value="">+ Add send to…</option>
-          {s.buses
+          {routableBuses(s)
             .filter((b) => b.type !== 'mixminus' && !(ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)) && !(ch.routes ?? []).includes(b.id))
             .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
         </select>
         <span className="hint">Sends (aux, FX, feeds) have their own level and tap point: INPUT, PRE (after the rack or after a chosen plugin), POST or PSP. To make a channel part of a group, use ASSIGN.</span>
       </div>
       <div className="sends sends-big">
-        {s.buses.filter((b) => b.type === 'mixminus' || ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)).map((b) => {
+        {createdBuses(s).filter((b) => b.type === 'mixminus' || ch.sends[b.id]?.on || isFinite(ch.sends[b.id]?.levelDb ?? -Infinity)).map((b) => {
           if (b.type === 'mixminus') {
             const included = ch.mainAssign && b.mixMinusExclude !== ch.id;
             return (
@@ -108,7 +109,7 @@ function AssignTab({ ch }: { ch: Channel }) {
           title="Assign this channel's output to a bus (group)"
         >
           <option value="">+ bus…</option>
-          {s.buses
+          {routableBuses(s)
             .filter((b) => b.type !== 'mixminus' && !(ch.routes ?? []).includes(b.id))
             .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
         </select>

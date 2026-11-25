@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { routableBuses } from '../core/buses';
 import { defaultParams, getPlugin, listPlugins } from '../core/plugins';
 import { newId, PALETTE } from '../core/defaults';
 import { useConsole } from '../core/store';
@@ -298,7 +299,7 @@ function BusDetail({ id }: { id: string }) {
           <select value={b.output ?? 'none'} onChange={(e) => up({ output: e.target.value })} title="Where this bus goes after its fader">
             <option value="main">Main LR</option>
             <option value="none">Nowhere (physical outputs only)</option>
-            {s.buses
+            {routableBuses(s)
               .filter((x) => x.id !== b.id && x.type !== 'mixminus' && !createsLoop(s, b.id, x.id))
               .map((x) => <option key={x.id} value={x.id}>→ {x.id.slice(3)} · {x.name}</option>)}
           </select>

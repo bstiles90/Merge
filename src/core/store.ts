@@ -1,3 +1,4 @@
+import { withCreatedBuses } from './buses';
 import { create, type StateCreator } from 'zustand';
 import { syncLinks } from './links';
 import { runActions } from './actions';
@@ -102,10 +103,11 @@ export function parseShow(text: string): ConsoleState {
   const saved: any[] = Array.isArray(show.buses) ? show.buses : [];
   const buses = d.buses.map((def) => {
     const b = saved.find((x) => x?.id === def.id);
-    return b ? { ...def, ...b, output: b.output ?? 'none' } : def;
+    // `created` comes only from the saved show (older shows have none: worked out below)
+    return b ? { ...def, ...b, output: b.output ?? 'none', created: b.created } : { ...def, created: saved.length ? false : def.created };
   });
   const channels = Array.isArray(show.channels) ? show.channels.map((c: any) => ({ ...c, routes: c.routes ?? [] })) : d.channels;
-  return { ...d, ...show, buses, channels, main: { ...d.main, ...show.main }, keyStates: {} };
+  return withCreatedBuses({ ...d, ...show, buses, channels, main: { ...d.main, ...show.main }, keyStates: {} });
 }
 
 const AUTOSAVE_KEY = 'merge.autosave.v1';

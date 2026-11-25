@@ -94,9 +94,9 @@ export function defaultLayers(): Layer[] {
     { id: 'L1', name: 'Show', color: PALETTE[6], slots: pad([ch(1), ch(2), ch(3), ch(4), null, ch(5), ch(6), ch(7), null, dca(1), dca(2), dca(3), null, bus(7), bus(1), { kind: 'main' }]) },
     { id: 'L2', name: 'Inputs 1-16', color: PALETTE[8], slots: pad(range(1, 16).map(ch)) },
     { id: 'L3', name: 'Inputs 17-32', color: PALETTE[8], slots: pad(range(17, 32).map(ch)) },
-    { id: 'L4', name: 'Buses', color: PALETTE[5], slots: pad([...range(1, 8).map(bus), null, null, null, null, null, null, null, { kind: 'main' }]) },
+    // new buses are added to this page as they're created
+    { id: 'L4', name: 'Buses', color: PALETTE[5], slots: pad([bus(1), bus(7), bus(8), null, null, null, null, null, null, null, null, null, null, null, null, { kind: 'main' }]) },
     { id: 'L5', name: 'DCAs', color: PALETTE[7], slots: pad([...range(1, 8).map(dca), null, null, null, null, null, null, null, { kind: 'main' }]) },
-    { id: 'L6', name: 'Buses 9-24', color: PALETTE[5], slots: pad(range(9, 24).map(bus)) },
   ];
 }
 
@@ -180,6 +180,10 @@ export function defaultState(): ConsoleState {
   buses[6].mixMinusExclude = 'ch4';
   buses[6].color = PALETTE[4];
   buses[7].name = 'Stage';
+  // the demo's buses: Host IEM, Remote N-1 and Stage exist; the other 61 slots are free for New bus
+  buses.forEach((b, i) => (b.created = i === 0 || i === 6 || i === 7));
+  buses[0].role = 'aux';
+  buses[7].role = 'aux';
   // Host IEM: hosts + remote, pre-fader
   for (const n of [1, 2, 4]) channels[n - 1].sends['bus1'] = { on: true, levelDb: -6, pre: true };
 

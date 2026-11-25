@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createdBuses } from '../core/buses';
 import { anySolo } from '../core/mix';
 import { useConsole } from '../core/store';
 import { getEngine } from '../audio/engine';
@@ -109,7 +110,7 @@ function Monitor() {
         <div className="col">
           <select value={s.monitor.source} onChange={(e) => s.update((st) => ({ monitor: { ...st.monitor, source: e.target.value } }))}>
             <option value="main">Main LR</option>
-            {s.buses.map((b) => (
+            {createdBuses(s).map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>

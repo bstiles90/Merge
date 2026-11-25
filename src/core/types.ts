@@ -93,7 +93,13 @@ export interface Bus {
   recallSafe: boolean;
   /** where the bus goes after its fader: Main LR, another bus, or nowhere (physical outputs only) */
   output?: 'main' | 'none' | BusId;
+  /** only created buses appear in routing / sends / outputs (64 slots are available) */
+  created?: boolean;
+  /** what the bus is for (label + defaults when it's created): group, aux / IEM, FX return, matrix / feed */
+  role?: BusRole;
 }
+
+export type BusRole = 'group' | 'aux' | 'fx' | 'matrix';
 
 export interface Main {
   faderDb: number;

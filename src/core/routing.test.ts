@@ -62,3 +62,32 @@ describe('routing', () => {
     expect(s.channels[0].routes).toEqual([]);
   });
 });
+
+describe('created buses', () => {
+  it('demo show: only Host IEM, Remote N-1 and Stage exist', () => {
+    const s = defaultState();
+    expect(s.buses.filter((b) => b.created).map((b) => b.name)).toEqual(['Host IEM', 'Remote N-1', 'Stage']);
+  });
+  it('older shows: named or used buses are created, unused placeholders are not; empty "Buses 9-24" page goes', () => {
+    const s = defaultState();
+    const old = { ...s, buses: s.buses.map(({ created: _c, role: _r, ...b }) => b), layers: [...s.layers, { id: 'L6', name: 'Buses 9-24', slots: Array.from({ length: 16 }, (_, i) => ({ kind: 'bus' as const, id: `bus${9 + i}` })) }] };
+    const back = parseShow(serializeShow(old as ConsoleState));
+    expect(back.buses.find((b) => b.id === 'bus1')!.created).toBe(true);
+    expect(back.buses.find((b) => b.id === 'bus2')!.created).toBe(false);
+    expect(back.layers.some((l) => l.name === 'Buses 9-24')).toBe(false);
+  });
+  it('New bus takes the next free slot, lands on the Buses page; delete lets go of everything', async () => {
+    const { createBus, deleteBus } = await import('./buses');
+    let s = defaultState();
+    const made = createBus(s, 'group', 'Drums');
+    s = { ...s, ...made.patch };
+    expect(made.id).toBe('bus2');
+    expect(s.buses[1]).toMatchObject({ created: true, name: 'Drums', output: 'main', role: 'group' });
+    expect(s.layers.find((l) => l.name === 'Buses')!.slots.some((r) => r?.kind === 'bus' && r.id === 'bus2')).toBe(true);
+    s = { ...s, channels: s.channels.map((c) => (c.id === 'ch1' ? { ...c, routes: ['bus2'], sends: { ...c.sends, bus2: { on: true, levelDb: 0, pre: false } } } : c)) };
+    s = { ...s, ...deleteBus(s, 'bus2') };
+    expect(s.buses[1].created).toBe(false);
+    expect(s.channels[0].routes).toEqual([]);
+    expect(s.channels[0].sends.bus2).toBeUndefined();
+  });
+});

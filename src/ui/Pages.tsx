@@ -2,6 +2,7 @@
 // faders, like the layer keys on a dLive / LV1 / M32, plus on-surface page editing.
 
 import { createContext, useContext, useState } from 'react';
+import { createdBuses } from '../core/buses';
 import { LAYER_SLOTS, newId, PALETTE } from '../core/defaults';
 import { setLayout, toggleRack, useUi, type LayoutPref } from './uiState';
 import { addToPage, deletePage, focusedLayerId, moveSlot } from '../core/layers';
@@ -33,7 +34,7 @@ export function StripRefSelect({ value, onChange, className }: { value: StripRef
         ))}
       </optgroup>
       <optgroup label="Buses">
-        {s.buses.map((b) => (
+        {createdBuses(s).map((b) => (
           <option key={b.id} value={`bus:${b.id}`}>
             {b.name}
           </option>

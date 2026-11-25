@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createdBuses } from '../core/buses';
 import { ACTIONS, describeAction, keyIsOn, type ArgSpec } from '../core/actions';
 import { useConsole } from '../core/store';
 import type { ActionCall, ConsoleState, UserKey } from '../core/types';
@@ -56,7 +57,7 @@ function ArgInput({ spec, value, onChange, s }: { spec: ArgSpec; value: any; onC
     case 'channel':
       return opts(s.channels);
     case 'bus':
-      return opts(s.buses);
+      return opts(createdBuses(s));
     case 'dca':
       return opts(s.dcas);
     case 'muteGroup':

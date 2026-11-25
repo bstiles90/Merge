@@ -10,6 +10,7 @@ import { applyTapValue, sendTap, tapChoices, tapCode, tapValue } from '../core/s
 import { Fader, Knob, Meter, MeterScale, PeakReadout, Toggle } from './controls';
 import { setStripFader } from '../control/midi';
 import { createsLoop } from '../core/plan';
+import { createBus, createdBuses, isCreated, routableBuses } from '../core/buses';
 import { sendNative, useNative } from '../native/bridge';
 import { closeDrawer, openDrawer, toggleRack, useUi } from './uiState';
 
@@ -302,7 +303,7 @@ function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
             <option value="remove">Remove send</option>
           </optgroup>
           <optgroup label="Change to bus">
-            {s.buses
+            {routableBuses(s)
               .filter((x) => x.type !== 'mixminus' && x.id !== b.id && !sendUsed(ch.sends[x.id]))
               .map((x) => <option key={x.id} value={`to:${x.id}`}>{x.id.slice(3)} · {x.name}</option>)}
           </optgroup>
@@ -316,8 +317,8 @@ function SendRow({ ch, b }: { ch: Channel; b: Bus }) {
 function SendsSection({ ch }: { ch?: Channel }) {
   const s = useConsole();
   if (!ch) return <div className="sec sec-sends" />;
-  const used = s.buses.filter((b) => b.type !== 'mixminus' && sendUsed(ch.sends[b.id]));
-  const mm = s.buses.filter((b, i) => b.type === 'mixminus' && i < 8);
+  const used = routableBuses(s).filter((b) => sendUsed(ch.sends[b.id]));
+  const mm = createdBuses(s).filter((b) => b.type === 'mixminus');
   return (
     <div className="sec sec-sends">
       {used.map((b) => <SendRow key={b.id} ch={ch} b={b} />)}
@@ -330,10 +331,25 @@ function SendsSection({ ch }: { ch?: Channel }) {
         <span className="sr-name">+ send</span>
         <select
           value=""
-          onChange={(e) => e.target.value && s.updateChannel(ch.id, { sends: { ...ch.sends, [e.target.value]: { on: true, levelDb: 0, pre: false, tap: 'post' } } })}
+          onChange={(e) => {
+            let id = e.target.value;
+            if (!id) return;
+            if (id === 'new') {
+              // a new aux / IEM bus, fed by this send (name it in the bus panel)
+              const st = useConsole.getState();
+              const made = createBus(st, 'aux');
+              if (!made.id) return;
+              st.update(() => made.patch);
+              id = made.id;
+            }
+            const st = useConsole.getState();
+            const c = st.channels.find((x) => x.id === ch.id)!;
+            st.updateChannel(ch.id, { sends: { ...c.sends, [id]: { on: true, levelDb: 0, pre: false, tap: 'post' } } });
+          }}
         >
           <option value="" disabled>Send to…</option>
-          {s.buses
+          <option value="new">+ New bus (aux / IEM)…</option>
+          {routableBuses(s)
             .filter((b) => b.type !== 'mixminus' && !sendUsed(ch.sends[b.id]))
             .map((b) => <option key={b.id} value={b.id}>{b.id.slice(3)} · {b.name}</option>)}
         </select>
@@ -349,12 +365,21 @@ function ChannelOutput({ ch }: { ch: Channel }) {
   const names = [...(ch.mainAssign ? ['Main LR'] : []), ...routes.map((id) => s.buses.find((b) => b.id === id)?.name ?? id)];
   const label = names.length === 0 ? 'No output' : names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
   const choose = (v: string) => {
+    if (v === 'new') {
+      // a new group bus with this channel assigned (and Main LR off)
+      const st = useConsole.getState();
+      const made = createBus(st, 'group');
+      if (!made.id) return;
+      st.update(() => made.patch);
+      st.updateChannel(ch.id, { mainAssign: false, routes: [...routes, made.id] });
+      return;
+    }
     if (v === 'main') s.updateChannel(ch.id, { mainAssign: !ch.mainAssign });
     else if (v === 'only-main') s.updateChannel(ch.id, { mainAssign: true, routes: [] });
     else if (v.startsWith('only:')) s.updateChannel(ch.id, { mainAssign: false, routes: [v.slice(5)] });
     else s.updateChannel(ch.id, { routes: routes.includes(v) ? routes.filter((x) => x !== v) : [...routes, v] });
   };
-  const buses = s.buses.filter((b) => b.type !== 'mixminus');
+  const buses = routableBuses(s);
   return (
     <div className="sec sec-out">
       <div className={'out-pill pickable' + (names.length === 0 ? ' none' : '')} title={`Output: ${names.join(', ') || 'none'}. Click to change`} onClick={stop}>
@@ -365,6 +390,7 @@ function ChannelOutput({ ch }: { ch: Channel }) {
           <optgroup label="Buses">
             {buses.map((b) => <option key={b.id} value={b.id}>{routes.includes(b.id) ? '✓ ' : '    '}{b.id.slice(3)} · {b.name}</option>)}
           </optgroup>
+          <option value="new">+ New group bus (this channel only)…</option>
           <optgroup label="Only this output">
             <option value="only-main">Main LR only</option>
             {buses.map((b) => <option key={b.id} value={`only:${b.id}`}>{b.name} only</option>)}
@@ -389,7 +415,7 @@ function BusOutput({ b }: { b: Bus }) {
           <option value="main">Main LR</option>
           <option value="none">Outputs only (patch on I/O)</option>
           <optgroup label="Another bus">
-            {s.buses
+            {routableBuses(s)
               .filter((x) => x.id !== b.id && x.type !== 'mixminus' && !createsLoop(s, b.id, x.id))
               .map((x) => <option key={x.id} value={x.id}>{x.id.slice(3)} · {x.name}</option>)}
           </optgroup>
@@ -479,6 +505,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
   } else if (refr.kind === 'bus') {
     const b = s.buses.find((x) => x.id === refr.id);
     if (!b) return null;
+    if (!isCreated(b)) return <div className="strip empty" title="This bus hasn't been created (New bus in I/O)"><div className="strip-num">{index + 1}</div></div>;
     const mr = busMuteReason(s, b);
     cls += ' bus';
     head = (
