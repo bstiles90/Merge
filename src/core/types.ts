@@ -268,4 +268,6 @@ export interface ConsoleState {
   loudnessTarget: number;
   /** delivery spec for the program true peak (dBTP); the TP meter warns above it */
   truePeakCeiling: number;
+  /** meters turn from green to yellow here (dBFS): -10 like Waves LV1, -18 like dLive / Wing / M32 / CL */
+  meterYellowDb?: number;
 }

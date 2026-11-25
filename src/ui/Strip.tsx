@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { busMuteReason, channelMuteReason, formatDb } from '../core/mix';
-import { getPlugin } from '../core/plugins';
+import { defaultParams, getPlugin, type PluginDescriptor } from '../core/plugins';
+import { newId } from '../core/defaults';
+import { PluginPicker } from './PluginPicker';
 import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, Send, StripRef } from '../core/types';
@@ -32,7 +34,7 @@ function useHeight<T extends HTMLElement>() {
 }
 
 const isControl = (t: EventTarget | null) =>
-  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader, .knob, .rack-slot, .send-row, .out-pill');
+  !!(t as HTMLElement | null)?.closest?.('button, input, select, .fader, .knob, .rack-slot, .send-row, .out-pill, .plugin-picker');
 
 // ------------------------------------------------------------------ strip sections
 function sourceLabel(ch: Channel) {
@@ -85,23 +87,30 @@ function InputSection({ ch }: { ch: Channel }) {
           </optgroup>
         </select>
       </div>
-      <Knob size={20} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
+      <Knob size={24} value={ch.gainDb} min={-24} max={48} defaultValue={0} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)}`} onChange={(gainDb) => s.updateChannel(ch.id, { gainDb })} />
     </div>
   );
 }
 
-/** Rack slots: click a plugin to open (or close) its own floating window. */
-function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?: () => void }) {
+/** Rack slots: click a plugin to open (or close) its own floating window;
+ *  click the next empty slot to pick a plugin for it. */
+function RackSection({ inserts, onSelect, onAdd }: { inserts?: InsertSlot[]; onSelect?: () => void; onAdd?: (p: PluginDescriptor) => void }) {
   const nativeOn = useNative((st) => st.status === 'connected');
   const native = useNative((st) => st.inserts);
-  const click = (ins?: InsertSlot) => {
-    if (ins && nativeOn && !ins.pluginId.startsWith('builtin.')) {
+  const [picker, setPicker] = useState<DOMRect | null>(null);
+  const click = (e: React.MouseEvent, ins?: InsertSlot) => {
+    if (!ins) {
+      if (onAdd) setPicker((e.currentTarget as HTMLElement).getBoundingClientRect());
+      return;
+    }
+    if (nativeOn && !ins.pluginId.startsWith('builtin.')) {
       sendNative({ type: 'insert.editor', slotId: ins.id, open: !native[ins.id]?.editorOpen });
       return;
     }
-    onSelect?.(); // empty slot or browser effect: its settings are in the drawer's RACK tab
+    onSelect?.(); // browser effect: its settings are in the drawer's RACK tab
   };
   const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
+  const nextFree = inserts ? inserts.length : -1;
   return (
     <div className="sec sec-rack">
       {inserts &&
@@ -109,23 +118,39 @@ function RackSection({ inserts, onSelect }: { inserts?: InsertSlot[]; onSelect?:
           const name = ins ? getPlugin(ins.pluginId)?.name ?? ins.pluginName ?? 'Plugin' : '';
           const n = ins ? native[ins.id] : undefined;
           const isWin = !!ins && nativeOn && !ins.pluginId.startsWith('builtin.');
+          const addable = !ins && i === nextFree && !!onAdd;
           return (
             <div
               key={i}
-              className={'rack-slot' + (ins ? ' used' : '') + (ins?.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}
+              className={'rack-slot' + (ins ? ' used' : '') + (addable ? ' add' : '') + (ins?.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}
               title={
                 ins
                   ? `${name}${ins.bypass ? ' (bypassed)' : ''}${n?.error ? ` — ${n.error}` : ''} — ${isWin ? (n?.editorOpen ? 'click to close its window' : 'click to open its window') : 'click for settings'}`
-                  : 'Empty insert — click, then add in the RACK tab'
+                  : addable ? 'Click to add a plugin' : ''
               }
-              onClick={() => click(ins)}
+              onClick={(e) => click(e, ins)}
             >
-              {ins ? name : '·'}
+              {ins ? name : addable ? '+' : ''}
             </div>
           );
         })}
+      {picker && onAdd && (
+        <PluginPicker
+          anchor={picker}
+          onClose={() => setPicker(null)}
+          onPick={(p) => {
+            setPicker(null);
+            onAdd(p);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+/** Add a plugin to the end of a rack (and open its window once it has loaded). */
+function newInsert(p: PluginDescriptor): InsertSlot {
+  return { id: newId('ins'), pluginId: p.id, pluginName: p.name, bypass: false, params: defaultParams(p) };
 }
 
 const sendUsed = (snd?: { on: boolean; levelDb: number }) => !!snd && (snd.on || isFinite(snd.levelDb));
@@ -331,7 +356,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <InputSection ch={ch} />
-        <RackSection inserts={ch.inserts} onSelect={select} />
+        <RackSection inserts={ch.inserts} onSelect={select} onAdd={(p) => s.updateChannel(ch.id, { inserts: [...ch.inserts, newInsert(p)] })} />
         <SendsSection ch={ch} />
         <ChannelOutput ch={ch} />
         <div className="sec sec-pan">
@@ -380,7 +405,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
-        <RackSection inserts={b.inserts} onSelect={select} />
+        <RackSection inserts={b.inserts} onSelect={select} onAdd={(p) => s.updateBus(b.id, { inserts: [...b.inserts, newInsert(p)] })} />
         <SendsSection />
         <BusOutput b={b} />
         <div className="sec sec-pan" />
@@ -444,7 +469,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">PGM</div></div>
-        <RackSection inserts={s.main.inserts} onSelect={select} />
+        <RackSection inserts={s.main.inserts} onSelect={select} onAdd={(p) => s.updateMain({ inserts: [...s.main.inserts, newInsert(p)] })} />
         <SendsSection />
         <div className="sec sec-out"><div className="out-pill" title="Main LR goes to the physical outputs patched on the I/O page">Outputs</div></div>
         <div className="sec sec-pan" />

@@ -555,3 +555,29 @@ button.confirm { background: var(--mute); border-color: var(--mute); color: #fff
 .sec-input { padding: 0 2px; gap: 1px; }
 .sec-src { font-size: 8px; padding: 2px 2px; max-width: none; flex: 1 1 auto; min-width: 0; text-overflow: clip; letter-spacing: -0.2px; }
 .sec-input .knob { flex: 0 0 auto; }
+/* input section: source label on top (full width), gain rotary underneath */
+.sec-input { height: 64px; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 2px; padding: 3px 3px 0; }
+.sec-src { flex: 0 0 auto; font-size: 9px; text-align: center; padding: 2px 2px; letter-spacing: 0; text-overflow: ellipsis; }
+.sec-input .knob { align-self: center; }
+.sec-input .knob-value { font-size: 8px; }
+/* ---------------- plugin picker pop-up */
+.plugin-picker { position: fixed; z-index: 100; width: 300px; max-height: min(560px, 80vh); display: flex; flex-direction: column; gap: 6px; padding: 8px; background: #16191d; border: 1px solid #3a4048; border-radius: 6px; box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6); }
+.pp-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
+.pp-search { width: 100%; }
+.pp-formats { display: flex; flex-wrap: wrap; gap: 3px; }
+.pp-formats .chip { padding: 1px 8px; font-size: 11px; }
+.pp-list { flex: 1; min-height: 60px; overflow-y: auto; display: flex; flex-direction: column; }
+.pp-vendor { position: sticky; top: 0; background: #16191d; font-size: 10px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: var(--dim); padding: 6px 4px 2px; }
+.pp-item { display: flex; justify-content: space-between; gap: 6px; width: 100%; text-align: left; background: transparent; border: none; border-radius: 3px; padding: 3px 6px; font-size: 12px; }
+.pp-item:hover { background: #2a2f36; }
+.pp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-fmt { flex: 0 0 auto; font-size: 9px; color: var(--dim); align-self: center; }
+.pp-empty { padding: 8px 4px; }
+.rack-slot.add:hover { background: #1b2a1f; color: #7fd18f; }
+/* drawer: same width as the right-hand column it slides over */
+.drawer { width: 312px; }
+.drawer .sends-big .send { grid-template-columns: 62px 1fr 34px 74px 20px; gap: 3px; }
+.drawer .tab-body, .drawer .section { padding-left: 8px; padding-right: 8px; }
+.drawer .tab-body .row { flex-wrap: wrap; }
+.drawer .tab-body .row > .hint { flex: 1 1 100%; }
+.drawer .chips { flex-wrap: wrap; }

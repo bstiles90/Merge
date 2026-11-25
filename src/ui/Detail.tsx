@@ -9,6 +9,7 @@ import { ChannelPanel } from './ChannelPanel';
 import { useEngineInputs } from './useEngine';
 import { sendNative, useNative } from '../native/bridge';
 import { usePluginsVersion } from './NativePanel';
+import { PluginPicker } from './PluginPicker';
 import { createLink, linkInfo, naturalPartner, removeLink, setLinkOption, type LinkOption } from '../core/links';
 
 const MAX_INSERTS = 8;
@@ -100,24 +101,11 @@ export function InsertControls({ ins, onParam }: { ins: InsertSlot; onParam: (id
 
 export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange: (i: InsertSlot[]) => void }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [picker, setPicker] = useState<DOMRect | null>(null);
   const version = usePluginsVersion();
   const nativeConnected = useNative((st) => st.status === 'connected');
   const errors = useNative((st) => st.inserts);
-  // grouped and sorted once per plugin-list change (thousands of plugins on a studio Mac)
-  const { plugins, grouped } = useMemo(() => {
-    const list = listPlugins().filter((p) => (nativeConnected ? p.native : !p.native));
-    const byGroup = new Map<string, typeof list>();
-    for (const p of list) {
-      const g = `${p.format === 'builtin' ? 'Built-in' : p.format.toUpperCase()} · ${p.category}`;
-      const arr = byGroup.get(g);
-      if (arr) arr.push(p);
-      else byGroup.set(g, [p]);
-    }
-    const key = (x: string) => x.toLowerCase();
-    const cmp = (a: string, b: string) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0);
-    const grouped = [...byGroup.entries()].sort((a, b) => cmp(a[0], b[0])).map(([g, arr]) => [g, arr.slice().sort((a, b) => cmp(a.name, b.name))] as const);
-    return { plugins: list, grouped };
-  }, [version, nativeConnected]);
+  const plugins = useMemo(() => listPlugins().filter((p) => (nativeConnected ? p.native : !p.native)), [version, nativeConnected]);
   return (
     <div className="section">
       <div className="section-title">
@@ -159,28 +147,24 @@ export function Inserts({ inserts, onChange }: { inserts: InsertSlot[]; onChange
         );
       })}
       {inserts.length < MAX_INSERTS && (
-        <select
+        <button
           className="add-insert"
-          value=""
-          onChange={(e) => {
-            const desc = getPlugin(e.target.value);
-            if (!desc) return;
+          onClick={(e) => setPicker((e.currentTarget as HTMLElement).getBoundingClientRect())}
+        >
+          {plugins.length || !nativeConnected ? '+ Add plugin…' : 'No plugins yet — scan in I/O'}
+        </button>
+      )}
+      {picker && (
+        <PluginPicker
+          anchor={picker}
+          onClose={() => setPicker(null)}
+          onPick={(desc) => {
+            setPicker(null);
             const slot: InsertSlot = { id: newId('ins'), pluginId: desc.id, pluginName: desc.name, bypass: false, params: defaultParams(desc) };
             onChange([...inserts, slot]);
             setOpen(slot.id);
           }}
-        >
-          <option value="">{plugins.length ? '+ Add plugin…' : nativeConnected ? 'No plugins yet — scan in I/O' : '+ Add plugin…'}</option>
-          {grouped.map(([g, arr]) => (
-            <optgroup key={g} label={g}>
-              {arr.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.vendor})
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        />
       )}
     </div>
   );

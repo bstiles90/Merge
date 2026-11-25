@@ -223,5 +223,6 @@ export function defaultState(): ConsoleState {
     transport: { playing: false, recording: false, position: 0, recordProgram: true },
     loudnessTarget: -11,
     truePeakCeiling: -1,
+    meterYellowDb: -10,
   };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { faderDbToPos, faderPosToDb, formatDb } from '../core/mix';
 import { registerMeter } from './meterLoop';
+import { useConsole } from '../core/store';
 
 // ------------------------------------------------------------------ Fader
 export function Fader({
@@ -80,8 +81,12 @@ function dbToY(db: number, h: number) {
   return h - Math.pow(t, 1.6) * h;
 }
 
+/** Meter colour zones, console style: green, yellow from the gain-setting point, red near clip. */
+export const METER_RED_DB = -3;
+
 export function Meter({ id, height = 220, stereo = false, showGr = false }: { id: string; height?: number; stereo?: boolean; showGr?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const yellowDb = useConsole((s) => s.meterYellowDb ?? -10);
   useEffect(() => {
     const cv = ref.current!;
     const dpr = window.devicePixelRatio || 1;
@@ -93,11 +98,15 @@ export function Meter({ id, height = 220, stereo = false, showGr = false }: { id
     const bars = stereo ? 2 : 1;
     const grW = showGr ? 4 : 0;
     const barW = (w - grW - (bars - 1) - (showGr ? 1 : 0)) / bars;
+    // hard colour zones (like a console), so "just touching yellow" is easy to see when setting gain
+    const pos = (db: number) => Math.max(0, Math.min(1, 1 - dbToY(db, height) / height));
     const grad = g.createLinearGradient(0, height, 0, 0);
-    grad.addColorStop(0, '#2f9e5a');
-    grad.addColorStop(dbToY(-18, height) > 0 ? 1 - dbToY(-18, height) / height : 0.7, '#3fbf6a');
-    grad.addColorStop(1 - dbToY(-9, height) / height, '#e6c84a');
-    grad.addColorStop(1 - dbToY(-3, height) / height, '#ef8a3a');
+    const y0 = pos(yellowDb), r0 = pos(METER_RED_DB);
+    grad.addColorStop(0, '#2a8f50');
+    grad.addColorStop(Math.max(0, y0 - 0.001), '#46c46f');
+    grad.addColorStop(y0, '#f2cf3c');
+    grad.addColorStop(Math.max(y0, r0 - 0.001), '#f2cf3c');
+    grad.addColorStop(r0, '#e5484d');
     grad.addColorStop(1, '#e5484d');
     return registerMeter(id, (m) => {
       g.clearRect(0, 0, w, height);
@@ -131,7 +140,7 @@ export function Meter({ id, height = 220, stereo = false, showGr = false }: { id
         }
       }
     });
-  }, [id, height, stereo, showGr]);
+  }, [id, height, stereo, showGr, yellowDb]);
   return <canvas ref={ref} className="meter" style={{ height, width: stereo ? 14 : showGr ? 12 : 8 }} />;
 }
 

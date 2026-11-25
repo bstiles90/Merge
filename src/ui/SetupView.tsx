@@ -156,10 +156,31 @@ function KeyList() {
   );
 }
 
+function MeteringPanel() {
+  const s = useConsole();
+  const y = s.meterYellowDb ?? -10;
+  return (
+    <div className="panel">
+      <div className="panel-title">Metering</div>
+      <div className="row wrap">
+        <span>Meters turn yellow at</span>
+        <select value={y} onChange={(e) => s.update(() => ({ meterYellowDb: Number(e.target.value) }))}>
+          <option value={-10}>-10 dBFS (Waves LV1)</option>
+          <option value={-18}>-18 dBFS (dLive, Wing, M32, CL)</option>
+          <option value={-12}>-12 dBFS</option>
+          <option value={-20}>-20 dBFS (EBU-style)</option>
+        </select>
+      </div>
+      <p className="hint">Set each channel's gain so its meter just touches yellow on the loud parts. Red is the top 3 dB before clipping.</p>
+    </div>
+  );
+}
+
 export function SetupView() {
   return (
     <div className="page grid2">
       <div className="col">
+        <MeteringPanel />
         <LayerEditor />
         <KeyList />
       </div>
