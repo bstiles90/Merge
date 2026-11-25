@@ -150,7 +150,7 @@ export function Knob({
   size = 34,
   defaultValue,
   step,
-  color = '#4aa3ff',
+  color = 'var(--accent)',
   valueColor,
 }: {
   value: number;
@@ -203,15 +203,15 @@ export function Knob({
         onPointerUp={() => (drag.current = null)}
         onDoubleClick={() => defaultValue !== undefined && onChange(defaultValue)}
       >
-        <path d={arc(a0, a1)} stroke="#2a2f35" strokeWidth={3} fill="none" />
+        <path d={arc(a0, a1)} style={{ stroke: 'var(--border-subtle)' }} strokeWidth={3} fill="none" />
         {Math.abs(ang - ca) > 0.5 && <path d={ang > ca ? arc(ca, ang) : arc(ang, ca)} stroke={color} strokeWidth={3} fill="none" />}
-        <circle cx={size / 2} cy={size / 2} r={r - 4} fill="#1d2126" />
+        <circle cx={size / 2} cy={size / 2} r={r - 4} style={{ fill: 'var(--surface-control)' }} />
         <line
           x1={size / 2}
           y1={size / 2}
           x2={size / 2 + (r - 5) * Math.sin((ang * Math.PI) / 180)}
           y2={size / 2 - (r - 5) * Math.cos((ang * Math.PI) / 180)}
-          stroke="#e8e8e8"
+          style={{ stroke: 'var(--text-primary)' }}
           strokeWidth={2}
           strokeLinecap="round"
         />

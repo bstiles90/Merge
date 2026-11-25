@@ -1,0 +1,101 @@
+/* Merge design tokens: the single source of colour, type, radius and spacing for every
+   workspace (Live, Studio, Record). Components use these variables, never raw values.
+   Direction: SSL Live industrial precision + Apple pro-app refinement. Matte charcoal and
+   graphite, restrained electric-blue selection, slightly desaturated channel colours. */
+
+:root {
+  color-scheme: dark;
+
+  /* ---- surfaces (darkest to lightest) */
+  --surface-well: #0b0d0f;       /* insets: meters, fader slots, rack slots, readouts */
+  --surface-app: #101214;        /* application background */
+  --surface-sunken: #16191c;     /* recessed panels, pop-up backgrounds */
+  --surface-strip: #1c1f23;      /* channel strips, panels */
+  --surface-raised: #23272c;     /* raised panels, headers inside panels */
+  --surface-control: #292d32;    /* buttons, selects, inputs */
+  --surface-control-hover: #32373d;
+  --surface-control-active: #3a4047;
+
+  /* ---- lines */
+  --border: #383e46;
+  --border-subtle: #2a2f35;
+  --border-strong: #4a515a;
+
+  /* ---- text */
+  --text-primary: #e1e6ea;
+  --text-secondary: #929ba5;
+  --text-tertiary: #5d6670;
+  --text-on-accent: #ffffff;
+  --text-on-light: #111316;
+
+  /* ---- accent (selection, focus, primary actions) */
+  --accent: #329cff;
+  --accent-hover: #4ba8ff;
+  --accent-muted: #1d4f80;       /* accent backgrounds that must not shout */
+  --accent-soft: rgba(50, 156, 255, 0.14);
+
+  /* ---- functional colours (slightly desaturated, console conventions) */
+  --mute: #d9474c;
+  --mute-soft: #4a1f22;
+  --solo: #f0b93a;
+  --ok: #3f9a56;
+  --ok-soft: #1d3a24;
+  --warn: #e3a33a;
+  --danger: #e5484d;
+  --plugin: #6c5cc7;             /* rack / plugin colour family */
+  --plugin-soft: #2a2350;
+  --mixminus: #12a594;
+  /* meter zones (also drawn by the canvas meters) */
+  --meter-green: #46c46f;
+  --meter-yellow: #f2cf3c;
+  --meter-red: #e5484d;
+  /* channel colour treatment: functional colours stay recognisable but less saturated */
+  --channel-saturation: 0.82;
+
+  /* ---- type */
+  --font-ui: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --fs-2xs: 8px;    /* strip micro labels */
+  --fs-xs: 9px;     /* strip labels, tags */
+  --fs-sm: 10.5px;  /* section titles, hints in strips */
+  --fs-md: 12px;    /* body */
+  --fs-lg: 13px;    /* panel headings, names */
+  --fs-xl: 15px;    /* readouts (timecode) */
+  --fw-regular: 450;
+  --fw-medium: 550;
+  --fw-semibold: 650;
+  --fw-bold: 750;
+  --tracking-caps: 0.08em; /* uppercase labels */
+
+  /* ---- shape and spacing */
+  --r-xs: 2px;   /* slots, meters */
+  --r-sm: 3px;   /* small buttons inside strips */
+  --r-md: 5px;   /* buttons, inputs, strips */
+  --r-lg: 8px;   /* panels, pop-ups */
+  --s-1: 2px;
+  --s-2: 4px;
+  --s-3: 6px;
+  --s-4: 8px;
+  --s-5: 12px;
+  --s-6: 16px;
+
+  /* ---- depth (subtle, matte) */
+  --shadow-control: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 1px rgba(0, 0, 0, 0.35);
+  --shadow-pressed: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-popup: 0 12px 36px rgba(0, 0, 0, 0.55);
+
+  /* ---- legacy names (older rules use these): mapped onto the tokens above */
+  --bg: var(--surface-app);
+  --panel: var(--surface-strip);
+  --panel2: var(--surface-control);
+  --line: var(--border-subtle);
+  --text: var(--text-primary);
+  --dim: var(--text-secondary);
+  --sel: var(--accent);
+}
+
+/* numbers that change (meters, gain, fader values, timecode) never jitter */
+.num, .strip-db, .knob-value, .tl-time, .lufs-val, .tp-val, .send-db, .rg-num, .page-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
