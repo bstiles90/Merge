@@ -247,6 +247,8 @@ export interface Clip {
   duration: number;
   bufferId: string;
   channels: number;
+  /** native engine: the audio file on disk (recordings, imported multitracks); the engine plays it */
+  file?: string;
 }
 
 export interface Marker {

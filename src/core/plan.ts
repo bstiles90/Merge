@@ -5,6 +5,7 @@
 
 import { anySolo, busMuteReason, computeBusGain, computeChannelGains, computeMainGain, computeMonitorGain, dbToGain } from './mix';
 import { isPreFader, sendTap } from './sends';
+import { playbackClips } from './multitrack';
 import type { Bus, ConsoleState, InsertSlot } from './types';
 
 export interface PlanInsert {
@@ -94,6 +95,7 @@ export function buildMixPlan(s: ConsoleState) {
         },
         ...(ch.stereo ? { stereo: true } : {}),
         playback: ch.inputMode === 'playback',
+        ...(ch.inputMode === 'playback' ? { clips: playbackClips(s, ch.id) } : {}),
         gain: r(dbToGain(ch.gainDb) * (ch.phaseInvert ? -1 : 1)),
         delayMs: ch.delayMs,
         inserts: inserts(ch.inserts),

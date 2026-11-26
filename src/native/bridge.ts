@@ -8,6 +8,10 @@ import { buildMixPlan } from '../core/plan';
 import { setNativePlugins, type PluginFormat } from '../core/plugins';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { importLogic } from '../core/logicImport';
+import { assignMultitrack, takesToClips, type AudioFileInfo } from '../core/multitrack';
+import { services } from '../core/services';
+import { addPeaks, getMedia } from '../audio/media';
+import { newId } from '../core/defaults';
 import { EMBEDDED, EMBEDDED_URL } from './embedded';
 import type { ConsoleState, InsertSlot } from '../core/types';
 import type { LoudnessReading, MeterReading } from '../audio/engine';
@@ -182,6 +186,44 @@ function syncPluginStates() {
   }
 }
 
+// ---- transport (native virtual soundcheck): the engine owns the playhead
+let enginePos = { pos: 0, run: false, at: 0 };
+const nativePlayhead = () => enginePos.pos + (enginePos.run ? (performance.now() - enginePos.at) / 1000 : 0);
+
+function sendTransport(st: ConsoleState, seek: number | null) {
+  const t = st.transport;
+  sendNative({
+    type: 'transport',
+    playing: t.playing,
+    recording: t.recording,
+    program: t.recordProgram,
+    seek,
+    show: st.showName,
+    armed: st.channels.filter((c) => c.recArm).map((c) => ({ id: c.id, name: c.name, stereo: !!c.stereo })),
+  });
+}
+
+function onTransportChange(st: ConsoleState, prev: ConsoleState) {
+  const t = st.transport, p = prev.transport;
+  if (t === p) return;
+  const starting = (t.playing || t.recording) && !(p.playing || p.recording);
+  const stopping = !(t.playing || t.recording) && (p.playing || p.recording);
+  // stopping copies the engine's playhead into position: that's not a jump
+  const jumped = t.position !== p.position && !stopping;
+  if (starting || jumped || t.playing !== p.playing || t.recording !== p.recording || t.recordProgram !== p.recordProgram)
+    sendTransport(st, starting || jumped ? t.position : null);
+}
+
+/** Waveform overviews for clips whose audio is on disk. */
+const peaksAsked = new Set<string>();
+function askPeaks(st: ConsoleState) {
+  for (const c of st.clips)
+    if (c.file && !getMedia(c.bufferId) && !peaksAsked.has(c.file)) {
+      peaksAsked.add(c.file);
+      sendNative({ type: 'media.peaks', file: c.file });
+    }
+}
+
 function schedulePlan() {
   if (planTimer) return;
   planTimer = setTimeout(() => {
@@ -260,6 +302,8 @@ function onMessage(m: any) {
       const f = (x: number | null) => (x === null || x === undefined ? -Infinity : x);
       loudness = { momentary: f(m.loud[0]), shortTerm: f(m.loud[1]), integrated: f(m.loud[2]), peak: [m.main[0], m.main[1]] };
       if (m.pdc !== useNative.getState().pdc) useNative.setState({ pdc: m.pdc });
+      if (typeof m.pos === 'number') enginePos = { pos: m.pos, run: !!m.run, at: performance.now() };
+      if (m.rec?.overrun && !useNative.getState().notice?.startsWith('Recording')) useNative.setState({ notice: 'Recording: the disk is not keeping up, some audio was dropped' });
       if (m.tp) {
         const tpDb = 20 * Math.log10(Math.max(m.tp[0], m.tp[1], 1e-9));
         truePeak = { tpDb, tpMaxDb: Math.max(truePeak.tpMaxDb, tpDb) };
@@ -321,6 +365,46 @@ function onMessage(m: any) {
     case 'show.saved':
       useNative.setState({ showPath: m.ok ? m.path : useNative.getState().showPath, notice: m.ok ? `Saved ${String(m.path).split(/[\\/]/).pop()}` : 'Save failed' });
       break;
+    case 'record.done': {
+      const st = useConsole.getState();
+      if (m.error) {
+        useNative.setState({ notice: m.error });
+        st.update((x) => ({ transport: { ...x.transport, recording: false } }));
+        break;
+      }
+      const clips = takesToClips(st, m.takes ?? []);
+      st.update((x) => ({ clips: [...x.clips, ...clips] }));
+      useNative.setState({ notice: `Recorded ${clips.length} track${clips.length === 1 ? '' : 's'} to ${m.folder}${m.overrun ? ' (the disk fell behind: some audio is missing)' : ''}` });
+      askPeaks(useConsole.getState());
+      break;
+    }
+    case 'media.imported': {
+      const st = useConsole.getState();
+      const files = (m.files ?? []) as AudioFileInfo[];
+      if (m.track === 'multitrack') {
+        // a multitrack: every file to its channel, all starting at 0 so they stay in sync
+        const { clips, unassigned } = assignMultitrack(st, files, 0);
+        st.update((x) => ({ clips: [...x.clips, ...clips] }));
+        useNative.setState({ notice: `Imported ${clips.length} track${clips.length === 1 ? '' : 's'}` + (unassigned.length ? `; no free channel for ${unassigned.map((f) => f.name).join(', ')}` : '') });
+      } else if (typeof m.track === 'string') {
+        let at = services.playhead();
+        const clips = files.map((f) => {
+          const c = { id: newId('clip'), trackId: m.track, name: f.name, start: at, offset: 0, duration: f.duration, bufferId: f.file, channels: f.channels, file: f.file };
+          at += f.duration;
+          return c;
+        });
+        st.update((x) => ({ clips: [...x.clips, ...clips] }));
+      }
+      askPeaks(useConsole.getState());
+      break;
+    }
+    case 'media.peaks': {
+      const bin = atob(m.peaks ?? '');
+      const peaks = new Float32Array(bin.length);
+      for (let i = 0; i < bin.length; i++) peaks[i] = bin.charCodeAt(i) / 255;
+      addPeaks(m.file, peaks, m.perSecond || 20);
+      break;
+    }
     case 'logic.opened':
       if (m.error) useNative.setState({ notice: m.error });
       else {
@@ -410,9 +494,24 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
       const offStates = useConsole.subscribe((st, prev) => {
         if (st.currentScene !== prev.currentScene || st.channels !== prev.channels || st.buses !== prev.buses || st.main !== prev.main) syncPluginStates();
       });
+      // the engine runs the transport: send it the console's, take the playhead back
+      const browserPlayhead = services.playhead;
+      services.playhead = nativePlayhead;
+      const cur = stateOnly(useConsole.getState());
+      enginePos = { pos: cur.transport.position, run: false, at: performance.now() };
+      sendTransport({ ...cur, transport: { ...cur.transport, playing: false, recording: false } }, cur.transport.position);
+      if (cur.transport.playing || cur.transport.recording) useConsole.getState().update((x) => ({ transport: { ...x.transport, playing: false, recording: false } }));
+      peaksAsked.clear();
+      askPeaks(cur);
+      const offTransport = useConsole.subscribe((st, prev) => {
+        onTransportChange(st, prev);
+        if (st.clips !== prev.clips) askPeaks(st);
+      });
       unsubscribe = () => {
         offPlan();
         offStates();
+        offTransport();
+        services.playhead = browserPlayhead;
       };
       resolve();
     };

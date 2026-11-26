@@ -291,6 +291,153 @@ void testRouting()
     check (std::isfinite (p[0]) && near (p[0], kToneCentre, 0.003), "a send back up the chain is dropped (no feedback)", juce::String (p[0], 4));
 }
 
+/** Write a test WAV: `seconds` of a constant `value` (easy to check after mixing). */
+juce::File writeTestWav (const juce::File& f, double sr, double seconds, float value, int channels = 1)
+{
+    f.deleteFile();
+    juce::WavAudioFormat wav;
+    std::unique_ptr<juce::OutputStream> os = std::make_unique<juce::FileOutputStream> (f);
+    std::unique_ptr<juce::AudioFormatWriter> w (wav.createWriterFor (os.get(), sr, (unsigned) channels, 24, {}, 0));
+    if (w) os.release();
+    juce::AudioBuffer<float> b (channels, (int) (sr * seconds));
+    for (int c = 0; c < channels; ++c) juce::FloatVectorOperations::fill (b.getWritePointer (c), value, b.getNumSamples());
+    if (w) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+    return f;
+}
+
+/** Main L output, sample by sample, for `blocks` blocks. */
+std::vector<float> renderMainL (Mixer& m, int blocks)
+{
+    juce::AudioBuffer<float> out (4, kBlock);
+    std::vector<float> l;
+    for (int b = 0; b < blocks; ++b)
+    {
+        m.process (nullptr, 0, out.getArrayOfWritePointers(), 4, kBlock);
+        l.insert (l.end(), out.getReadPointer (0), out.getReadPointer (0) + kBlock);
+    }
+    return l;
+}
+
+void testVirtualSoundcheck()
+{
+    std::cout << "Virtual soundcheck (native playback + recording)" << std::endl;
+    const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("merge-selftest-vsc");
+    dir.deleteRecursively();
+    dir.createDirectory();
+    Multitrack mt;
+    mt.setReadTimeout (2000); // offline rendering runs faster than the disk thread: let reads wait
+    Mixer m;
+    m.prepare (kSr, kBlock, 0, 4);
+
+    // a clip of DC 0.5 placed at 0.5 s on channel 1 (playback mode)
+    auto play = [&] (const juce::File& f, int channels, double start) {
+        auto plan = tonePlan (0);
+        auto* c1 = plan["channels"][0].getDynamicObject();
+        c1->setProperty ("playback", true);
+        c1->setProperty ("clips", juce::JSON::parse ("[{\"file\":" + juce::JSON::toString (f.getFullPathName()) + ",\"start\":" + juce::String (start)
+                                                     + ",\"offset\":0,\"duration\":1}]"));
+        c1->setProperty ("src", juce::JSON::parse (R"({"kind":"none"})"));
+        auto p = parsePlan (plan, kSr, nullptr, nullptr);
+        for (auto& clip : p->channels[0].clips) clip.src = mt.open (clip.file);
+        const bool opened = p->channels[0].clips.size() == 1 && p->channels[0].clips[0].src != nullptr;
+        m.setPlan (std::move (p));
+        m.setTransport (true, 0);
+        return opened;
+    };
+    auto firstSound = [] (const std::vector<float>& l) {
+        for (size_t i = 0; i < l.size(); ++i) if (std::abs (l[i]) > 1e-6f) return (int) i;
+        return -1;
+    };
+    const float centre = 0.5f * std::sqrt (0.5f); // DC 0.5 through an equal-power centre pan
+
+    check (play (writeTestWav (dir.getChildFile ("dc48.wav"), kSr, 1.0, 0.5f), 1, 0.5), "a playback clip's file opens");
+    auto l = renderMainL (m, (int) (2.0 * kSr / kBlock));
+    check (firstSound (l) == (int) (0.5 * kSr), "playback starts on the exact sample the clip is placed at", juce::String (firstSound (l)));
+    check (near (l[(size_t) (1.0 * kSr)], centre, 0.002), "playback level: the file through the channel at unity", juce::String (l[(size_t) (1.0 * kSr)], 4));
+    check (std::abs (l[(size_t) (1.6 * kSr)]) < 1e-3f, "the clip ends after its duration", juce::String (l[(size_t) (1.6 * kSr)], 5));
+    check (near ((double) m.transportPosition(), (double) l.size(), 0.5), "transport position counts the samples played");
+
+    m.setTransport (false);
+    renderMainL (m, 4);
+    m.setTransport (true, (juce::int64) (0.75 * kSr));
+    l = renderMainL (m, 40);
+    check (near (l[(size_t) (0.1 * kSr)], centre, 0.002), "seeking into a clip plays from there", juce::String (l[(size_t) (0.1 * kSr)], 4));
+
+    play (writeTestWav (dir.getChildFile ("dc24.wav"), 24000, 1.0, 0.5f), 1, 0.25);
+    l = renderMainL (m, (int) (1.5 * kSr / kBlock));
+    check (firstSound (l) == (int) (0.25 * kSr) && near (l[(size_t) (1.0 * kSr)], centre, 0.002) && std::abs (l[(size_t) (1.3 * kSr)]) < 1e-3f,
+           "a 24 kHz file plays at the right time and length on a 48 kHz engine", juce::String (firstSound (l)));
+
+    // recording: channel 1 plays a tone (source, before gain), recorded to its own file
+    {
+        auto plan = tonePlan (1);
+        plan["channels"][0].getDynamicObject()->setProperty ("gain", 0.5); // gain is after the recording point
+        m.setPlan (parsePlan (plan, kSr, nullptr, nullptr));
+        m.setTransport (false, 4800);
+        renderMainL (m, 2);
+        auto session = mt.createSession (dir.getChildFile ("take"), { { 0, "Tone", 1 } }, true, kSr, kNumChannels);
+        check (session != nullptr && session->channel[0] != nullptr && session->program != nullptr, "a recording session creates its files");
+        const auto file = session ? session->channelFile[0] : juce::String();
+        m.startRecording (std::move (session));
+        renderMainL (m, 10);                  // stopped: nothing is recorded yet
+        m.setTransport (true);
+        renderMainL (m, 100);
+        auto done = m.stopRecording();
+        const auto written = done ? done->samplesWritten.load() : 0;
+        const auto startAt = done ? done->startSample.load() : -1;
+        done.reset(); // closes the files
+        check (written == 100 * kBlock && startAt == 4800, "recording covers exactly the rolling blocks, from the transport position",
+               juce::String (written) + " samples from " + juce::String (startAt));
+        std::unique_ptr<juce::AudioFormatReader> r (mt.formats.createReaderFor (juce::File (file)));
+        bool same = r != nullptr && r->lengthInSamples == 100 * kBlock;
+        if (same)
+        {
+            juce::AudioBuffer<float> b (1, (int) r->lengthInSamples);
+            r->read (&b, 0, b.getNumSamples(), 0, true, false);
+            // the tone source before gain: 0.125 amplitude, 1 kHz (24-bit, so within 1e-5)
+            same = near (b.getMagnitude (0, 0, b.getNumSamples()), 0.125, 0.001);
+        }
+        check (same, "the recorded file holds the channel's source before gain", file);
+        std::unique_ptr<juce::AudioFormatReader> pg (mt.formats.createReaderFor (dir.getChildFile ("take").getChildFile ("PGM (Main LR).wav")));
+        check (pg != nullptr && pg->numChannels == 2 && pg->lengthInSamples == 100 * kBlock, "the programme is recorded in stereo alongside");
+    }
+    dir.deleteRecursively();
+}
+
+/** Integrated loudness keeps counting past an hour (a 75-minute programme, louder after 30 min). */
+void testLoudnessLong()
+{
+    std::cout << "Loudness over a long programme" << std::endl;
+    const double fs = 8000; // low rate: 75 minutes of audio runs in well under a second
+    LoudnessMeter lm;
+    lm.prepare (fs);
+    std::vector<float> l (800), r (800);
+    double phase = 0;
+    auto run = [&] (double minutes, float amp) {
+        const int blocks = (int) (minutes * 60 * fs / 800);
+        for (int b = 0; b < blocks; ++b)
+        {
+            for (int i = 0; i < 800; ++i)
+            {
+                phase += 1000.0 / fs;
+                l[(size_t) i] = r[(size_t) i] = amp * (float) std::sin (phase * juce::MathConstants<double>::twoPi);
+            }
+            lm.process (l.data(), r.data(), 800);
+        }
+    };
+    run (30, 0.1f);
+    const double a = lm.momentary.load();
+    run (45, 0.2f);
+    const double b = lm.momentary.load();
+    // both parts are within 10 LU of each other, so everything passes the gates
+    const double expected = 10 * std::log10 ((30 * std::pow (10.0, a / 10) + 45 * std::pow (10.0, b / 10)) / 75);
+    check (near (lm.integrated.load(), expected, 0.05), "integrated loudness still updates after 60 minutes",
+           juce::String (lm.integrated.load(), 2) + " vs " + juce::String (expected, 2) + " LUFS");
+    lm.reset();
+    run (1, 0.1f);
+    check (near (lm.integrated.load(), a, 0.05), "reset starts a new integration", juce::String (lm.integrated.load(), 2));
+}
+
 float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }
 
 void testTruePeak()
@@ -570,6 +717,8 @@ int runSelfTest (const juce::StringArray& args)
     testBigMessages();
     testMixer();
     testRouting();
+    testLoudnessLong();
+    testVirtualSoundcheck();
     testSendTaps();
     testStereoChannels();
     testTruePeak();

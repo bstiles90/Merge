@@ -13,6 +13,15 @@ constexpr int kNumBuses = 64; // every bus can be a group, an aux/FX send or a f
 constexpr int kMaxInserts = 8;
 
 class HostedInsert;
+struct PlaybackFile;
+
+/** A recorded / imported audio clip on a channel's playback track (times in seconds). */
+struct ClipRef
+{
+    juce::String file;
+    double start = 0, offset = 0, duration = 0;
+    std::shared_ptr<PlaybackFile> src; // opened by the engine on the message thread
+};
 
 /**
  * The compiled mix plan. The UI owns all console logic (mute groups, DCAs, solo,
@@ -36,6 +45,8 @@ struct ChannelPlan
     bool stereo = false;
     int inputChannelR = -1;
     bool playback = false;
+    /** playback mode: the clips on this channel's track (virtual soundcheck) */
+    std::vector<ClipRef> clips;
     float gain = 1.0f; // linear, includes polarity
     float delayMs = 0.0f;
     std::vector<InsertRef> inserts;
