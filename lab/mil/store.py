@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import math
 import json
 import os
 import shutil
@@ -45,6 +46,18 @@ def now() -> str:
 
 def new_id(prefix: str) -> str:
     return f"{prefix}-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:4]}"
+
+
+def finite(o):
+    """JSON-safe copy: NaN and +/-Infinity (e.g. the loudness of a silent stem) become null.
+    Browsers cannot parse the bare NaN/Infinity tokens Python's json module writes by default."""
+    if isinstance(o, float):
+        return o if math.isfinite(o) else None
+    if isinstance(o, dict):
+        return {k: finite(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [finite(v) for v in o]
+    return o
 
 
 def atomic_write_json(path: Path, data) -> None:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import re
 import zipfile
@@ -97,6 +98,8 @@ class _Sanitizer:
             return [self.obj(x) for x in o]
         if isinstance(o, str):
             return self.text(o)
+        if isinstance(o, float) and not math.isfinite(o):
+            return None  # NaN/Infinity would make the package's JSON unreadable for reviewers
         return o
 
 

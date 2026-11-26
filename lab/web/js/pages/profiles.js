@@ -170,8 +170,8 @@ async function detail(root, pid, app) {
     dynamics() {
       if (!hasSource) return noStems();
       return panel('Dynamics tendencies', [h('table', h('tr', h('th', 'Group'), h('th', 'Momentary loudness spread'), h('th', 'Crest factor'), h('th', '')),
-        Object.entries(profile.dynamics).map(([g, d]) => h('tr', h('td', groupName(g)), h('td.num', `${d.momentarySpread_LU.median.toFixed(1)} LU (±${(d.momentarySpread_LU.spread ?? 0).toFixed(1)})`),
-          h('td.num', `${d.crest_dB.median.toFixed(1)} dB`), h('td.small.dim', d.includesMastering ? 'includes mastering' : '')))),
+        Object.entries(profile.dynamics).map(([g, d]) => h('tr', h('td', groupName(g)), h('td.num', d.momentarySpread_LU?.median == null ? '–' : `${d.momentarySpread_LU.median.toFixed(1)} LU (±${(d.momentarySpread_LU.spread ?? 0).toFixed(1)})`),
+          h('td.num', d.crest_dB?.median == null ? '–' : `${d.crest_dB.median.toFixed(1)} dB`), h('td.small.dim', d.includesMastering ? 'includes mastering' : '')))),
         h('h3', 'Programme (mastered references)'),
         h('div.kv', h('span', 'Integrated loudness'), h('span', `${profile.program?.integrated_LUFS} LUFS`), h('span', 'Loudness range'), h('span', `${profile.program.LRA_LU} LU`),
           h('span', 'True peak'), h('span', `${profile.program.truePeak_dBTP} dBTP`), h('span', 'Spectral tilt'), h('span', `${profile.program.tilt_dB_per_oct} dB/oct`)),

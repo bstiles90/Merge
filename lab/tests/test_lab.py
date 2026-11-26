@@ -163,6 +163,7 @@ def server(env):
     st.open(ws.root)
     srv = start_server(st, 0)
     base = f"http://127.0.0.1:{srv.server_address[1]}"
+    st.test_port = srv.server_address[1]
 
     def call(method, path, body=None, token=True):
         req = urllib.request.Request(base + path, method=method, data=json.dumps(body).encode() if body is not None else None,
@@ -352,3 +353,37 @@ def test_reconstruction_check_is_bounded_and_reports_progress(tmp_path):
     excerpts = [c for c in calls if c[1].startswith("excerpt")]
     assert len(excerpts) == 6 and all(0.9 <= f < 1.0 for f, _ in excerpts)
     assert [f for f, _ in excerpts] == sorted(f for f, _ in excerpts)
+
+
+# ------------------------------------------------------------------ silent stems must not break the window (strict JSON)
+def test_silent_stem_results_are_strict_json(server, tmp_path):
+    st, call, files = server
+    silent = tmp_path / "Keys silent.wav"
+    sf.write(silent, np.zeros((48000 * 12, 2)), 48000, subtype="PCM_24")
+    groups = ("vocals", "drums", "bass", "guitars")
+    ref = call("POST", "/api/library/references/add", {"item": {"title": "R"}, "stems": [{"path": str(files[g]), "group": g} for g in groups]
+                                                       + [{"path": str(files["keys"]), "group": "keys"}]})["item"]
+    p = call("POST", "/api/profiles/create", {"name": "p", "reference_ids": [ref["id"]]})
+    assert _wait(st, p["job"]).status == "done"
+    mix = call("POST", "/api/library/mixes/add", {"item": {"name": "m"}, "stems": [{"path": str(files[g]), "group": g} for g in groups]
+                                                  + [{"path": str(silent), "group": "keys"}]})["item"]
+    e = call("POST", "/api/experiments/music", {"name": "silent keys", "inputs": {"mix_id": mix["id"], "profile_id": p["profile_id"]}, "config": {"baseline": "all"}})
+    assert _wait(st, e["job"]).status == "done"
+    stored = (st.ws.exp_dir(e["exp_id"]) / "results" / "analysis.json").read_text()
+    assert "NaN" in stored or "Infinity" in stored, "the fixture must exercise non-finite values"
+
+    def strict(path):
+        r = urllib.request.Request(f"http://127.0.0.1:{st.test_port}{path}", headers={"X-Lab-Token": st.token})
+        raw = urllib.request.urlopen(r, timeout=60).read().decode()
+        return json.loads(raw, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(f"non-standard JSON token {c} in {path}")))
+
+    exp = strict(f"/api/experiments/{e['exp_id']}")
+    assert exp["experiment"]["status"] == "complete" and exp["analysis"]["groups"]["keys"]["integrated_LUFS"] is None
+    strict(f"/api/experiments/{e['exp_id']}/series")
+    strict(f"/api/profiles/{p['profile_id']}")
+    out = call("POST", "/api/export/build", {"scope": {"experiments": [e["exp_id"]]}, "options": {}})
+    with zipfile.ZipFile(out["path"]) as z:
+        for n in z.namelist():
+            if n.endswith(".json"):
+                json.loads(z.read(n), parse_constant=lambda c: (_ for _ in ()).throw(ValueError(f"{c} in {n}")))
+

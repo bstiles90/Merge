@@ -26,7 +26,7 @@ from . import export as EXP
 from . import feedback as FB
 from .jobs import JobManager
 from .paths import build_info, default_workspace_parent, ensure_backend_importable, web_root
-from .store import AppSettings, Workspace, atomic_write_json, new_id, now, read_json
+from .store import AppSettings, Workspace, atomic_write_json, finite, new_id, now, read_json
 
 ensure_backend_importable()
 
@@ -893,7 +893,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _json(self, code, obj):
-        self._send(code, json.dumps(obj, default=str).encode())
+        # strict JSON: analysis results can hold NaN/Infinity (silent stems), which the window cannot parse
+        self._send(code, json.dumps(finite(obj), default=str, allow_nan=False).encode())
 
     def _authorised(self, q):
         tok = self.headers.get("X-Lab-Token") or (q.get("t") or [None])[0]

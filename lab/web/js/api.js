@@ -19,7 +19,10 @@ async function call(method, path, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let data = null;
-  try { data = await r.json(); } catch (e) { data = { error: `Unexpected response (${r.status})` }; }
+  try { data = await r.json(); } catch (e) {
+    // never carry on with missing data: an unreadable reply is an error, reported with what was asked for
+    throw new ApiError(`The Lab sent a reply this window could not read (${method} ${path.split('?')[0]}, status ${r.status}).`);
+  }
   if (!r.ok) throw new ApiError(data.error || `Request failed (${r.status})`);
   return data;
 }
