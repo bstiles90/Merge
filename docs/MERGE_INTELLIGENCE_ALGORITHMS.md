@@ -669,3 +669,82 @@ errors.
 | X5 | Intensity-loop convergence on real compressors (Pro-C 3, CLA-2A) | Offline loop on recorded vocals with altered delivery | spread within band in ≤ 3 steps; no level jump > 0.5 LU |
 | X6 | Bleed robustness | Mix drum bleed into vocal mics at −20 / −12 / −6 dB | activity false-positive rate < 5 % |
 | X7 | Intentional-dynamics heuristic | Annotated sparse/full transitions | no correction during annotated intentional changes in ≥ 90 % of cases |
+
+---
+
+## 15. Supplement: activity layer, speech and program steering (November 2026)
+
+Sources: [MERGE_INTELLIGENCE_DUGAN_RESEARCH.md](MERGE_INTELLIGENCE_DUGAN_RESEARCH.md) and
+[MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md](MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md).
+
+### 15.1 Gain sharing (speech mic sets) [V: US 3,992,584; exp05 A/B]
+
+This runs on the engine audio thread, per automix set `S`. `w_i` is the weight; `x_i` is
+the post-rack, pre-fader signal.
+
+```
+e_i[n]  = one-pole( (w_i·x_i[n])² )          attack ≈ 10 ms, release ≈ 150 ms   [H: tune by listening]
+e_Σ[n]  = one-pole( (Σ_{j∈S} w_j·x_j[n])² )  (envelope of the summed signal, as claimed)
+A_i[n]  = clamp( sqrt(e_i / e_Σ), 10^(depth/20), 1 )          depth ≈ −40 dB
+last-hold: if no channel has A_i > −3 dB for 0.5 s, keep the last such channel at its
+           share and let the others decay                                         [S, product]
+```
+
+**Properties [V]:**
+- `Σ A_i² ≈ 1`, so total power gain is constant.
+- All idle mics sit at `−10·log10 |S|`.
+- Level differences are expanded 2:1 in dB.
+
+**Cost.** About two one-pole filters and one square root per mic per sample; the square root
+can run at control rate (1 kHz) without loss.
+
+### 15.2 Soft gate and ducking (vocal and audience mics) [S: Dugan Music System; V: exp05 C]
+
+```
+T[n] = env(sensing signal) + margin       sensing = stage-bleed estimate (vocal mics) or
+                                           stage speech+vocal sum (audience ducking)
+A_i  = 10^( clamp( min(0, L_i − T), depth, 0 ) / 20 )     # 2:1 below threshold, bounded
+```
+
+- **Vocal mics:** depth about −15 dB [S example]. Only bleed-only mics are attenuated;
+  active singers stay at unity.
+- **Audience mics:** for ducking, the sense is inverted. Audience mics are attenuated while
+  the stage speech level exceeds a threshold. The depth is set by context (§15.5).
+
+### 15.3 Speech leveller (Speech specialist, layer O) [V: exp05 D]
+
+```
+for each speech mic i holding the floor:  floor_i = (A_i > −6 dB) ∧ active_i     (rule R2)
+   L̂_i = median over 3–6 s of S_pre_i (short-term loudness measured BEFORE A, X, O)  (rule R1)
+   request_i = clamp( target_speech − L̂_i , bounds )
+target_speech = speech profile's speech-to-program offset applied to the program target
+apply as the speech GROUP offset O (or per-talker offset when talkers alternate with long turns)
+```
+
+Per-talker memory keeps a stored offset per talker that is re-applied when that mic takes
+the floor again. Its time constants are slower than the automix and faster than music
+balance:
+- re-target hysteresis 1 dB;
+- rate 1 dB/s.
+
+### 15.4 Program proportional steering (Program specialist) [V: US 4,864,627 principle]
+
+```
+excess = max(0, TP_pred − ceiling) or max(0, L_prog,ST − (target + tolerance))
+share_g = p_g / Σ p_h                      (group power shares at T-premain)
+ΔO_g    = −excess · share_g^2 / Σ share^2  (steer reduction to the dominant contributors)
+```
+
+This step is only proposed. The operator weighs it against the other objectives. It never
+undoes `A` or `X`, and it never replaces the engineer's master limiter.
+
+### 15.5 Context-dependent targets
+
+| Context | Audience duck depth | Bed offset | Speech target vs program | Active specialists |
+|---|---|---|---|---|
+| music | 0 to −3 dB | — | — | Music, Audience, Program |
+| speech | −10 to −20 dB | — | from speech profile | Speech, Audience, Program |
+| prayerOverPads | −6 to −12 dB | from hybrid profile (speech − bed LU) | from speech profile | Speech, Hybrid, Audience, Program |
+
+Transitions crossfade the `A` and `X` layers over 1.5–3 s. Layers 4–6 freeze for 4 s,
+then restart their evidence windows.

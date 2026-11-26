@@ -39,6 +39,10 @@ Run each experiment from this folder:
 .venv/bin/python exp04_compression_identifiability.py
 ```
 
+```bash
+.venv/bin/python exp05_gain_sharing.py
+```
+
 Each script writes `results/expNN.json`. Experiment 04 takes about 1.5 minutes because the
 compressor is a pure-Python per-sample loop. The others take a few seconds.
 
@@ -50,3 +54,4 @@ compressor is a pure-Python per-sample loop. The others take a few seconds.
 | `exp02_balance_controller.py` | Three balance controllers under scripted disturbances: guitars +3 dB, vocals −3 dB, whole-band build, a source dropping out |
 | `exp03_eq_vs_fader.py` | Telling a tonal problem from a level problem; choosing an action by model fit; reference-stem vs own-baseline tonal targets |
 | `exp04_compression_identifiability.py` | Whether compressor settings can be inferred from processed output |
+| `exp05_gain_sharing.py` | Dugan-style gain sharing against the patent's worked examples; bleed and comb filtering; gain sharing vs. a soft gate on simultaneously singing vocals; layer separation between the automix and a speech leveller |

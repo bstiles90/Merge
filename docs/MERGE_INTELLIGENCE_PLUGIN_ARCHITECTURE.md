@@ -439,3 +439,22 @@ For each plugin and format before authorisation:
 | 9 | Scene recall keeps adjustments: deltas re-applied on the recalled baseline, within limits |
 | 10 | Behaviour when the licence is missing. The host cannot detect demo mode (`engine/LICENSING.md`), so the characterisation run checks for periodic silence or noise and the engineer confirms the licence before authorising |
 | 11 | Version-change detection |
+
+## 13. Supplement: strategy architecture consequences (November 2026)
+
+See [MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md](MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md).
+
+- **Rule R4 — no makeup compensation for intentional attenuation.**
+  - Plugin semantic actions (`compression.makeup`, `level.output`) must never be used to
+    offset attenuation applied by the Activity layer (gain sharing, soft gate, ducking) or
+    the Context layer.
+  - Level side-effects of plugin actions feed forward only into the operator's slow
+    offset layer `O`.
+- **The activity and context layers are not plugins.** They are Merge-native gain stages in
+  the engine (pure gain, no EQ or dynamics). They are therefore consistent with "no stock
+  EQ or dynamics" and need no plugin mapping.
+- **Plugin map priority for the speech chain.** Speech segments are a large part of the
+  service, so the first maps should include:
+  - a de-esser (`deesser.intensity`);
+  - a vocal or speech compressor (`compression.intensity`);
+  - a speech EQ (band gain).

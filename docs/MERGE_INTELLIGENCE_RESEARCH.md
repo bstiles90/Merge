@@ -301,6 +301,23 @@ Zurale, Lorente, Lester, Mitchell (Shure). arXiv 2603.15995. Full HTML read [V v
 - It is **inappropriate for music balance** because it enforces a constant-sum relationship.
 - The existing `AI_MIX_ASSISTANT_PLAN.md` already lists a Dugan-style speech automixer as a separate feature, and that remains sensible [P].
 
+> **Updated by the supplement (November 2026).** [MERGE_INTELLIGENCE_DUGAN_RESEARCH.md](MERGE_INTELLIGENCE_DUGAN_RESEARCH.md)
+> now covers this lineage from the primary patents, which I read in full [V]:
+> - US 3,992,584 (gain sharing);
+> - US 4,864,627 (gain limiting and proportional limiting).
+>
+> It adds exp05. Two refinements to the bullets above:
+> 1. The law is `g_i = Env(x_i) / Env(Σx)`. It keeps the *total power gain* constant and
+>    expands level differences 2:1 in dB, which is precisely why it must not be applied
+>    across simultaneously singing vocalists (exp05 C).
+> 2. Gain sharing is now **adopted** as a specialised, audio-rate component of Merge
+>    Intelligence for speech-mic sets, with three companions:
+>    - adaptive-threshold soft gating for vocal bleed;
+>    - ducking for audience mics;
+>    - the proportional-limiting principle for program headroom.
+>
+>    See [MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md](MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md).
+
 ### 3.5 Yamaha Mixing Assist (DM7 / DM5 series)
 
 Only secondary information was available [S]; Yamaha's pages refused automated fetching.
@@ -572,6 +589,7 @@ These are **[K]**, standard results. Their relevance to Merge is **[P]**, and pa
 | G6 | **Which perceptual metrics correlate with *this* engineer's judgement** of balance, clarity, harshness and mud in worship broadcast? The literature offers candidates, not validated mappings for this genre. | Avoid "a sophisticated collection of meters". | Phase 2 correlation study: engineer ratings vs candidate metrics. |
 | G7 | **Safe continuous automation of specific third-party plugins** (zipper noise, coupling, latency changes). No literature exists; it is plugin-specific. | Plugin control safety. | Plugin characterisation harness (plugin architecture doc, section 6). |
 | G8 | **Lead-vs-background vocal targets** cannot be read from a single "vocals" stem. | The vision already notes this. | Engineer-defined priority offsets inside the vocal group. Stage-1 relationships are preserved from the engineer's mix. |
+| G9 | **Single-talker speech has no pairwise objective.** Pairwise co-active targets are silent when one person speaks alone, which is a large part of a worship service. | Without it, the operator is blind during the sermon. | Speech objectives (absolute speech loudness relative to program, baseline-anchored tone) and the Speech PoC (strategy architecture §11; X8, X14). |
 
 ---
 
@@ -644,6 +662,15 @@ Method: fit candidate actions (fader / one EQ band / both) to the band deviation
 
 ---
 
+### exp05 — gain sharing, soft gating and layer separation (supplement)
+
+All on synthetic signals [V]. Details are in the Dugan supplement, §§1–3 and §8.
+
+- **Patent examples.** The patent's worked gain-sharing examples are reproduced within 0.2 dB, and total power gain stays within ±0.07 dB.
+- **Bleed.** With bleed at −12 dB and 3 ms, comb-filter ripple falls from 4.4 to 1.2 dB and idle-room noise falls to one-mic level.
+- **Singing vocals.** Gain sharing pushes the background vocals from −6 to −12 dB relative to the lead. A soft gate leaves the balance unchanged and attenuates a tacet BGV by 6 dB.
+- **Layer separation.** A speech leveller that estimates *before* the automix and requires share **and** activity matches the true correction within 0.6 dB, with 0 dB requests on idle mics. Both a naive post-automix controller and a "share-only" controller ask for +6 dB on idle mics.
+
 ## 12. Bibliography (verified identifiers)
 
 1. S. S. Vanka, C. J. Steinmetz, J.-B. Rolland, J. D. Reiss, G. Fazekas. Diff-MST: Differentiable Mixing Style Transfer. ISMIR 2024. arXiv:2407.08889. Code: github.com/sai-soum/Diff-MST (CC BY-NC-SA 4.0).
@@ -669,3 +696,7 @@ Method: fit candidate actions (fader / one EQ band / both) to the band deviation
 21. D. Dugan. Automatic microphone mixing. JAES 23(6), 1975. [cited V]
 22. ITU-R BS.1770; EBU R 128, Tech 3341, Tech 3342; ISO 532-1/-2/-3; ISO 226; ITU-R BS.1534.
 23. Yamaha Corporation, Mixing Assist Technology (DM7 Assist functions), yamaha.com/en/tech-design/research/technologies/mixingassist/. [S]
+24. D. W. Dugan. Automatic microphone mixer. US 3,992,584, granted 1976-11-16 (expired). [V]
+25. D. W. Dugan. Microphone mixer with gain limiting and proportional limiting. US 4,864,627, granted 1989-09-05 (expired). [V]
+26. D. W. Dugan. Control apparatus for sound reinforcement systems. US 3,814,856, granted 1974-06-04. [S]
+27. D. Dugan. Adaptive Threshold Automatic Microphone Mixing System Becomes Public Domain. AES Convention paper 3050, 1991. [S]

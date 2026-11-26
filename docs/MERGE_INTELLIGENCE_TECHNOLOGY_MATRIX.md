@@ -123,3 +123,18 @@ operator.** The vision says "do not favour ML because the feature is branded int
 | Native virtual soundcheck missing (playback not in the native engine) | certain today | high for Phases 10–13 | prerequisite milestone (MERGE_INTELLIGENCE §11) |
 | Over-engineering perceptual models | medium | medium | promote models only on measured benefit (X2) |
 | Licence contamination from research code | medium | high | research code stays in `research/`; never linked into the engine |
+
+## 6. Supplement: Dugan-lineage techniques (November 2026)
+
+| Technique | Source | Patent status | Use in Merge | Real-time | Risk |
+|---|---|---|---|---|---|
+| Gain sharing `g_i = Env(x_i)/Env(Σx)` | US 3,992,584 [V] | Expired [V] | Speech mic sets (Activity layer) | Audio rate, trivial CPU | Wrong across singers (exp05 C) → strategy-restricted |
+| Adaptive-threshold soft gate, 2:1 below floating threshold | US 3,814,856 [S]; Dugan Model M [S] | Expired [S]; 1991 AES "becomes public domain" [S] | Vocal-mic bleed; audience ducking | Audio rate | Threshold source choice [H] |
+| NOM attenuation `−10·log10 NOM` | US 3,992,584 table [V] | Expired | Implicit in gain sharing | — | — |
+| Gain limiting (sum of calibrated gains ≤ threshold) | US 4,864,627 [V] | Expired [V] | Not needed initially (no PA feedback path in a broadcast mix); possible ambient-noise guard | — | — |
+| Proportional limiting (steer gain reduction by level share) | US 4,864,627 [V] | Expired [V] | Program headroom steering (proposal to the operator) | ≤ 2 Hz | Interaction with the engineer's master limiter → steering only |
+| Frequency-weighted sharing; VAD-integrated automix; linked automixers | Cisco US 12,380,912; Shure US 11,302,347; Rane US 8,542,849 [V titles] | **Active** | Avoid, or obtain a freedom-to-operate review first | — | Legal |
+| "Dugan" name | Trademark [K] | — | **Do not use** without an agreement | — | Legal |
+
+**Production dependency:** none. These are a few dozen lines of DSP in the engine, written
+from the expired patents' published mathematics.

@@ -17,6 +17,20 @@
 
 > The human engineer defines the sound. Merge Intelligence operates the mixer to achieve and maintain it.
 
+**Supplement (November 2026) — read this together with the plan.**
+[MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md](MERGE_INTELLIGENCE_STRATEGY_ARCHITECTURE.md)
+refines this architecture, and its recommendation takes precedence where the two differ:
+- **one operator, several specialists** (Speech, Music, Hybrid, Audience and Ambience,
+  Program) that analyse and propose but never command;
+- an engine-side, audio-rate **Activity layer**: gain sharing for speech mics, soft gating
+  and ducking for vocal and audience mics;
+- a declared **gain stack** `B · A · X · O`;
+- explicit **context and strategy** state.
+
+The core decisions below (single solver, permissions, execution guard, offset-free
+estimation, Observe → Suggest → Assist) are unchanged. The research is in
+[MERGE_INTELLIGENCE_DUGAN_RESEARCH.md](MERGE_INTELLIGENCE_DUGAN_RESEARCH.md).
+
 **Relation to earlier plans.** [AI_MIX_ASSISTANT_PLAN.md](AI_MIX_ASSISTANT_PLAN.md) put a
 cloud LLM in the decision loop and planned automatic instrument classification. The new
 vision supersedes both points:
@@ -514,6 +528,7 @@ gaps.
 | **6** Offline EQ | Band-gain experiments | X4 passes; listeners prefer EQ actions to fader-only alternatives in the tonal scenarios |
 | **7** Offline dynamics | Intensity loop | X5 passes; no level jumps > 0.5 LU |
 | **8** Coordinated operator | Joint solve with timescale separation | No contradictory actions in T-C tests; coordinated ≥ separate controllers in listening |
+| **2b** (supplement) Offline Speech PoC | Gain sharing + layered speech leveller on recorded multi-mic spoken segments | X8, X9, X14 pass (Dugan supplement §9) |
 | **Prereq A** Native playback / virtual soundcheck | Multitrack playback into native channels (and recording) | Sample-accurate playback of 32+ tracks through a full plugin chain; transport from the UI |
 | **9** Live analysis | Engine taps, rings, worker, `FeatureFrame` stream | Budgets in §5 met at 64 taps, 48 kHz, 64-sample buffer; zero added xruns over 3 h; features match offline within 0.1 LU |
 | **10** Virtual soundcheck evaluation | Operator on native playback | X3, X6, X7 pass; stability < 1 reversal per group per minute |

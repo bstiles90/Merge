@@ -23,6 +23,8 @@ Three principles run through every test:
 | M5 | Merge-exported **post-processing group stems** (Vocals, Drums, Bass, Guitars, Keys & Other) for M3 songs, plus the 2-track | Earliest offline experiments (vision §24) | Merge export (browser engine today; native once Prereq A exists) |
 | M6 | Annotations per M3 song: section boundaries, intentional dynamics (builds, drops, a tacet instrument), lead-vocal changes | Ground truth for "do nothing" | Engineer, about 15 min per song |
 | M7 | Synthetic suite (`research/intelligence/mi/synth.py`) | Logic regression with exact ground truth | Exists |
+| M8 | Recorded **service segments** with all mics as raw tracks: welcome and announcements, prayer (with and without pads), giving, sermon, communion, benediction, and at least one worship-leader song-to-prayer transition. Include congregation mics | Speech, Hybrid and Audience strategies | Engineer |
+| M9 | Speech, hybrid and ambience references (supplement): produced sermons or spoken word; speech-over-pads examples; engineer-approved congregation balance | Context sub-profiles | Engineer |
 
 **Hold-out rule.** No M3 song may also be an M1 reference.
 
@@ -225,3 +227,26 @@ engineer signs off.
 | exp02 | Proposed controller C2: guitars +3 → −2.24; vocals −3 → +2.65; band +3 → 0; keys off → 0; 40 reversals / 120 s (integrators: 79–199) | `results/exp02.json` |
 | exp03 | Action selection correct in 5/5 cases against the own baseline; stem-referenced tonal targets wrong for a different vocalist | `results/exp03.json` |
 | exp04 | 25 (input × setting) combinations alias within tolerance; compression is not identifiable from output | `results/exp04.json` |
+| exp05 | Gain sharing matches the patent within 0.2 dB; comb ripple 4.4 → 1.2 dB; gain sharing doubles BGV offsets (soft gate does not); layered speech leveller within 0.6 dB and 0 on idle mics | `results/exp05.json` |
+
+## 12. Supplement: speech, hybrid, audience and layer-interaction tests (November 2026)
+
+See the Dugan supplement, §9, for X8–X14. Scripted versions use M8.
+
+| ID | Test | Expected behaviour |
+|---|---|---|
+| T-S1 | Single talker on the pulpit mic, 4 other speech mics open | Idle mics at ≤ `−10·log10 N` share; idle noise ≈ one-mic level; leveller within ±1 dB of the speech target |
+| T-S2 | Handover between two talkers (overlap 0.5 s) | Both about −3 dB during the overlap; no first-syllable loss (listening) |
+| T-S3 | A talker 6 dB quieter than the last | Leveller corrects ≥ 70 % within 6 s; no correction on idle mics (exp05 D) |
+| T-S4 | Band playing softly underneath (walk-in, prayer) | Speech share stays with the talker in ≥ 95 % of speech blocks (X9) |
+| T-H1 | Worship leader: song → prayer over pads (context switch) | No audible jump; bed reaches its hybrid target within 2 s; music balance frozen for the hold window |
+| T-H2 | Prayer → song | Lead returns to the Music strategy; soft gate re-engages; no balance correction for 4 s |
+| T-A1 | Sermon with congregation mics | Audience ducked to the context depth; applause or response not ducked below the depth; no pumping (listening) |
+| T-A2 | Congregational singing | No duck; audience prominence within the ambience-profile band |
+| T-L1 | Layer interaction (X14) | No balance or leveller or makeup request on attenuated idle mics; no fighting between `A` and `O` (≤ 1 reversal per minute) |
+| T-L2 | Misassigned strategy (BGV configured as Speech) | Misassignment detector flags it within one song; Assist refuses to engage that source |
+| T-P1 | Proportional headroom (X13) | Other groups move ≤ 1 dB while the offending group is steered; true-peak ceiling held |
+
+**Mode progression for the activity layer:** the same gates as §9. Speech automix can
+reach Assist earlier than music balance, because gain sharing is an established technique.
+It still requires X8, X9, T-S1–T-S4 and T-L1 to pass, and the engineer's sign-off.

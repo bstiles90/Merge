@@ -1,0 +1,121 @@
+{
+  "A_patent_examples": {
+    "A_four_equal": {
+      "gains_dB": [
+        -5.9,
+        -6.0,
+        -6.1,
+        -6.0
+      ],
+      "patent_dB": [
+        -6,
+        -6,
+        -6,
+        -6
+      ],
+      "total_power_gain_dB": 0.07
+    },
+    "B_one_up_20dB": {
+      "gains_dB": [
+        -0.2,
+        -20.1,
+        -20.2,
+        -20.3
+      ],
+      "patent_dB": [
+        0,
+        -20,
+        -20,
+        -20
+      ],
+      "total_power_gain_dB": -0.06
+    },
+    "C_two_up_20dB": {
+      "gains_dB": [
+        -3.0,
+        -3.1,
+        -22.9,
+        -23.0
+      ],
+      "patent_dB": [
+        -3,
+        -3,
+        -23,
+        -23
+      ],
+      "total_power_gain_dB": 0.04
+    },
+    "D_spread_0_5_10_15": {
+      "gains_dB": [
+        -1.6,
+        -6.6,
+        -11.5,
+        -16.4
+      ],
+      "patent_dB": [
+        -1.5,
+        -6.5,
+        -11.5,
+        -16.5
+      ],
+      "total_power_gain_dB": 0.02
+    }
+  },
+  "B_bleed_comb_noise": {
+    "comb_ripple_1to4k_dB_all_open": 4.38,
+    "comb_ripple_1to4k_dB_gain_sharing": 1.19,
+    "ambient_noise_in_pauses_dB_all_open": -43.8,
+    "ambient_noise_in_pauses_dB_gain_sharing": -49.6,
+    "one_mic_ambient_dB_reference": -49.7,
+    "talker_mic_gain_while_talking_dB": 0.0,
+    "bleed_mic_gain_while_talking_dB": -11.1
+  },
+  "C_singing_vocals": {
+    "intended_relative_dB": [
+      0.0,
+      -6.0,
+      -6.0
+    ],
+    "measured_relative_before_dB": [
+      0.0,
+      -5.7,
+      -5.1
+    ],
+    "after_gain_sharing_dB": [
+      -2.0,
+      -12.3,
+      -12.3
+    ],
+    "after_soft_gate_dB": [
+      -0.0,
+      -5.8,
+      -5.2
+    ],
+    "tacet_bgv_attenuation_gain_sharing_dB": -20.1,
+    "tacet_bgv_attenuation_soft_gate_dB": -6.1
+  },
+  "D_layering": {
+    "mic1": {
+      "true_speech_level_correction_dB": -0.6,
+      "layered_request_while_talking_dB": -0.1,
+      "layered_request_while_idle_dB": 0.0,
+      "share_only_activity_request_while_idle_dB": 6.0,
+      "naive_post_automix_request_while_idle_dB": 6.0
+    },
+    "mic2": {
+      "true_speech_level_correction_dB": 4.1,
+      "layered_request_while_talking_dB": 4.7,
+      "layered_request_while_idle_dB": 0.0,
+      "share_only_activity_request_while_idle_dB": 6.0,
+      "naive_post_automix_request_while_idle_dB": 6.0
+    },
+    "mic3": {
+      "true_speech_level_correction_dB": -4.2,
+      "layered_request_while_talking_dB": -3.8,
+      "layered_request_while_idle_dB": 0.0,
+      "share_only_activity_request_while_idle_dB": 6.0,
+      "naive_post_automix_request_while_idle_dB": 6.0
+    },
+    "note": "naive per-channel control on post-automix levels asks for its +6 dB clamp on idle mics (it would undo the automix). Using automix share alone as 'active' also fails in silence, because every idle mic then holds an equal share. Share AND the activity gate, with loudness measured before the automix attenuation, matches the true correction and is silent when idle."
+  }
+}
