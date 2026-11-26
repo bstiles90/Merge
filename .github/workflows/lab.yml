@@ -80,6 +80,10 @@ jobs:
         run: |
           cp -R "lab/dist/Merge Intelligence Lab.app" /tmp/MIL.app
           cd /tmp && env -i HOME="$RUNNER_TEMP/home" PATH=/usr/bin:/bin "/tmp/MIL.app/Contents/MacOS/Merge Intelligence Lab" --selftest
+      - name: Full-length six-stem import check stays responsive (packaged app)
+        run: |
+          python lab/tests/stress_validate.py "/tmp/MIL.app/Contents/MacOS/Merge Intelligence Lab" 7 48k24
+          python lab/tests/stress_validate.py "/tmp/MIL.app/Contents/MacOS/Merge Intelligence Lab" 7 44k1float
       - name: Launch the window and check the UI connects
         run: |
           mkdir -p "$RUNNER_TEMP/launch"
