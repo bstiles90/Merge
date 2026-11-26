@@ -273,6 +273,9 @@ void Engine::handleTransport (int clientId, const juce::var& msg)
             mix.startRecording (std::move (session));
         }
     }
+    const auto loop = msg["loop"];
+    if (loop.isObject())
+        mix.setLoop ((bool) loop["on"], (juce::int64) std::llround ((double) loop["start"] * sr), (juce::int64) std::llround ((double) loop["end"] * sr));
     mix.setTransport (run, seek);
 }
 
@@ -311,6 +314,19 @@ void Engine::handleShowMessage (int clientId, const juce::String& type, const ju
     appData.createDirectory();
     const auto autosave = appData.getChildFile ("current-show.merge.json");
 
+    if (type == "show.presets.load")
+    {
+        // channel strip presets: one library file for every show
+        const auto f = appData.getChildFile ("strip-presets.json");
+        send (obj ({ { "type", "presets" }, { "text", f.existsAsFile() ? juce::var (f.loadFileAsString()) : juce::var() } }), clientId);
+        return;
+    }
+    if (type == "show.presets.save")
+    {
+        juce::TemporaryFile tmp (appData.getChildFile ("strip-presets.json"));
+        if (tmp.getFile().replaceWithText (msg["text"].toString())) tmp.overwriteTargetFileWithTemporary();
+        return;
+    }
     if (type == "show.autosave")
     {
         // atomic: write a temp file then swap, so a crash mid-write never corrupts the show

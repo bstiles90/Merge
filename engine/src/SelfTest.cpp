@@ -363,6 +363,18 @@ void testVirtualSoundcheck()
     l = renderMainL (m, 40);
     check (near (l[(size_t) (0.1 * kSr)], centre, 0.002), "seeking into a clip plays from there", juce::String (l[(size_t) (0.1 * kSr)], 4));
 
+    // loop: 100..1100 samples; 3000 samples from 0 end 900 samples into the third pass
+    m.setTransport (false, 0);
+    renderMainL (m, 1);
+    m.setLoop (true, 100, 1100);
+    m.setTransport (true, 0);
+    {
+        juce::AudioBuffer<float> out (4, 1000);
+        for (int b = 0; b < 3; ++b) m.process (nullptr, 0, out.getArrayOfWritePointers(), 4, 1000);
+    }
+    check (m.transportPosition() == 1000, "loop playback jumps back on the exact loop-end sample", juce::String (m.transportPosition()));
+    m.setLoop (false, 0, 0);
+
     play (writeTestWav (dir.getChildFile ("dc24.wav"), 24000, 1.0, 0.5f), 1, 0.25);
     l = renderMainL (m, (int) (1.5 * kSr / kBlock));
     check (firstSound (l) == (int) (0.25 * kSr) && near (l[(size_t) (1.0 * kSr)], centre, 0.002) && std::abs (l[(size_t) (1.3 * kSr)]) < 1e-3f,

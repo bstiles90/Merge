@@ -8,6 +8,7 @@ import { buildMixPlan } from '../core/plan';
 import { setNativePlugins, type PluginFormat } from '../core/plugins';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { importLogic } from '../core/logicImport';
+import { loadPresets, setPresetStorage } from '../core/stripPresets';
 import { assignMultitrack, takesToClips, type AudioFileInfo } from '../core/multitrack';
 import { services } from '../core/services';
 import { addPeaks, getMedia } from '../audio/media';
@@ -199,6 +200,7 @@ function sendTransport(st: ConsoleState, seek: number | null) {
     program: t.recordProgram,
     seek,
     show: st.showName,
+    loop: t.loop ? { on: t.loop.on, start: t.loop.start, end: t.loop.end } : { on: false, start: 0, end: 0 },
     armed: st.channels.filter((c) => c.recArm).map((c) => ({ id: c.id, name: c.name, stereo: !!c.stereo })),
   });
 }
@@ -210,7 +212,7 @@ function onTransportChange(st: ConsoleState, prev: ConsoleState) {
   const stopping = !(t.playing || t.recording) && (p.playing || p.recording);
   // stopping copies the engine's playhead into position: that's not a jump
   const jumped = t.position !== p.position && !stopping;
-  if (starting || jumped || t.playing !== p.playing || t.recording !== p.recording || t.recordProgram !== p.recordProgram)
+  if (starting || jumped || t.playing !== p.playing || t.recording !== p.recording || t.recordProgram !== p.recordProgram || t.loop !== p.loop)
     sendTransport(st, starting || jumped ? t.position : null);
 }
 
@@ -243,17 +245,47 @@ function findSlot(s: ConsoleState, slotId: string): InsertSlot | undefined {
   return s.main.inserts.find((i) => i.id === slotId);
 }
 
+/** Plugin updates (states, names) for the show, gathered and applied together: with a big show
+ *  (166 plugins from a Logic template) one console update per message made the UI crawl. */
+const pendingSlots = new Map<string, Partial<InsertSlot>>();
+let slotTimer: ReturnType<typeof setTimeout> | null = null;
 function patchSlot(slotId: string, patch: Partial<InsertSlot>) {
-  const fix = (list: InsertSlot[]) => (list.some((i) => i.id === slotId) ? list.map((i) => (i.id === slotId ? { ...i, ...patch } : i)) : list);
+  pendingSlots.set(slotId, { ...pendingSlots.get(slotId), ...patch });
+  if (!slotTimer) slotTimer = setTimeout(flushSlots, 250);
+}
+function flushSlots() {
+  slotTimer = null;
+  if (!pendingSlots.size) return;
+  const p = new Map(pendingSlots);
+  pendingSlots.clear();
+  const fix = (list: InsertSlot[]) => (list.some((i) => p.has(i.id)) ? list.map((i) => (p.has(i.id) ? { ...i, ...p.get(i.id) } : i)) : list);
   useConsole.getState().update((s) => ({
-    channels: s.channels.map((c) => (c.inserts.some((i) => i.id === slotId) ? { ...c, inserts: fix(c.inserts) } : c)),
-    buses: s.buses.map((b) => (b.inserts.some((i) => i.id === slotId) ? { ...b, inserts: fix(b.inserts) } : b)),
-    main: s.main.inserts.some((i) => i.id === slotId) ? { ...s.main, inserts: fix(s.main.inserts) } : s.main,
+    channels: s.channels.map((c) => (c.inserts.some((i) => p.has(i.id)) ? { ...c, inserts: fix(c.inserts) } : c)),
+    buses: s.buses.map((b) => (b.inserts.some((i) => p.has(i.id)) ? { ...b, inserts: fix(b.inserts) } : b)),
+    main: s.main.inserts.some((i) => p.has(i.id)) ? { ...s.main, inserts: fix(s.main.inserts) } : s.main,
   }));
 }
 
-const setInsert = (slotId: string, patch: Partial<NativeInsert>) =>
-  useNative.setState((st) => ({ inserts: { ...st.inserts, [slotId]: { ...(st.inserts[slotId] ?? { params: [] }), ...patch } } }));
+/** Live plugin info (loading, params, window open) for the UI, applied in batches too. */
+const pendingInserts = new Map<string, Partial<NativeInsert>>();
+let insertTimer: ReturnType<typeof setTimeout> | null = null;
+const setInsert = (slotId: string, patch: Partial<NativeInsert>) => {
+  pendingInserts.set(slotId, { ...pendingInserts.get(slotId), ...patch });
+  if (!insertTimer) insertTimer = setTimeout(flushInserts, 60);
+};
+function flushInserts() {
+  insertTimer = null;
+  if (!pendingInserts.size) return;
+  const p = new Map(pendingInserts);
+  pendingInserts.clear();
+  useNative.setState((st) => {
+    const inserts = { ...st.inserts };
+    for (const [id, patch] of p) inserts[id] = { ...(inserts[id] ?? { params: [] }), ...patch };
+    return { inserts };
+  });
+}
+/** A slot's params as they will be once pending updates are applied. */
+const currentParams = (slotId: string) => pendingInserts.get(slotId)?.params ?? useNative.getState().inserts[slotId]?.params;
 
 function mapFormat(f: string): PluginFormat {
   return f === 'vst3' ? 'vst3' : f === 'audiounit' || f === 'au' ? 'au' : 'vst3';
@@ -324,10 +356,10 @@ function onMessage(m: any) {
       break;
     }
     case 'insert.params': {
-      const cur = useNative.getState().inserts[m.slotId];
+      const cur = currentParams(m.slotId);
       if (!cur) break;
       const byId = new Map((m.params as NativeParam[]).map((p) => [p.id, p]));
-      setInsert(m.slotId, { params: cur.params.map((p) => byId.get(p.id) ?? p) });
+      setInsert(m.slotId, { params: cur.map((p) => byId.get(p.id) ?? p) });
       break;
     }
     case 'insert.state':
@@ -364,6 +396,9 @@ function onMessage(m: any) {
       break;
     case 'show.saved':
       useNative.setState({ showPath: m.ok ? m.path : useNative.getState().showPath, notice: m.ok ? `Saved ${String(m.path).split(/[\\/]/).pop()}` : 'Save failed' });
+      break;
+    case 'presets':
+      loadPresets(m.text);
       break;
     case 'record.done': {
       const st = useConsole.getState();
@@ -454,8 +489,12 @@ let autosaveReady = false;
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleAutosave() {
   if (!EMBEDDED || !autosaveReady) return;
-  if (autosaveTimer) clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => sendNative({ type: 'show.autosave', text: serializeShow(stateOnly(useConsole.getState())) }), 1000);
+  // at most every 3 s (a big show with plugin states is several MB to write), always the latest
+  if (autosaveTimer) return;
+  autosaveTimer = setTimeout(() => {
+    autosaveTimer = null;
+    sendNative({ type: 'show.autosave', text: serializeShow(stateOnly(useConsole.getState())) });
+  }, 3000);
 }
 
 /** Inside the Merge app: connect to our own engine, retrying until it answers. */
@@ -487,6 +526,11 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
       uiLog(`connected (${since()})`);
       useNative.setState({ status: 'connected' });
       if (EMBEDDED && !autosaveReady) sendNative({ type: 'show.loadAutosave' });
+      if (EMBEDDED) {
+        // strip presets live in the app's library file (the web view's storage isn't kept reliably)
+        setPresetStorage((text) => sendNative({ type: 'show.presets.save', text }));
+        sendNative({ type: 'show.presets.load' });
+      }
       lastPlanJson = '';
       schedulePlan();
       engineState.clear();

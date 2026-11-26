@@ -1,3 +1,4 @@
+import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getEngine, startEngine, type Engine } from '../audio/engine';
 import { listDevices } from '../audio/devices';
@@ -46,7 +47,7 @@ export function useEngineInputs() {
       off?.();
     };
   }, [engine]);
-  const native = useNative();
+  const native = useNative(useShallow((st) => ({ status: st.status, device: st.device })));
   if (native.status === 'connected' && native.device) {
     const d = native.device;
     const label = d.virtual ? 'Engine (no interface)' : `Engine: ${d.inputDevice || d.outputDevice || d.deviceType}`;

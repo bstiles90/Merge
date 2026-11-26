@@ -175,10 +175,9 @@ export function defaultState(): ConsoleState {
   // buses 1-8 of the demo are feeds (IEM, mix-minus, stage) that go to outputs, not Main LR
   for (const b of buses.slice(0, 8)) b.output = 'none';
   buses[0].name = 'Host IEM';
-  buses[6].name = 'Remote N-1';
-  buses[6].type = 'mixminus';
-  buses[6].mixMinusExclude = 'ch4';
+  buses[6].name = 'Stream Feed';
   buses[6].color = PALETTE[4];
+  buses[6].role = 'aux';
   buses[7].name = 'Stage';
   // the demo's buses: Host IEM, Remote N-1 and Stage exist; the other 61 slots are free for New bus
   buses.forEach((b, i) => (b.created = i === 0 || i === 6 || i === 7));

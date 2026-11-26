@@ -119,6 +119,7 @@ private:
         std::shared_ptr<HostedInsert> insert;
         std::unique_ptr<juce::DocumentWindow> editor;
         int lastStateSent = 0;
+        int lastParamsSent = 0;
         uint64_t generation = 0; // distinguishes a re-created slot from a stale async load
         bool loading = false;
         bool bypass = false;

@@ -64,9 +64,9 @@ describe('routing', () => {
 });
 
 describe('created buses', () => {
-  it('demo show: only Host IEM, Remote N-1 and Stage exist', () => {
+  it('demo show: only Host IEM, Stream Feed and Stage exist', () => {
     const s = defaultState();
-    expect(s.buses.filter((b) => b.created).map((b) => b.name)).toEqual(['Host IEM', 'Remote N-1', 'Stage']);
+    expect(s.buses.filter((b) => b.created).map((b) => b.name)).toEqual(['Host IEM', 'Stream Feed', 'Stage']);
   });
   it('older shows: named or used buses are created, unused placeholders are not; empty "Buses 9-24" page goes', () => {
     const s = defaultState();

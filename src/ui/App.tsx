@@ -11,6 +11,7 @@ import { SetupView } from './SetupView';
 import { fmtTime, TimelineView } from './TimelineView';
 import { services } from '../core/services';
 import { bootEngine, useEngine } from './useEngine';
+import { useShallow } from 'zustand/react/shallow';
 import { sendNative, startEmbedded, useNative } from '../native/bridge';
 import { EMBEDDED } from '../native/embedded';
 import { toggleNative } from './NativePanel';
@@ -27,16 +28,15 @@ const TABS: [Tab, string][] = [
 const TAB_HINTS: Partial<Record<Tab, string>> = { setup: 'Fader pages (layers), user keys, mute groups, DCAs, metering', io: 'Channel names, inputs and routing; buses; output patch; devices, plugins, MIDI' };
 
 /** Workspaces share one show and engine; each shows the pages for that job. */
-type Workspace = 'live' | 'studio' | 'record';
+type Workspace = 'live' | 'record';
 const WORKSPACES: { id: Workspace; label: string; tabs: Tab[]; ready: boolean; about: string }[] = [
   { id: 'live', label: 'Live', tabs: ['mix', 'scenes', 'setup', 'io'], ready: true, about: 'Mix the service: faders, scenes, I/O and routing' },
-  { id: 'studio', label: 'Studio', tabs: [], ready: false, about: 'Coming later' },
   { id: 'record', label: 'Record', tabs: ['timeline', 'io'], ready: true, about: 'Record and play back: timeline, transport' },
 ];
 
 /** Engine status dot + sample rate; click for a quick audio menu (rate, buffer, device). */
 function EngineMenu({ onAudioSettings }: { onAudioSettings: () => void }) {
-  const native = useNative();
+  const native = useNative(useShallow((st) => ({ status: st.status, device: st.device, pdc: st.pdc })));
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -157,6 +157,22 @@ function WorkspaceSwitcher({ current, onChoose }: { current: Workspace; onChoose
     </div>
   );
 }
+/** Shown in every workspace while any channel plays back its recording instead of its live input. */
+function VirtualSoundcheckChip() {
+  const n = useConsole((s) => s.channels.filter((c) => c.inputMode === 'playback').length);
+  const update = useConsole((s) => s.update);
+  if (!n) return null;
+  return (
+    <button
+      className="vsc-chip"
+      title={`${n} channel${n === 1 ? '' : 's'} playing back recordings instead of live inputs. Click to go back to live inputs.`}
+      onClick={() => update((s) => ({ channels: s.channels.map((c) => (c.inputMode === 'playback' ? { ...c, inputMode: 'live' } : c)) }))}
+    >
+      ▶ VIRTUAL SOUNDCHECK · {n}
+    </button>
+  );
+}
+
 const loadWorkspace = (): Workspace => {
   try {
     const v = localStorage.getItem('merge.workspace');
@@ -205,7 +221,8 @@ export function App() {
     }
   };
   const engine = useEngine();
-  const native = useNative();
+  // not st.inserts: plugin updates must not redraw the whole console
+  const native = useNative(useShallow((st) => ({ status: st.status, notice: st.notice, showPath: st.showPath, url: st.url, device: st.device, error: st.error })));
   const [starting, setStarting] = useState(false);
   const [err, setErr] = useState('');
   const s = useConsole();
@@ -288,8 +305,9 @@ export function App() {
             SOLO
           </button>
         )}
-        {/* Record / Studio: transport and timecode (Live shows the scene in the show chip) */}
+        {/* Record: transport and timecode (Live shows the scene in the show chip) */}
         {workspace !== 'live' && <TransportMini />}
+        <VirtualSoundcheckChip />
         <div className="show-chip-wrap" ref={showRef}>
           <button className={'show-chip' + (showOpen ? ' open' : '')} onClick={() => setShowOpen(!showOpen)} title={native.showPath ?? 'Show: name, save, open, new'} aria-haspopup="menu" aria-expanded={showOpen}>
             <span className="show-chip-text">

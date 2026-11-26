@@ -2,7 +2,7 @@
 //   left : meter + fader, full height        right: input / gain / Ø / delay, pan + mute / PFL,
 //          8 plugin slots, sends, output + DCAs + mute groups, link / playback / rec / safe.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { channelMuteReason } from '../core/mix';
 import { PALETTE } from '../core/defaults';
 import { getPlugin, type PluginDescriptor } from '../core/plugins';
@@ -11,8 +11,9 @@ import { routableBuses } from '../core/buses';
 import { useConsole } from '../core/store';
 import type { Channel, InsertSlot } from '../core/types';
 import { sendNative, useNative } from '../native/bridge';
-import { Knob, Toggle } from './controls';
-import { ChannelOutput, MonoStereoSwitch, SendRow, newInsert } from './Strip';
+import { Knob, Toggle, parsePan } from './controls';
+import { addPreset, applyPreset, deletePreset, makePreset, usePresets } from '../core/stripPresets';
+import { ChannelOutput, MonoStereoSwitch, SendRow, newInsert, replaceInsert, useSlotClicks } from './Strip';
 import { TallMeter } from './StripOverview';
 import { PluginPicker } from './PluginPicker';
 import { useEngineInputs } from './useEngine';
@@ -74,16 +75,19 @@ function SourceSelect({ ch }: { ch: Channel }) {
 function Rack({ ch }: { ch: Channel }) {
   const s = useConsole();
   const nativeOn = useNative((st) => st.status === 'connected');
-  const native = useNative((st) => st.inserts);
-  const [picker, setPicker] = useState<DOMRect | null>(null);
+  // redraw only when one of this rack's plugins opens / closes / fails, not on every plugin update
+  useNative((st) => (ch.inserts ?? []).map((x) => { const n = st.inserts[x.id]; return `${n?.editorOpen ? 1 : 0}${n?.loading ? 'l' : ''}${n?.error ?? ''}`; }).join('|'));
+  const native = useNative.getState().inserts;
+  const [picker, setPicker] = useState<{ at: DOMRect; slot?: InsertSlot } | null>(null);
   const set = (inserts: InsertSlot[]) => s.updateChannel(ch.id, { inserts });
+  const clicks = useSlotClicks();
   return (
     <div className="ins-rack">
       {Array.from({ length: 8 }, (_, i) => {
         const ins = ch.inserts[i];
         if (!ins)
           return i === ch.inserts.length ? (
-            <button key={i} className="ins-slot add" onClick={(e) => setPicker((e.currentTarget as HTMLElement).getBoundingClientRect())}>+ plugin</button>
+            <button key={i} className="ins-slot add" onClick={(e) => setPicker({ at: (e.currentTarget as HTMLElement).getBoundingClientRect() })}>+ plugin</button>
           ) : (
             <div key={i} className="ins-slot empty" />
           );
@@ -93,7 +97,15 @@ function Rack({ ch }: { ch: Channel }) {
         return (
           <div key={ins.id} className={'ins-slot used' + (ins.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}>
             <button className="ins-dot" title={ins.bypass ? 'Bypassed' : 'On'} onClick={() => set(ch.inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))} />
-            <button className="ins-name" title={n?.error ?? (canWin ? 'Open / close window' : name)} onClick={() => canWin && sendNative({ type: 'insert.editor', slotId: ins.id, open: !n?.editorOpen })}>
+            <button
+              className="ins-name"
+              data-slot={ins.id}
+              title={n?.error ?? `${name} — click: change or remove · double-click: window`}
+              {...clicks(
+                () => setPicker({ at: (document.querySelector(`.ins-name[data-slot="${ins.id}"]`) as HTMLElement).getBoundingClientRect(), slot: ins }),
+                () => canWin && sendNative({ type: 'insert.editor', slotId: ins.id, open: !n?.editorOpen }),
+              )}
+            >
               {name}
             </button>
             <button className={'ins-lock' + (ins.recallSafe ? ' on' : '')} title="Recall safe" onClick={() => set(ch.inserts.map((x) => (x.id === ins.id ? { ...x, recallSafe: !x.recallSafe } : x)))}>
@@ -104,7 +116,19 @@ function Rack({ ch }: { ch: Channel }) {
         );
       })}
       {picker && (
-        <PluginPicker anchor={picker} onClose={() => setPicker(null)} onPick={(p: PluginDescriptor) => { setPicker(null); set([...ch.inserts, newInsert(p)]); }} />
+        <PluginPicker
+          anchor={picker.at}
+          title={picker.slot ? 'Plugin' : undefined}
+          current={picker.slot?.pluginId}
+          onClose={() => setPicker(null)}
+          onOpen={picker.slot && nativeOn ? () => { const sl = picker.slot!; setPicker(null); sendNative({ type: 'insert.editor', slotId: sl.id, open: true }); } : undefined}
+          onNone={picker.slot ? () => { const id = picker.slot!.id; setPicker(null); set(replaceInsert(ch.inserts, id, null)); } : undefined}
+          onPick={(p: PluginDescriptor) => {
+            const sl = picker.slot;
+            setPicker(null);
+            set(sl ? replaceInsert(ch.inserts, sl.id, p) : [...ch.inserts, newInsert(p)]);
+          }}
+        />
       )}
     </div>
   );
@@ -151,6 +175,60 @@ function Groups({ ch }: { ch: Channel }) {
   );
 }
 
+/** Channel strip presets: save this strip's rack + gain / polarity / delay / pan, or load one. */
+function PresetMenu({ ch }: { ch: Channel }) {
+  const s = useConsole();
+  const list = usePresets((p) => p.list);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [q, setQ] = useState('');
+  const [confirm, setConfirm] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close, true);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  const shown = list.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 12);
+  const save = () => {
+    addPreset(makePreset(ch, name || ch.name));
+    setName('');
+  };
+  return (
+    <div className="preset-wrap" ref={ref}>
+      <button className={'preset-btn' + (open ? ' on' : '')} title="Channel strip presets" onClick={() => { setOpen(!open); setName(ch.name); }}>PRESET ▾</button>
+      {open && (
+        <div className="preset-menu" role="menu">
+          <div className="preset-save">
+            <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') save(); }} placeholder="Preset name" aria-label="Preset name" />
+            <button onClick={save} title="Save this strip (same name replaces)">Save</button>
+          </div>
+          {list.length > 12 && <input className="preset-search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} placeholder={`Search ${list.length} presets`} />}
+          {shown.map((p) => (
+            <div key={p.id} className="preset-item">
+              <button className="preset-load" title={`${p.inserts.length} plugin${p.inserts.length === 1 ? '' : 's'}: ${p.inserts.map((i) => i.pluginName ?? 'Plugin').join(', ') || 'no plugins'}`}
+                onClick={() => { s.updateChannel(ch.id, (c) => applyPreset(c, p)); setOpen(false); }}>
+                {p.name}<span className="preset-n">{p.inserts.length}</span>
+              </button>
+              <button className={'preset-del' + (confirm === p.id ? ' confirm' : '')} title="Delete preset" onClick={() => (confirm === p.id ? (deletePreset(p.id), setConfirm(null)) : setConfirm(p.id))}>
+                {confirm === p.id ? 'Delete?' : '✕'}
+              </button>
+            </div>
+          ))}
+          {!list.length && <div className="preset-empty">No presets yet</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Inspector({ ch, closable = true }: { ch: Channel; closable?: boolean }) {
   const s = useConsole();
   const up = (p: Partial<Channel>) => s.updateChannel(ch.id, p);
@@ -163,6 +241,7 @@ export function Inspector({ ch, closable = true }: { ch: Channel; closable?: boo
         <span className="ins-num" style={{ background: ch.color }}>{ch.id.slice(2).padStart(2, '0')}</span>
         <ColorDot value={ch.color} onChange={(color) => up({ color })} />
         <input className="ins-name-input" value={ch.name} onChange={(e) => up({ name: e.target.value })} />
+        <PresetMenu ch={ch} />
         {closable && <button className="icon-btn" title="Close (Esc)" onClick={closeDrawer}>✕</button>}
       </div>
       <div className="ins-body">
@@ -174,8 +253,8 @@ export function Inspector({ ch, closable = true }: { ch: Channel; closable?: boo
               <SourceSelect ch={ch} />
             </div>
             <div className="ins-row ins-knobs">
-              <Knob size={42} label="Gain" value={ch.gainDb} min={-24} max={48} defaultValue={0} color={gainColor(ch.gainDb)} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`} onChange={(gainDb) => up({ gainDb: Math.abs(gainDb) < 0.3 ? 0 : gainDb })} />
-              <Knob size={42} label={ch.stereo ? 'Balance' : 'Pan'} value={ch.pan} min={-1} max={1} defaultValue={0} format={panText} onChange={(pan) => up({ pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
+              <Knob size={42} label="Gain" value={ch.gainDb} min={-24} max={48} centre={0} defaultValue={0} color={gainColor(ch.gainDb)} format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`} onChange={(gainDb) => up({ gainDb: Math.abs(gainDb) < 0.3 ? 0 : gainDb })} />
+              <Knob size={42} label={ch.stereo ? 'Balance' : 'Pan'} value={ch.pan} min={-1} max={1} defaultValue={0} parse={parsePan} format={panText} onChange={(pan) => up({ pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
               <div className="ins-col">
                 <Toggle small on={ch.phaseInvert} onClick={() => up({ phaseInvert: !ch.phaseInvert })} title="Polarity">Ø</Toggle>
                 <label className="ins-delay" title="Delay (ms)">

@@ -736,7 +736,13 @@ void PluginHost::closeEditor (const juce::String& slotId)
     // (the window leaves the slot now, so a quick re-open makes a fresh one)
     auto* window = it->second.editor.release();
     juce::MessageManager::callAsync ([window] { delete window; });
-    if (it->second.insert) it->second.insert->stateDirty = true;
+    // closing the window: save what was changed in it straight away
+    if (it->second.insert)
+    {
+        it->second.insert->stateDirty = false;
+        it->second.lastStateSent = ticks;
+        send (obj ({ { "type", "insert.state" }, { "slotId", slotId }, { "state", getState (slotId) } }));
+    }
     send (obj ({ { "type", "insert.editor" }, { "slotId", slotId }, { "open", false } }));
 }
 
@@ -755,16 +761,19 @@ void PluginHost::timerCallback()
     {
         auto& ins = slot.insert;
         if (! ins) continue;
-        if (ins->paramsDirty.exchange (false))
+        // parameter echoes at most 5 a second per plugin (plugins that move their own parameters,
+        // e.g. meters or analysers, would otherwise flood the console with 166 plugins loaded)
+        if (ticks - slot.lastParamsSent >= 4 && ins->paramsDirty.exchange (false))
         {
+            slot.lastParamsSent = ticks;
             std::vector<int> changed;
             for (int i = 0; i < ins->numParams; ++i)
                 if (ins->paramDirty[(size_t) i].exchange (false)) changed.push_back (i);
             if (! changed.empty())
                 send (obj ({ { "type", "insert.params" }, { "slotId", id }, { "params", ins->describeParams (&changed) } }));
         }
-        // persist plugin state (for show files) at most once a second while it changes
-        if (ticks - slot.lastStateSent >= 20 && ins->stateDirty.exchange (false))
+        // persist plugin state (for show files) at most every 5 s per plugin while it changes
+        if (ticks - slot.lastStateSent >= 100 && ins->stateDirty.exchange (false))
         {
             slot.lastStateSent = ticks;
             send (obj ({ { "type", "insert.state" }, { "slotId", id }, { "state", getState (id) } }));
