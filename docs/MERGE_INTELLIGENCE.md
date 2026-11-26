@@ -14,6 +14,7 @@
 | [Plugin architecture](MERGE_INTELLIGENCE_PLUGIN_ARCHITECTURE.md) | third-party plugin control |
 | [Technology matrix](MERGE_INTELLIGENCE_TECHNOLOGY_MATRIX.md) | approaches, libraries, licences |
 | [Test plan](MERGE_INTELLIGENCE_TEST_PLAN.md) | experiments, validation, mode progression |
+| [Intelligence Lab](MERGE_INTELLIGENCE_LAB.md) | standalone research app: references, profiles, listening, feedback, export |
 
 > The human engineer defines the sound. Merge Intelligence operates the mixer to achieve and maintain it.
 
@@ -42,6 +43,72 @@ rack" section and its offline solvers. It remains useful for a future, optional
 natural-language layer that *configures* Intelligence but never runs inside it.
 
 ---
+
+## 0a. Merge Intelligence Lab (November 2026)
+
+The research backend now has a graphical front end: **Merge Intelligence Lab**
+(`lab/`, documents [MERGE_INTELLIGENCE_LAB.md](MERGE_INTELLIGENCE_LAB.md),
+[user guide](MERGE_INTELLIGENCE_LAB_USER_GUIDE.md), [feedback schema](MERGE_INTELLIGENCE_LAB_FEEDBACK_SCHEMA.md),
+[research export](MERGE_INTELLIGENCE_LAB_RESEARCH_EXPORT.md), [build](MERGE_INTELLIGENCE_LAB_BUILD.md)).
+It is a separate macOS app (Windows preview) built by its own workflow (`lab.yml`, release `lab-beta`),
+runs entirely offline, and never connects to the console or engine. It calls the same `mi` code as the
+CLI (equivalence is tested), records every run with inputs, settings and algorithm version, collects
+the engineer's decision verdicts, notes, missed interventions, overall and blind evaluations, and
+exports privacy-filtered research packages for review. Backend changes made for it: algorithm version
+0.3.0 and result schema `merge.intelligence.result/1`; per-version listening gains; group-stem renders;
+multiple baseline regions; group exclusion; activity/loudness CSVs; streaming speech analysis for
+service-length recordings; studies accept multiple baseline regions.
+
+Algorithm 0.4.0 adds **progressive reference analysis**: master-only references (batch import), a
+Program Sound Profile (spectral balance, loudness, dynamics, transients, stereo, with ranges and
+time-varying behaviour), stems attachable later, mixed profiles, and stereo broadcast comparison as
+*diagnostic evidence only* (LAB doc §9, research doc §11 "Programme analysis").
+
+Roadmap position: the Lab is where real-audio evidence (Test plan §12–13) is gathered. No capability is
+promoted beyond *synthetically validated* until that evidence and the engineer's sign-off exist.
+
+## 0. Prototype status (November 2026)
+
+The **offline research prototype** now exists in
+[`research/intelligence/`](../research/intelligence/README.md). Run it with `./run.sh`.
+
+**What it does.** It implements the offline half of this architecture:
+- reference analysis and a Sound Profile;
+- comparison of a mix with the profile;
+- Music and Program specialists, plus Speech;
+- arbitration and permissions;
+- generalised `ControlAction`s carrying gain-stack layers and maturity labels;
+- a validated-only offline render with a loudness-matched blind A/B pair;
+- reports;
+- the five pre-commitment studies;
+- a regression suite of exp01–05 plus the prototype end to end.
+
+**What it needs from you.** The material is specified in
+[MERGE_INTELLIGENCE_AUDIO_SPEC.md](MERGE_INTELLIGENCE_AUDIO_SPEC.md).
+
+**Native work.** Native virtual soundcheck (recording and playback) and the loudness-meter
+fix were merged in parallel (commit a614eee). Still open are group-bus and pre-master
+recording taps, faster-than-real-time rendering, the long soak test and LRA. See
+[MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md](MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md).
+
+**Still not enabled:** live automatic mixing and live plugin adjustment.
+
+**Findings from building it** (synthetic demo; recorded in the research doc §11):
+1. **The activity gate's idle-floor term needs a guard.** It must only apply when a source
+   actually has quiet periods. Otherwise a continuously playing source (bass, guitars)
+   measures as never active, because its own playing level is taken for its idle floor.
+   This is fixed and covered by a regression test.
+2. **Truth-known scoring must subtract the undisturbed run.** With β > 0 the operator also
+   moves the mix toward the reference. Scoring against "ideal = minus the injected dB"
+   confounds that movement with the response to the disturbance.
+3. **Offset bounds can be used up by the reference-driven correction.** When a mix starts far
+   from the reference, the permission budget is spent on that correction and nothing is left
+   for disturbances. The report flags this as "saturated". Applying the whole-song starting
+   point first is the remedy.
+4. **Processing-vs-performance needs matched-input-level comparison.** A fixed compressor
+   shows a different loudness slope when the performer is more dynamic. The classifier
+   therefore predicts each window's output from its input through the baseline's binned
+   transfer curve.
 
 ## 1. Executive summary
 

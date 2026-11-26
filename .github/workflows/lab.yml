@@ -1,0 +1,190 @@
+name: Merge Intelligence Lab
+
+# Builds the standalone research app (lab/ + research/intelligence/). Completely separate from
+# the Merge console/engine build (engine.yml): different triggers, artifacts and releases, and it
+# never marks a release "Latest", so Merge's own downloads are unaffected.
+on:
+  push:
+    # branches + tags: listing only tags would exclude branch pushes (path filters don't apply to tags)
+    branches: ["**"]
+    tags: ["lab-v*"]
+    paths: ["lab/**", "research/intelligence/**", ".github/workflows/lab.yml"]
+  pull_request:
+    paths: ["lab/**", "research/intelligence/**", ".github/workflows/lab.yml"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Lab version to publish (e.g. 0.1.0); empty = rolling beta"
+        required: false
+        default: ""
+
+env:
+  MIL_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/lab-v') && github.ref_name) || '0.1.0' }}
+
+jobs:
+  # 1. Regression tests before anything is packaged
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y libsndfile1
+      - name: Research regression suite
+        working-directory: research/intelligence
+        run: |
+          pip install -r requirements.txt
+          python -m pytest -q -m "not slow"
+      - name: Lab tests (storage, staging, privacy, failure handling, Lab == CLI, end-to-end self-test)
+        working-directory: lab
+        run: |
+          pip install numpy scipy soundfile matplotlib pytest
+          python -m pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: UI smoke test (headless Chromium drives the real UI)
+        run: |
+          mkdir -p /tmp/pw && cd /tmp/pw && npm init -y >/dev/null && npm install playwright@1.49.1 >/dev/null
+          /tmp/pw/node_modules/.bin/playwright install --with-deps chromium
+          cd "$GITHUB_WORKSPACE"
+          NODE_PATH=/tmp/pw/node_modules MIL_SHOTS=ui-shots node lab/tests/ui_smoke.cjs python
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-ui-screenshots
+          path: ui-shots
+          if-no-files-found: ignore
+
+  # 2. macOS app: build, self-test the packaged app (no Python on the path), launch the window
+  macos:
+    needs: test
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r lab/requirements-build.txt
+      - name: Build app
+        run: |
+          export MIL_VERSION="${MIL_VERSION#lab-v}"
+          python lab/packaging/build.py
+          APP="lab/dist/Merge Intelligence Lab.app"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+      - name: Self-test the packaged app in a clean environment
+        run: |
+          cp -R "lab/dist/Merge Intelligence Lab.app" /tmp/MIL.app
+          cd /tmp && env -i HOME="$RUNNER_TEMP/home" PATH=/usr/bin:/bin "/tmp/MIL.app/Contents/MacOS/Merge Intelligence Lab" --selftest
+      - name: Launch the window and check the UI connects
+        run: |
+          mkdir -p "$RUNNER_TEMP/launch"
+          MIL_SETTINGS_DIR="$RUNNER_TEMP/launch" "lab/dist/Merge Intelligence Lab.app/Contents/MacOS/Merge Intelligence Lab" > app.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 60); do grep -q "UI client connected" app.log && break; sleep 1; done
+          sleep 4
+          screencapture -x lab-screenshot.png || true
+          kill $PID || true
+          cat app.log
+          grep -q "UI client connected" app.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lab-macOS-screenshot
+          path: lab-screenshot.png
+          if-no-files-found: ignore
+      - name: Package .dmg
+        run: |
+          mkdir -p dmg dist
+          ditto "lab/dist/Merge Intelligence Lab.app" "dmg/Merge Intelligence Lab.app"
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Merge Intelligence Lab" -srcfolder dmg -ov -format UDZO "dist/Merge-Intelligence-Lab-macOS.dmg"
+          hdiutil attach -nobrowse -mountpoint /tmp/mildmg "dist/Merge-Intelligence-Lab-macOS.dmg"
+          codesign --verify --deep --strict --verbose=2 "/tmp/mildmg/Merge Intelligence Lab.app"
+          hdiutil detach /tmp/mildmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Merge-Intelligence-Lab-macOS
+          path: dist/Merge-Intelligence-Lab-macOS.dmg
+
+  # 3. Windows build (preview): packaged self-test only
+  windows:
+    needs: test
+    runs-on: windows-2022
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r lab/requirements-build.txt
+      - shell: bash
+        run: |
+          export MIL_VERSION="${MIL_VERSION#lab-v}"
+          python lab/packaging/build.py
+          "lab/dist/Merge Intelligence Lab/Merge Intelligence Lab.exe" --selftest
+          cd lab/dist && 7z a -tzip ../../Merge-Intelligence-Lab-Windows.zip "Merge Intelligence Lab" > /dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Merge-Intelligence-Lab-Windows
+          path: Merge-Intelligence-Lab-Windows.zip
+
+  # 4. Publish: rolling "lab-beta" pre-release on every push; "lab-vX.Y.Z" for a version.
+  #    Never marked Latest (Merge's own releases keep that). Nothing else is uploaded anywhere.
+  release:
+    needs: [macos, windows]
+    if: github.event_name != 'pull_request' && !cancelled() && needs.macos.result == 'success'
+    concurrency:
+      group: lab-release
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          STABLE: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/lab-v') && github.ref_name) || '' }}
+        run: |
+          mkdir -p dist
+          cp artifacts/Merge-Intelligence-Lab-macOS/*.dmg dist/
+          cp artifacts/Merge-Intelligence-Lab-Windows/*.zip dist/ 2>/dev/null || true
+          ls -l dist
+          SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
+          cat > notes.md <<NOTES
+          **Merge Intelligence Lab** — standalone research app (build $SHORT of \`$GITHUB_REF_NAME\`).
+          Experimental research tool: it never controls a live console. All analysis runs locally and offline.
+
+          Tests passed before packaging: research regression suite, Lab tests (including Lab == command-line equivalence),
+          UI smoke test, and the packaged app's own end-to-end self-test on macOS.
+
+          **Install on a Mac**
+          1. Download **Merge-Intelligence-Lab-macOS.dmg** and open it.
+          2. Drag **Merge Intelligence Lab** onto **Applications**.
+          3. Open it from Applications. The first time, macOS blocks it (not signed by Apple): go to
+             **System Settings → Privacy & Security** and click **Open Anyway**.
+          4. Create a workspace (tick "Add synthetic demo material" to try everything straight away).
+
+          The Windows zip is a preview build.
+          NOTES
+          for attempt in 1 2 3 4 5; do
+            if [ -n "$STABLE" ]; then
+              V="${STABLE#lab-v}"
+              gh release delete "lab-v$V" --yes || true
+              gh release create "lab-v$V" dist/* --target "$GITHUB_SHA" --title "Merge Intelligence Lab $V" --notes-file notes.md --prerelease --latest=false && exit 0
+            else
+              gh release delete lab-beta --yes --cleanup-tag || true
+              gh release create lab-beta dist/* --target "$GITHUB_SHA" --title "Merge Intelligence Lab beta ($SHORT)" --notes-file notes.md --prerelease --latest=false && exit 0
+            fi
+            echo "publish attempt $attempt failed; retrying in $((attempt * 15)) s"; sleep $((attempt * 15))
+          done
+          exit 1

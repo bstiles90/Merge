@@ -1,0 +1,23 @@
+name: Merge Intelligence research tests
+
+# Offline research prototype only (research/intelligence). Not part of the app build.
+on:
+  push:
+    paths: ["research/intelligence/**", ".github/workflows/intelligence-research.yml"]
+  pull_request:
+    paths: ["research/intelligence/**"]
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: research/intelligence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y libsndfile1
+      - run: ./run.sh test

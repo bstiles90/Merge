@@ -4,3 +4,11 @@ dist
 .DS_Store
 *.tsbuildinfo
 engine/build
+
+# Merge Intelligence Lab build outputs (never commit research workspaces or audio)
+lab/dist/
+lab/build/
+lab/packaging/build_info.json
+*.mil-workspace/
+lab/**/__pycache__/
+lab/.pytest_cache/
