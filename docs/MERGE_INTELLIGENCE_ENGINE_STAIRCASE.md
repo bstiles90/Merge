@@ -8,11 +8,17 @@ All work happens in **Merge Intelligence Beta**: a separate app built from the s
 (see §5). Production Merge stays unchanged.
 
 **Intelligence lives in the DAW from the start.** Tests are set up, run and logged inside the
-Intelligence Beta, so the code under test is the code that will ship. The Lab does two jobs:
-- it builds the Sound Profiles the DAW uses;
-- it imports the DAW's test results for listening, verdicts and research export.
+Intelligence Beta, so the code under test is the code that will ship. Reviewing them happens
+there too: listening, verdicts, blind A/B and the research export of test results.
 
-The Lab never controls the DAW.
+**The Lab is for references only:**
+- add mastered reference tracks and their stems;
+- refine the reference analysis;
+- build and rebuild the Sound Profiles that Intelligence uses.
+
+It never controls the DAW and does not review DAW tests. Its intervention features (Music Lab,
+Listening Room, Speech, Broadcast Compare) are frozen: they are kept working but not developed further.
+Removing them is your decision.
 
 ## 0. The one rule that makes the staircase work
 
@@ -43,7 +49,7 @@ What Merge needs before any trial means anything:
 | F2 | **Plugin inventory**: list every channel's inserts and each plugin's parameters (name, displayed units and range, current value) from the show. | It tells us which EQ and compressor sit on vocals, guitars and keys, and which parameters Intelligence may touch. |
 | F3 | **Parameter changes by stable ID**: per-render overrides, and a timed change list (e.g. at 63.0 s, ch 4 "Pro-Q 4" band 3 gain −2 dB over 2 s), in the plugin's own units. | Disturbances and Intelligence's actions both go through here. |
 | F4 | **Intelligence in the loop**: the operator runs inside the render at its live control rate. It reads bus features and writes F3 changes, all through one interface (later the live one). | Trials are closed loop, not "analyse, then guess". |
-| F5 | **Test runner and log**: an *Intelligence* panel in the DAW. You choose a song, the permitted controls and a test set; it runs the trials and shows progress, with cancel. Every observation summary, proposal, action and outcome is written with the renders to an experiment folder, which the Lab imports into the Listening Room. | Your verdicts stay the scoring we trust most. |
+| F5 | **Test runner and log**: an *Intelligence* panel in the DAW. You choose a song, the permitted controls and a test set; it runs the trials and shows progress, with cancel. Every observation summary, proposal, action and outcome is written with the renders to an experiment folder, with a review view in the same panel: listen to baseline, disturbed and corrected, give verdicts per decision, blind A/B, and export the results ZIP (default privacy rules as in the Lab). | Your verdicts stay the scoring we trust most. |
 
 **Exit gate.**
 - Two renders of the same show are bit-identical, where the plugins themselves are deterministic.
@@ -143,8 +149,8 @@ The first Stage 0 output is a report with:
 1. In the Intelligence Beta: open your approved show and its virtual-soundcheck multitrack for one song.
 2. *Intelligence* panel: review the plugin inventory and approve the permitted controls (faders and trims only for 1a).
 3. Run the test set: a baseline render, then 20 trials (10 with a G disturbance on a random group, 10 with none). It runs in the background.
-4. In the Lab: *Import Merge results*, then review the decisions and run blind A/B in the Listening Room.
-5. Research Export → send the ZIP.
+4. Same panel: review the decisions, run blind A/B, then *Export results* and send the ZIP.
+5. Profiles come from the Lab: the panel uses the Sound Profile you choose from your Lab workspace.
 
 ## 5. Merge Intelligence Beta (the separate app)
 
