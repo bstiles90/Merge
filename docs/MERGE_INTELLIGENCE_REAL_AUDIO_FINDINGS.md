@@ -33,6 +33,11 @@ build machine, and the earlier CI launch check only verified that the window con
 - adds **Settings → Test audio output**: plays test tones through each method and records the result in diagnostics;
 - CI now runs this check inside the real packaged window (reported as a diagnostic: CI Macs may have no audio device).
 
+**CI evidence (packaged app, real macOS WebKit window, no user click):** the audio context started `suspended` and
+reached `running` after the media-policy change, its clock advanced 0.65 s during a 0.8 s test, the Lab's 24-bit WAV
+decoded correctly, and the `<audio>` fallback also played. This is consistent with the gesture/autoplay policy having
+blocked audio before. Final confirmation needs your Mac.
+
 If playback still fails: run *Test audio output*, then *Settings → Export diagnostics*, and send the ZIP.
 
 ## 3. Reliability of the balance targets (from the exported profile)
