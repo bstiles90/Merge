@@ -73,7 +73,8 @@ jobs:
           test -f "$APP/Contents/Resources/ui/index.html"
           codesign --verify --deep --strict --verbose=2 "$APP"
           plutil -p "$APP/Contents/Info.plist" | grep -E "CFBundle(Identifier|Name|Executable)"
-          plutil -p "$APP/Contents/Info.plist" | grep CFBundleIdentifier | grep -q "intelligence"
+          test "$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")" = "audio.merge.intelligence-beta"
+          plutil -extract NSMicrophoneUsageDescription raw "$APP/Contents/Info.plist" | grep -q "audio interface"
           PLUGIN_ID=$("$BIN" --print-plugin-ids | grep "Merge Test Gain" | cut -f1 | head -1)
           test -n "$PLUGIN_ID"
           DATA="$HOME/Library/$APP_NAME"

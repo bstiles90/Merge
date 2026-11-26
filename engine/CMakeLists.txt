@@ -16,7 +16,8 @@ if(MERGE_INTELLIGENCE_EDITION)
                          MERGE_DEFAULT_PORT=18640 MERGE_INTELLIGENCE=1)
 else()
   set(MERGE_PRODUCT_NAME "Merge")
-  set(MERGE_BUNDLE_ID "${MERGE_BUNDLE_ID}")
+  set(MERGE_BUNDLE_ID "audio.merge.engine")
+  set(MERGE_MIC_TEXT "Merge Engine needs access to your audio interface inputs.")
   set(MERGE_EDITION_DEFS)
 endif()
 set(MERGE_ASIO_SDK_DIR "" CACHE PATH "Path to the Steinberg ASIO SDK (Windows only, enables ASIO)")
@@ -38,7 +39,7 @@ juce_add_gui_app(MergeEngine
   NEEDS_WEB_BROWSER TRUE
   PRODUCT_NAME "${MERGE_PRODUCT_NAME}"
   COMPANY_NAME "Merge"
-  BUNDLE_ID "audio.merge.engine"
+  BUNDLE_ID "${MERGE_BUNDLE_ID}"
   VERSION ${PROJECT_VERSION}
   # Audio-interface inputs on macOS need the microphone permission
   MICROPHONE_PERMISSION_ENABLED TRUE

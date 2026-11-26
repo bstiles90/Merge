@@ -84,6 +84,9 @@ jobs:
           test -f "$APP/Contents/Resources/ui/index.html"
           # the signature must cover the whole bundle, or a downloaded copy shows "damaged"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          # identity: production bundle id, and the microphone prompt text (empty = no audio input)
+          test "$(plutil -extract CFBundleIdentifier raw "$APP/Contents/Info.plist")" = "audio.merge.engine"
+          plutil -extract NSMicrophoneUsageDescription raw "$APP/Contents/Info.plist" | grep -q "audio interface"
           PLUGIN_ID=$("$APP/Contents/MacOS/Merge" --print-plugin-ids | grep "Merge Test Gain" | cut -f1 | head -1)
           echo "test plugin id: $PLUGIN_ID"
           test -n "$PLUGIN_ID"

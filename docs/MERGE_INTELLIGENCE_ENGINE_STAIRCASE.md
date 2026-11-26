@@ -5,8 +5,14 @@ below passes. This replaces the Lab chain simulator (validation plan P1–P2). I
 uses Merge itself, with the engineer's own plugins, from the first experiment.
 
 All work happens in **Merge Intelligence Beta**: a separate app built from the same console and engine
-(see §5). Production Merge stays unchanged. The Lab remains the reference manager. It is also where
-experiments are set up and reviewed.
+(see §5). Production Merge stays unchanged.
+
+**Intelligence lives in the DAW from the start.** Tests are set up, run and logged inside the
+Intelligence Beta, so the code under test is the code that will ship. The Lab does two jobs:
+- it builds the Sound Profiles the DAW uses;
+- it imports the DAW's test results for listening, verdicts and research export.
+
+The Lab never controls the DAW.
 
 ## 0. The one rule that makes the staircase work
 
@@ -22,8 +28,8 @@ live control rate, and acts through the same ramps it will use live. Offline ren
 
 | Stage | Intelligence must | Audio | Can repeat? | Where it runs |
 |---|---|---|---|---|
-| **0. Foundations** | — (instrumentation only) | your multitracks through your show | yes | Intelligence Beta (command line), driven by the Lab |
-| **1. Correct adjustable audio** | detect a known problem on a channel and fix it with the right control, through your real plugins | one song per trial, offline render | yes, by design | same |
+| **0. Foundations** | — (instrumentation only) | your multitracks through your show | yes | Intelligence Beta |
+| **1. Correct adjustable audio** | detect a known problem on a channel and fix it with the right control, through your real plugins | one song per trial, rendered in the background faster than real time | yes, by design | same |
 | **2. Survive service transitions** | keep doing Stage 1 across song → song, song → speech, scene recalls and silence, without chasing the change | a simulated service: segments joined into one timeline with scene changes | yes | same |
 | **3. Live, one pass** | do Stages 1–2 on audio that plays once, in real time, with the engineer able to override | virtual soundcheck in real time, then rehearsal inputs, then services (suggest only) | no | Intelligence Beta (real time) |
 
@@ -33,11 +39,11 @@ What Merge needs before any trial means anything:
 
 | # | Capability | Why |
 |---|---|---|
-| F1 | **Offline render**: `--render` takes a saved show plus its multitrack and writes the mix and each of the six **group buses** (bus taps) to WAV, faster than real time, with plugins in non-real-time mode. | The plant. Same mixer code as live, nothing reimplemented. |
+| F1 | **Background render** inside the Intelligence Beta: the open show plus its multitrack, rendered faster than real time on a second mixer with its own plugin instances (non-real-time mode). Writes the mix and each of the six **group buses** (bus taps). The console you are using is not interrupted. | The plant. Same mixer code as live, nothing reimplemented. |
 | F2 | **Plugin inventory**: list every channel's inserts and each plugin's parameters (name, displayed units and range, current value) from the show. | It tells us which EQ and compressor sit on vocals, guitars and keys, and which parameters Intelligence may touch. |
 | F3 | **Parameter changes by stable ID**: per-render overrides, and a timed change list (e.g. at 63.0 s, ch 4 "Pro-Q 4" band 3 gain −2 dB over 2 s), in the plugin's own units. | Disturbances and Intelligence's actions both go through here. |
 | F4 | **Intelligence in the loop**: the operator runs inside the render at its live control rate. It reads bus features and writes F3 changes, all through one interface (later the live one). | Trials are closed loop, not "analyse, then guess". |
-| F5 | **Trial log**: every observation summary, proposal, action and outcome, with the render, written to an experiment folder that the Lab imports into the Listening Room. | Your verdicts stay the scoring we trust most. |
+| F5 | **Test runner and log**: an *Intelligence* panel in the DAW. You choose a song, the permitted controls and a test set; it runs the trials and shows progress, with cancel. Every observation summary, proposal, action and outcome is written with the renders to an experiment folder, which the Lab imports into the Listening Room. | Your verdicts stay the scoring we trust most. |
 
 **Exit gate.**
 - Two renders of the same show are bit-identical, where the plugins themselves are deterministic.
@@ -126,9 +132,7 @@ inside Merge on your Mac; the repository holds only the importer and a synthetic
 - each channel's plugins in order, and the parameters each one exposes;
 - no need to type anything in.
 
-**What you will need to do:**
-1. Save the show in Merge (*Show → Save*).
-2. Point the Lab at that show and at the song's multitrack.
+**What you will need to do:** open your show in the Intelligence Beta. The Intelligence panel reads the plugins from it.
 
 The first Stage 0 output is a report with:
 - each vocal, guitar and keys chain;
@@ -136,10 +140,11 @@ The first Stage 0 output is a report with:
 
 ## 4. First experiment (once Stage 0 lands)
 
-1. One song, your approved show, and its virtual-soundcheck multitrack.
-2. Inventory → you approve the permitted controls (faders and trims only for 1a).
-3. Baseline render, then 20 trials: 10 with a G disturbance on a random group, 10 with none.
-4. The Lab imports the trials. You review the decisions and run blind A/B.
+1. In the Intelligence Beta: open your approved show and its virtual-soundcheck multitrack for one song.
+2. *Intelligence* panel: review the plugin inventory and approve the permitted controls (faders and trims only for 1a).
+3. Run the test set: a baseline render, then 20 trials (10 with a G disturbance on a random group, 10 with none). It runs in the background.
+4. In the Lab: *Import Merge results*, then review the decisions and run blind A/B in the Listening Room.
+5. Research Export → send the ZIP.
 
 ## 5. Merge Intelligence Beta (the separate app)
 
