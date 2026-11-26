@@ -71,6 +71,8 @@ interface NativeState {
   showPath?: string;
   /** short status line, e.g. "Saved" */
   notice?: string;
+  /** the engine quit unexpectedly last time (most likely a plugin): offer to bypass plugins */
+  crashed?: boolean;
   /** plugin GUI currently docked in the Merge window */
   docked?: { slotId: string; name: string; width: number; height: number } | null;
   /** the engine can't dock plugin GUIs (e.g. Linux): show parameters instead */
@@ -294,7 +296,7 @@ function mapFormat(f: string): PluginFormat {
 function onMessage(m: any) {
   switch (m.type) {
     case 'hello':
-      useNative.setState({ version: m.version });
+      useNative.setState({ version: m.version, ...(m.crashed ? { crashed: true } : {}) });
       break;
     case 'device':
       useNative.setState({ device: m });

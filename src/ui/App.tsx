@@ -12,6 +12,7 @@ import { fmtTime, TimelineView } from './TimelineView';
 import { services } from '../core/services';
 import { bootEngine, useEngine } from './useEngine';
 import { useShallow } from 'zustand/react/shallow';
+import type { InsertSlot } from '../core/types';
 import { sendNative, startEmbedded, useNative } from '../native/bridge';
 import { EMBEDDED } from '../native/embedded';
 import { toggleNative } from './NativePanel';
@@ -222,7 +223,7 @@ export function App() {
   };
   const engine = useEngine();
   // not st.inserts: plugin updates must not redraw the whole console
-  const native = useNative(useShallow((st) => ({ status: st.status, notice: st.notice, showPath: st.showPath, url: st.url, device: st.device, error: st.error })));
+  const native = useNative(useShallow((st) => ({ status: st.status, notice: st.notice, crashed: st.crashed, showPath: st.showPath, url: st.url, device: st.device, error: st.error })));
   const [starting, setStarting] = useState(false);
   const [err, setErr] = useState('');
   const s = useConsole();
@@ -400,6 +401,17 @@ export function App() {
       </header>
       {err && <div className="error-bar">Audio engine failed to start: {err}</div>}
       {native.notice && <div className="notice-bar">{native.notice}</div>}
+      {native.crashed && (
+        <div className="error-bar crash-bar">
+          Merge closed unexpectedly last time (usually a plugin).
+          <button onClick={() => {
+            const off = (l: InsertSlot[]) => l.map((i) => ({ ...i, bypass: true }));
+            s.update((st) => ({ channels: st.channels.map((c) => ({ ...c, inserts: off(c.inserts) })), buses: st.buses.map((b) => ({ ...b, inserts: off(b.inserts) })), main: { ...st.main, inserts: off(st.main.inserts) } }));
+            useNative.setState({ crashed: false, notice: 'Every plugin is bypassed: turn them back on one strip at a time to find the one that crashes' });
+          }}>Bypass all plugins</button>
+          <button onClick={() => useNative.setState({ crashed: false })}>Dismiss</button>
+        </div>
+      )}
       {!EMBEDDED && native.status === 'error' && <div className="error-bar">{native.error}</div>}
       {!EMBEDDED && !engine && native.status !== 'connected' && <div className="engine-hint">Audio is off — the console is fully usable, but click <b>Start audio</b> for the browser engine, or <b>Connect engine</b> for native audio with VST3/AU plugins.</div>}
       <main className="content">

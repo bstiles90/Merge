@@ -650,7 +650,13 @@ bool PluginHost::setState (const juce::String& slotId, const juce::String& base6
         if (! juce::Base64::convertFromBase64 (out, base64.substring (4))) return false;
     }
     else if (! mb.fromBase64Encoding (base64)) return false;
-    ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
+    {
+        // never change a plugin's state while the audio thread is inside it: some plugins
+        // (Softube, seen crashing in render) rebuild their internals in setStateInformation.
+        // The audio thread only try-locks this, so the strip passes audio through meanwhile.
+        const juce::ScopedLock sl (ins->plugin().getCallbackLock());
+        ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
+    }
     // report all values back so the UI's generic editor matches the restored state
     send (obj ({ { "type", "insert.params" }, { "slotId", slotId }, { "params", ins->describeParams() } }));
     return true;

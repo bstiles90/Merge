@@ -90,6 +90,8 @@ private:
     int meterTick = 0;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String recordingShow;
+    juce::File runMarker;
+    bool crashedLastRun = false;
     juce::ThreadPool jobs { 2 };                       // waveform overviews
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 };

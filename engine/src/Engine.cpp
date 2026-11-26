@@ -43,7 +43,7 @@ Engine::Engine()
     ws.onMessage = [this] (int id, const juce::String& t) { handleMessage (id, t); };
     ws.onConnect = [this] (int id) {
         std::cout << "[ws] UI client connected" << std::endl;
-        send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION } }), id);
+        send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION }, { "crashed", crashedLastRun } }), id);
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
     };
@@ -56,6 +56,7 @@ Engine::~Engine()
     alive.reset();
     jobs.removeAllJobs (true, 2000);
     mix.stopRecording(); // a recording still running is finished (its files closed) on the way out
+    if (runMarker != juce::File()) runMarker.deleteFile(); // a clean quit
     ws.stop();
     devices.removeAudioCallback (this);
     devices.closeAudioDevice();
@@ -65,6 +66,12 @@ Engine::~Engine()
 
 bool Engine::start (const Options& opt)
 {
+    // crash detection: the marker is removed on a clean quit, so finding it means the last run
+    // ended unexpectedly (most likely a plugin): the console then offers to bypass every plugin
+    runMarker = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/running.marker");
+    crashedLastRun = runMarker.existsAsFile();
+    runMarker.getParentDirectory().createDirectory();
+    runMarker.replaceWithText (juce::Time::getCurrentTime().toISO8601 (true));
     if (! opt.virtualDevice)
     {
         auto saved = juce::parseXML (settingsFile);
