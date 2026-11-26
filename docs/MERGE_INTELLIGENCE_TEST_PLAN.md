@@ -16,10 +16,10 @@ Three principles run through every test:
 
 | ID | Material | Purpose | Who |
 |---|---|---|---|
-| M1 | ≥ 3 professionally mastered worship references (one is enough for the very first PoC), each with Logic Stem Splitter stems exported at preserved relative levels, the same sample rate, and identical start and end | Sound Profile | Engineer |
-| M2 | One reference where **true** stems exist: the Merge template's own mix rendered to 2-track, then separated with Stem Splitter | Stem-fidelity calibration (X1) | Engineer + Merge export |
+| M1 | ≥ 3 worship references with the target sonic character (one is enough for the very first PoC), each with stems at preserved relative levels, the same sample rate, and identical start and end. Authentic production stems where available, Logic Stem Splitter separations otherwise | Sound Profile | Engineer (will provide) |
+| M2 | Only needed if any M1 reference uses separated stems: one song where authentic stems exist, rendered to 2-track and separated with Stem Splitter, to measure separation error | Stem-fidelity calibration (X1) | Engineer |
 | M3 | ≥ 3 prerecorded worship multitracks (raw inputs as recorded for virtual soundcheck), including a sparse song, a full-band anthem and a spoken segment | Live comparison material | Engineer |
-| M4 | The migrated Logic template show in Merge, with its plugin chain | Processing context | Existing |
+| M4 | Any Merge show with a representative third-party plugin chain (template-independent) | Processing context | Existing |
 | M5 | Merge-exported **post-processing group stems** (Vocals, Drums, Bass, Guitars, Keys & Other) for M3 songs, plus the 2-track | Earliest offline experiments (vision §24) | Merge export (browser engine today; native once Prereq A exists) |
 | M6 | Annotations per M3 song: section boundaries, intentional dynamics (builds, drops, a tacet instrument), lead-vocal changes | Ground truth for "do nothing" | Engineer, about 15 min per song |
 | M7 | Synthetic suite (`research/intelligence/mi/synth.py`) | Logic regression with exact ground truth | Exists |
@@ -29,7 +29,7 @@ Three principles run through every test:
 ## 2. Controlled disturbance generator
 
 The generator is a script that renders, offline, the M5 group stems (or the M3 multitrack
-through the template, once native playback exists) with scripted disturbances. Every
+through a show's plugin chain, once native playback exists) with scripted disturbances. Every
 disturbance is logged with its exact onset, duration and value. Unless noted, an injected
 disturbance lasts 20 s and is followed by 20 s of clean material.
 
@@ -38,7 +38,7 @@ disturbance lasts 20 s and is followed by 20 s of clean material.
 | ID | Disturbance | Expected behaviour |
 |---|---|---|
 | T-B1 | Guitars +3 dB | Guitars about −3 dB (≥ 70 % corrected) within 15 s; others ±0.5 dB |
-| T-B2 | Vocals −3 dB | Vocals +, or others − (per permissions) |
+| T-B2 | Vocals −3 dB | Vocals boosted about +3 dB (boost and cut are both allowed; the sparse solver should move the vocals, not the other four groups) |
 | T-B3 | Vocals −6 dB (exceeds the bound) | Correction saturates at its bound; the log says "saturated" |
 | T-B4 | All groups +3 dB (whole band) | No action (≤ 0.3 dB) |
 | T-B5 | Keys removed for 20 s | No change to keys; others ≤ 0.3 dB |
@@ -55,7 +55,7 @@ These are applied as an extra known bell or shelf on a group, inserted offline.
 | ID | Disturbance | Expected behaviour |
 |---|---|---|
 | T-T1 | Vocal +4 dB at 300 Hz | EQ cut on the nearest authorised band, within ±1 octave; fader unchanged ±0.5 |
-| T-T2 | Vocal −4 dB at 3 kHz | EQ boost at presence, or no action if boost is not authorised (log "would boost") |
+| T-T2 | Vocal −4 dB at 3 kHz | EQ boost at the presence band |
 | T-T3 | Bass +4 dB at 80 Hz | EQ low band, not fader (if level-neutral within the band) |
 | T-T4 | Broadband +3 dB on keys | Fader, not EQ |
 | T-T5 | Guitars and keys +3 dB at 2–4 kHz (masking the vocal presence) | Masking candidate: a small cut on the maskers, not a vocal boost. **Listening required** (Hafezi: objective masking is unreliable) |
@@ -154,7 +154,7 @@ Full list in the plugin architecture document, §12. The pass criteria are:
 | Manual-edit detection | a GUI drag during a ramp stops the ramp in ≤ 100 ms, and the baseline equals the manual value |
 | AU echo suppression | 0 false manual-edit events over 1,000 Intelligence writes |
 | Overlay round-trip | reopen with Intelligence OFF gives a parameter-exact baseline |
-| Scene recall | offsets dropped; baseline re-captured |
+| Scene recall | adjustments kept: deltas re-applied on the recalled baseline, within limits |
 | Version change | detected; capability downgraded to read-only |
 
 ## 7. Performance benchmarking (Phase 9+)
@@ -164,7 +164,7 @@ Full list in the plugin architecture document, §12. The pass criteria are:
 | Configurations | 48 kHz at 32, 64 and 128-sample buffers; 16, 32 and 64 taps; spectra at 5 and 10 Hz |
 | Audio-thread overhead | ≤ 2 % of the block budget, measured with a high-resolution timer around the tap copies |
 | Analysis worker | ≤ 10 % of one core; Intelligence process ≤ 5 % |
-| Stress | full template plugin load at 85 % DSP: Intelligence on vs off → **no** increase in xruns over 1 h |
+| Stress | full plugin load at 85 % DSP: Intelligence on vs off → **no** increase in xruns over 1 h |
 | Degradation | starve the worker (sleep injection) → frames dropped and counted, audio unaffected, decisions go stale-hold |
 
 ## 8. Audio reliability tests (T-R)
@@ -175,7 +175,7 @@ Full list in the plugin architecture document, §12. The pass criteria are:
 | T-R2 | Freeze the Intelligence process (SIGSTOP) | Same as T-R1 via stale detection |
 | T-R3 | Manual fader move during Assist | Offset frozen; 30 s hold; re-baseline |
 | T-R4 | Manual plugin edit during a ramp | Stop; baseline = manual value |
-| T-R5 | Scene recall with fade during Assist | Decisions frozen during the fade; no jumps |
+| T-R5 | Scene recall with fade during Assist | Applied offsets kept through the recall (Intelligence sits outside scenes); new decisions paused during the fade; no jumps |
 | T-R6 | Routing change (group member reassigned) | Epoch increment; decisions discarded; mapping re-validated |
 | T-R7 | DCA move on a group member | Treated as manual |
 | T-R8 | Plugin crash or missing plugin | Slot capability disabled; Intelligence continues for the other groups |

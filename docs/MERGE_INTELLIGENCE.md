@@ -105,14 +105,14 @@ natural-language layer that *configures* Intelligence but never runs inside it.
 | **Metering** | `Mixer::meters`: channel **peak** after the rack and before the fader (only L is sent); bus peaks post-fader. Main: M/S/I loudness and true peak. Sent at 30 Hz (`Engine::timerCallback`). No per-strip loudness, spectra or dynamics. | A new analysis subsystem is needed. The 30 Hz meter message is UI-only and unsuitable. |
 | **Loudness meter** | `LoudnessMeter` (BS.1770 K-weighting, 100 ms blocks). Integrated gating runs a loop over every stored block **on the audio thread** every 100 ms. Storage is fixed at **36,000 blocks (1 hour)**, after which new blocks are no longer gated in. | Two side findings: (1) O(n) work on the audio thread, growing over a service; (2) **integrated loudness silently stops updating after 60 minutes.** A 90-minute service reports first-hour loudness. Fix by moving gating to a histogram (as libebur128 does): O(1) per block, unbounded duration. *Not fixed in Phase 0.* |
 | **Plugin hosting** | `engine/src/PluginHost.*`, JUCE 8.0.9. Async load, in-process, scan in a helper process. Parameters: id / name / value / text / label / steps. `setValue` on the message thread. Listener flags only; **gestures ignored**. State sent at most 1/s. | See the plugin architecture document §1. Add gestures, metadata, echo suppression, ramps and the overlay. |
-| **Plugin state in shows** | `InsertSlot.state` (base64), restored through `insert.setState` (`bridge.ts: syncPluginStates`). Scene recall can change it, which re-sets the entire plugin state. | Scene recall must drop Intelligence plugin offsets and re-baseline. |
-| **Scenes** | `src/core/scenes.ts`: recall with scope and per-part safes, including per-slot plugin safes. Timed fades run in JS at about 33 ms ticks (`sceneFade.ts`) and stop following any control moved by hand. | Intelligence must treat a recall or fade as a context event: freeze decisions during the fade, then re-baseline. Fader offsets survive a recall (they are orthogonal) unless the engineer chooses "recall clears Intelligence". |
+| **Plugin state in shows** | `InsertSlot.state` (base64), restored through `insert.setState` (`bridge.ts: syncPluginStates`). Scene recall can change it, which re-sets the entire plugin state. | Intelligence sits outside scenes: after a recall, the recalled values become the new baseline and active Intelligence adjustments are re-applied on top of it (§10.3, plugin architecture doc §8). |
+| **Scenes** | `src/core/scenes.ts`: recall with scope and per-part safes, including per-slot plugin safes. Timed fades run in JS at about 33 ms ticks (`sceneFade.ts`) and stop following any control moved by hand. | **Intelligence sits outside scenes** (decided). Scenes never store or clear Intelligence state. Recall only changes the engineer's baseline; offsets carry on over it. Decisions pause while a fade runs, so measurements taken mid-fade are not mistaken for problems. |
 | **Stereo links** | `links.ts` mirrors linked pairs after every state change. | Offsets apply per source group, so links stay consistent automatically. |
-| **Recording / virtual soundcheck** | Browser engine only (`src/audio/engine.ts`). Native: `Mixer::sourceSample` returns 0 for `playback` ("native recorder/playback is a later milestone"). | **Blocker** for evaluating Intelligence with the real plugin template. Phases 1–8 use offline Python on exported stems. Phase 10 needs native multitrack playback. |
+| **Recording / virtual soundcheck** | Browser engine only (`src/audio/engine.ts`). Native: `Mixer::sourceSample` returns 0 for `playback` ("native recorder/playback is a later milestone"). | **Blocker** for evaluating Intelligence live with real third-party plugins in the loop. Phases 1–8 use offline Python on exported stems. Phase 10 needs native multitrack playback. |
 | **Threads** | Audio device callback (`Mixer::process`). Message thread: plan parsing, plugin host 20 Hz timer, engine 30 Hz timer, WebSocket message dispatch (`callAsync`). One thread per WebSocket client plus a listener thread. Virtual device thread when no interface is present. | Analysis and decisions need dedicated worker contexts; nothing heavy belongs on the message thread (plugin GUIs live there). |
 | **Remote control** | Hotkeys and Web MIDI (with motor-fader feedback) in the UI. WebSocket open to native local clients (Companion); origin-checked for browsers. | Motor faders follow `faderDb`. Intelligence offsets must stay out of it (a ghost display instead). The protocol already admits a second local client: the Intelligence process. |
 | **Show files** | `serializeShow` / `parseShow` (`store.ts`): JSON, version 1, `-inf` encoding. Autosave to localStorage and a native file (atomic replace). | Add an `intelligence` section (roles, groups, permissions, profile reference) with defaults, so old shows load unchanged. |
-| **Logic migration** | `src/core/logicImport.ts`: AU-only plugins (`aucode:`) with ClassInfo state, sends and buses. | The plugin maps must be AU-first for the template. |
+| **Logic migration** | `src/core/logicImport.ts`: AU-only plugins (`aucode:`) with ClassInfo state, sends and buses. | Logic-imported shows host AU plugins on macOS, so plugin maps must cover AU as well as VST3. |
 | **Tests / CI** | `npm test` (vitest, core maths). `Merge --selftest` (mixer, R128, TP, VST3 hosting, PDC, WebSocket). CI on macOS / Windows / Linux. | Extend the self-test with analysis-tap and offset-executor tests, plus a test EQ/compressor VST3. |
 
 ---
@@ -311,7 +311,7 @@ New show section, with all fields optional so old shows load unchanged:
       "members": { "bus": "bus7" },                // or { "channels": ["ch12","ch13",…] }
       "applyAs": "members",                        // members (DCA-style, default) | bus
       "priority": 3, "exclusiveFx": ["bus20"],     // attributable FX returns (auto-suggested from routing)
-      "permissions": { "fader": { "allow": true, "min": -3, "max": 2, "rate": 0.5 } } }
+      "permissions": { "fader": { "allow": true, "min": -4, "max": 4, "rate": 0.5 } } }
   ],
   "context": { "leadVocal": "ch12" },             // manual; future: scene / external cue overlays
   "approvedBaseline": { "taken": "…", "fingerprint": { … } }
@@ -327,9 +327,10 @@ New show section, with all fields optional so old shows load unchanged:
     accounts for it.
 - **`applyAs: bus`** applies the offset to the group bus output, after its compressor.
   Use it when the group's compression character must not change.
-- **Context is separate from scenes.** A scene can carry an optional `intelligenceContext`
-  overlay (for example lead vocalist = ch14) without recalling any fader or plugin.
-  Explicit assignments beat any future inference (vision §19).
+- **Context is separate from scenes.** Scenes neither store nor recall Intelligence
+  context (decided: Intelligence sits outside scenes). Context such as "lead vocalist =
+  ch14" is set on its own: manually now, from external cues later. Explicit assignments
+  beat any future inference (vision §19).
 
 ## 9. Comparison and problem identification
 
@@ -361,7 +362,7 @@ interface ControlAction {
   expected: { metric: string; delta: number }[];  // prediction used for outcome check
   confidence: number;        // 0..1 with factors
   candidates: { summary: string; cost: number; benefit: number }[];   // what else was considered
-  revert: { strategy: 'ramp' | 'jump'; toBaselineOn: ('manual' | 'stale' | 'bypass' | 'sceneRecall')[] };
+  revert: { strategy: 'ramp' | 'jump'; toBaselineOn: ('manual' | 'stale' | 'bypass')[] };   // scene recall never reverts: Intelligence sits outside scenes
   children?: ControlAction[];  // composite
 }
 ```
@@ -394,7 +395,7 @@ The offset is owned by the engine's Execution Guard. The UI plan never carries i
 
 | Situation | Behaviour |
 |---|---|
-| **Scenes** | Recall leaves offsets alone by default; offsets are relative. Option: "scene recall clears Intelligence". A fade freezes decisions until it completes. |
+| **Scenes** | Intelligence sits outside scenes. Recall never clears or stores offsets: it changes the engineer's baseline, and the offset carries on over it. A scene fade pauses new decisions until it completes; applied offsets stay where they are. |
 | **DCAs** | The offset is multiplicative with DCA gain, so behaviour stays DCA-like. |
 | **Mutes** | A muted group is inactive, so it is held. |
 | **Pre-fader sends** | Unaffected, because the offset is applied with `post`. |
@@ -430,7 +431,7 @@ See the plugin architecture document in full. In summary:
 
 **Per group, channel, plugin or parameter**
 - allow;
-- direction (boost allowed?);
+- direction (both by default; either can be disabled for a specific source);
 - min / max relative to baseline;
 - rate;
 - confidence threshold;
@@ -441,8 +442,9 @@ See the plugin architecture document in full. In summary:
 | Setting | Default |
 |---|---|
 | Everything | denied |
-| PoC fader offsets | −3 … +2 dB, 0.5 dB/s |
-| Boost on bleed-prone roles | off |
+| Capabilities | each is off until explicitly authorised |
+| PoC fader offsets, once authorised | ±4 dB, boost and cut equally free (decided), 0.5 dB/s |
+| Boost safeguards | not a permission restriction: the activity and bleed gates (no boosting inactive or bleed-only sources) and the program true-peak headroom constraint |
 
 **Hard limits in the engine** (independent of permissions): ±6 dB fader offset; plugin
 values never outside the map's validated range.
@@ -512,7 +514,7 @@ gaps.
 | **6** Offline EQ | Band-gain experiments | X4 passes; listeners prefer EQ actions to fader-only alternatives in the tonal scenarios |
 | **7** Offline dynamics | Intensity loop | X5 passes; no level jumps > 0.5 LU |
 | **8** Coordinated operator | Joint solve with timescale separation | No contradictory actions in T-C tests; coordinated ≥ separate controllers in listening |
-| **Prereq A** Native playback / virtual soundcheck | Multitrack playback into native channels (and recording) | Sample-accurate playback of 32+ tracks through the plugin template; transport from the UI |
+| **Prereq A** Native playback / virtual soundcheck | Multitrack playback into native channels (and recording) | Sample-accurate playback of 32+ tracks through a full plugin chain; transport from the UI |
 | **9** Live analysis | Engine taps, rings, worker, `FeatureFrame` stream | Budgets in §5 met at 64 taps, 48 kHz, 64-sample buffer; zero added xruns over 3 h; features match offline within 0.1 LU |
 | **10** Virtual soundcheck evaluation | Operator on native playback | X3, X6, X7 pass; stability < 1 reversal per group per minute |
 | **11** Observe | Live observer, logging during services | ≥ 4 services logged; the engineer reviews; false-problem rate < 10 % |
@@ -543,19 +545,32 @@ gaps.
 5. **The existing AI plan's cloud planner** is incompatible with "local and offline". See
    the note at the top of this document.
 
-### Open questions for the engineer
+### Decisions recorded (engineer's answers, November 2026)
 
-1. Do group buses in the migrated template correspond one-to-one with the five PoC roles?
-   Are the vocal reverbs fed only by vocals (needed for FX attribution, G3)?
-2. Is boosting allowed at all in Assist for Vocals, or attenuation of the others only?
-3. Should scene recall clear Intelligence offsets?
-4. How many references, of which songs, will make the first Sound Profile? At least 3 are
-   recommended for between-reference statistics.
-5. Can a reference be produced where *true* stems exist? For example, render the Merge
-   template mix and run it through Stem Splitter. This calibrates stem fidelity (X1).
-6. Which exact plugins sit on the vocal chain and group buses? This sets the order of the
-   plugin maps.
-7. Is the Phase 1 analyser acceptable as a Python CLI (fast iteration), ported to C++ when
+1. **Template-independent.** This work assesses the viability of the engine itself. It does
+   not depend on the migrated template's group layout. Group mapping, FX attribution and
+   plugin maps are general mechanisms, configured per show.
+2. **Assist may boost and cut.** Fader Assist bounds are symmetric (±4 dB for the PoC).
+   Boosts are kept safe by the activity and bleed gates and by the true-peak headroom
+   constraint, not by forbidding them.
+3. **Intelligence sits outside scenes.** Scene recall neither clears nor stores
+   Intelligence adjustments. A recall only moves the engineer's baseline; Intelligence's
+   adjustments carry on over it.
+4. **References.** The engineer will provide stems that already have the target sonic
+   character. If these are authentic production stems rather than Stem Splitter
+   separations, the separation-artefact concerns (G2, X1) mostly fall away. X1 is still
+   worth running for any reference that only exists as a separated master.
+
+### Still open
+
+1. How many references make the first Sound Profile? At least 3 are recommended for
+   between-reference statistics. One is enough for the first PoC.
+2. Are the provided stems authentic multitrack stems, Stem Splitter separations, or a mix
+   of both? This sets how much weight the reconstruction-error check carries.
+3. Which plugins should the research characterise first? Without the template as the
+   driver, I'd pick one common parametric EQ, one threshold-type compressor and one
+   drive-type (1176-style) compressor, so all three intensity mappings are covered.
+4. Is the Phase 1 analyser acceptable as a Python CLI (fast iteration), ported to C++ when
    Phase 9 needs identical live code? Alternatively it could be written in C++ from the
    start (one code base, slower iteration).
 

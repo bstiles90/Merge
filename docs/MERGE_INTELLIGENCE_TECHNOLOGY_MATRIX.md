@@ -117,7 +117,7 @@ operator.** The vision says "do not favour ML because the feature is branded int
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
 | Reference stems too inaccurate for targets | medium | high | X1 experiment; reconstruction-error weighting; baseline blend |
-| Bleed corrupts activity and loudness | high (worship stages) | high | bleed tests; conservative boost permissions; correlation gating |
+| Bleed corrupts activity and loudness | high (worship stages) | high | bleed tests; activity and correlation gating before any boost |
 | Third-party plugin automation artefacts | medium | high | characterisation, ramps, allow-lists |
 | In-process plugin crash during experiments | low–medium | severe | never experiment in the live instance; isolated characterisation process |
 | Native virtual soundcheck missing (playback not in the native engine) | certain today | high for Phases 10–13 | prerequisite milestone (MERGE_INTELLIGENCE §11) |

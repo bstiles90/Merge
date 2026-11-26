@@ -339,7 +339,7 @@ Over the active groups `A`, minimise a dead-zone least squares with an L1 penalt
 
 ```
 min_o  Σ_{(g,h) co-active} w_gh · φ( (L̂_g + o_g) − (L̂_h + o_h) − t_gh )²  +  λ Σ_{g∈A} |o_g − o_g^prev_target|·κ_g
-s.t.   o_g ∈ [o_min_g, o_max_g]       (permissions: e.g. −4…+2 dB; boost may be forbidden)
+s.t.   o_g ∈ [o_min_g, o_max_g]       (permissions: PoC ±4 dB; boost and cut equally allowed)
        o_g unchanged for g ∉ A        (never adjust inactive groups)
        predicted program true-peak headroom ≥ margin (if boosting)
 ```
@@ -607,7 +607,7 @@ errors.
 | Engage deadband | max(1 LU, IQR/3) | §5.1 |
 | Re-target hysteresis | 0.5 dB (must be smaller than typical correction; 1 dB froze corrections in exp02 [V]) | decision |
 | Rate limit | 0.5 dB/s fader; 0.2 dB/s EQ; intensity ramp ≥ 5 s | execution (engine) |
-| Max cumulative offset | ±4 dB fader (boost limit often lower), ±3 dB EQ, ±1 intensity step | permissions |
+| Max cumulative offset | ±4 dB fader (symmetric), ±3 dB EQ, ±1 intensity step | permissions |
 | Anti-windup | not needed for feed-forward; clamped targets never integrate | — |
 | Cooldown | 10 s after a fader re-target for the same group; 120 s after EQ/dynamics | decision |
 | Manual-override hold | 30 s after the engineer touches the strip or parameter (configurable); then re-baseline | execution |
@@ -644,7 +644,7 @@ errors.
 
 | Failure | Cause | Mitigation |
 |---|---|---|
-| Boosting a silent or bleed-only channel | activity mis-detection | three-part activity test, bleed correlation, boost permissions off by default for bleed-prone roles |
+| Boosting a silent or bleed-only channel | activity mis-detection | three-part activity test, bleed correlation, higher confidence required before boosting a bleed-prone role |
 | Fighting the engineer | offset not yielding | manual hold plus re-baseline; offsets live outside `faderDb` |
 | Chasing own changes | integrating on post-offset measurement | offset-free estimation [V] |
 | Pumping or ducking | short windows; unmasking that releases on vocal gaps (Ward [R]) | ≥ 6 s evidence, release hold times, rate limits |

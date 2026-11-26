@@ -24,7 +24,7 @@ Each claim carries a tag:
 - **[V] Plugin identity.** `pluginId` = `<format>:<JUCE identifier string>`.
 - **[V] Logic imports.** Shows imported from Logic carry `aucode:type,subtype,manufacturer`
   and are resolved to the scanned AU (`findDescription`).
-  - The migrated worship template is therefore **AU on macOS**.
+  - Logic-imported shows therefore host **AU plugins on macOS**.
   - A VST3 build of the same product has *different* parameter IDs.
 - **[V] Out of process: scanning only.** Hosting is in-process, with no sandbox, so a
   crashing plugin takes down the engine (`engine/README.md`).
@@ -361,10 +361,18 @@ While offsets are active, the engine tags the slot's state messages:
 - **On "Save as approved":** baselines are written, and the effective values become the new
   baseline only if the engineer explicitly accepts the Intelligence changes.
 
-**Scene recall and plugin `setState`** replace parameters wholesale. Therefore:
-- all Intelligence plugin offsets on the affected slots are **dropped**, and baselines are
-  re-captured from the recalled state;
-- recall-safe slots (`InsertSlot.recallSafe`) keep their offsets.
+**Scene recall and plugin `setState`** replace parameters wholesale. Intelligence sits
+outside scenes (decided), so a recall must not clear its adjustments:
+1. Before the state is applied, the execution layer records each active adjustment as a
+   delta in engineering units (for example "−1.5 dB on band 2 gain").
+2. The recalled values become the new baselines.
+3. The deltas are re-applied on top of the new baselines with a short ramp, clamped to the
+   permitted range around the *new* baseline.
+4. If the recalled state changes something the delta depends on (a band's type, the
+   plugin itself), that adjustment is dropped and logged instead.
+
+Scenes never store Intelligence adjustments: the overlay record above keeps them out of
+every saved state blob, including scene snapshots.
 
 **Plugin reload** (mono/stereo change, missing plugin, crash) discards offsets for that slot.
 
@@ -388,14 +396,16 @@ While offsets are active, the engine tags the slot's state messages:
 
 ## 10. Supported-plugin strategy
 
-1. **Inventory first.** List the plugins actually in the migrated Logic template. They can be
-   read from the imported show's `pluginId`s (`aucode:` + names).
-2. **Priority order:**
-   1. the template's vocal EQ;
-   2. the vocal compressor;
-   3. group-bus EQs;
-   4. the de-esser.
-3. Characterise and map **3–5 plugins** before any Phase 6/7 experiment.
+1. **Cover the semantic types, not a specific template.** The research is
+   template-independent, so pick plugins that cover the three ways "more compression" is
+   expressed, plus EQ:
+   1. a common parametric EQ (band gain);
+   2. a threshold-type compressor;
+   3. a drive-type (1176-style) compressor;
+   4. a peak-reduction (LA-2A-style) compressor;
+   5. a de-esser.
+2. Characterise and map **3–5 plugins** before any Phase 6/7 experiment. Add maps for a
+   specific show's plugins when that show is used.
 4. **Unsupported plugins** — no map, failed fingerprint, or failed characterisation:
    - Intelligence reads their text and values for diagnostics only;
    - the operator treats them as fixed processing (part of the plant);
@@ -426,6 +436,6 @@ For each plugin and format before authorisation:
 | 6 | Manual-edit detection (GUI drag during an Intelligence ramp) |
 | 7 | AU echo suppression |
 | 8 | State overlay round-trip (save with active offsets → reopen with Intelligence OFF → baseline exact) |
-| 9 | Scene recall drops offsets |
+| 9 | Scene recall keeps adjustments: deltas re-applied on the recalled baseline, within limits |
 | 10 | Behaviour when the licence is missing. The host cannot detect demo mode (`engine/LICENSING.md`), so the characterisation run checks for periodic silence or noise and the engineer confirms the licence before authorising |
 | 11 | Version-change detection |
