@@ -19,7 +19,7 @@ const PAGES = {
   listen: () => import('./pages/listen.js'), studies: () => import('./pages/studies.js'),
   history: () => import('./pages/history.js'), feedback: () => import('./pages/feedback.js'),
   export: () => import('./pages/export.js'), settings: () => import('./pages/settings.js'),
-  planned: () => import('./pages/planned.js'), broadcast: () => import('./pages/broadcast.js'),
+  planned: () => import('./pages/planned.js'), audiocheck: () => import('./pages/audiocheck.js'), broadcast: () => import('./pages/broadcast.js'),
 };
 
 export const expRoute = (e) => (e.type === 'study' ? `studies/${e.id}` : e.type === 'program' ? `broadcast/${e.id}` : `listen/${e.id}`);
@@ -80,7 +80,7 @@ async function route() {
   const path = location.hash.replace(/^#\/?/, '') || '';
   let [page, ...rest] = path.split('/');
   const s = app.state;
-  if (!s.workspace && page !== 'planned') page = 'welcome';
+  if (!s.workspace && page !== 'planned' && page !== 'audiocheck') page = 'welcome';
   if (!page) page = 'dashboard';
   if (!PAGES[page]) page = 'dashboard';
   renderChrome();

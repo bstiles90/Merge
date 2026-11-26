@@ -87,7 +87,8 @@ async function view(root, eid, app) {
   const lc = pr ? new TimeCanvas({ height: 90, duration: M.duration_s, onSeek: (t) => player.seek(t), selectable: false,
     draw: drawSeries({ time: pr.time_s, lines: [{ name: 'short-term', values: pr.shortterm_LUFS, color: '#4ba8ff' }] },
       { lo: Math.floor(Math.min(...pr.shortterm_LUFS.filter((v) => v != null)) / 6) * 6 || -40, hi: Math.ceil(Math.max(...pr.shortterm_LUFS.filter((v) => v != null)) / 3) * 3 || 0, unit: 'LUFS', zero: false }) }) : null;
-  player.on((ev) => {
+  player.on((ev, _p, detail) => {
+    if (ev === 'error' || ev === 'fallback') toast(detail, ev === 'error');
     const t = player.currentTime();
     timeEl.textContent = `${fmtTime(t, true)} / ${fmtTime(player.duration)}`;
     wave.setPlayhead(t); lc && lc.setPlayhead(t);
@@ -162,5 +163,5 @@ async function view(root, eid, app) {
     programView({ profile: P, refs: P.references || [], selected, selectedLabel: 'This recording', findings: C.findings }),
     panel('All measures', metricsTable),
     data.report ? panel('Report', md(data.report)) : null);
-  return () => { player.stop(); player.dispose(); player.ctx && player.ctx.close(); };
+  return () => { player.close(); };
 }

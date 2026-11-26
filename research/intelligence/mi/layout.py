@@ -32,8 +32,10 @@ else:  # pragma: no cover
 from .audio_io import AUDIO_EXT
 
 # Five proof-of-concept source groups (vision §24). Order is the report order.
-GROUPS = ["vocals", "drums", "bass", "guitars", "keys"]
-GROUP_LABEL = {"vocals": "Vocals", "drums": "Drums", "bass": "Bass", "guitars": "Guitars", "keys": "Keys & Other"}
+# Six source groups since algorithm 0.5.0: Keys (piano, organ, Rhodes...) and Synths (pads, synths,
+# atmospheres, strings, "other") are separate. Profiles built earlier store "keys" meaning keys + other.
+GROUPS = ["vocals", "drums", "bass", "guitars", "keys", "synths"]
+GROUP_LABEL = {"vocals": "Vocals", "drums": "Drums", "bass": "Bass", "guitars": "Guitars", "keys": "Keys", "synths": "Synths"}
 
 # Filename keyword -> group. Checked in order; first match wins. Logic Pro's Stem Splitter
 # produces Vocals / Drums / Bass / Guitar / Piano / Other.
@@ -41,14 +43,17 @@ ROLE_KEYWORDS = [
     ("drums", ["drum", "kit", "kick", "snare", "tom", "overhead", "oh", "cymbal", "hat", "hihat", "perc", "room"]),
     ("bass", ["bass", "sub"]),
     ("guitars", ["guitar", "gtr", "eg", "ag", "electric", "acoustic"]),
+    ("synths", ["synth", "pad", "arp"]),                      # explicit instrument words win over "lead"
+    ("keys", ["piano", "key", "organ", "rhodes", "wurli"]),
     ("vocals", ["vocal", "vox", "voice", "lead", "lv", "bgv", "bv", "choir", "sing"]),
-    ("keys", ["piano", "key", "synth", "pad", "organ", "string", "track", "other", "instrument", "ambient"]),
+    ("synths", ["atmos", "ambient", "swell", "drone", "string", "other", "track", "loop"]),
+    ("keys", ["ep", "instrument"]),
 ]
 
 
 def role_for(filename: str, overrides: dict | None = None) -> str | None:
     """Group for a file name, matched on word prefixes (so "Toms" -> drums, "Custom" -> nothing).
-    Instruments are checked before vocals ("Lead Guitar" -> guitars) and keys/other last
+    Instruments are checked before vocals ("Lead Guitar" -> guitars) and synths/keys last
     ("Vocal Track" -> vocals)."""
     stem = Path(filename).stem
     if overrides:

@@ -91,6 +91,15 @@ jobs:
           kill $PID || true
           cat app.log
           grep -q "UI client connected" app.log
+      - name: Audio check inside the real app window (diagnostic)
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/audio"
+          MIL_SETTINGS_DIR="$RUNNER_TEMP/audio" timeout 120 "lab/dist/Merge Intelligence Lab.app/Contents/MacOS/Merge Intelligence Lab" --audio-check > audio.log 2>&1 || true
+          cat audio.log
+          grep -q "webkit media policy" audio.log
+          grep "\[lab\] audio check:" audio.log
+          grep -q '"decode": {"ok": true' audio.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -96,7 +96,7 @@ export async function render(root, [eid], app) {
         h('button.small' + (player.solo.has(g) ? '.on' : ''), { style: { padding: '1px 6px' }, onclick: () => player.toggleSolo(g) }, 'S'),
         h('button.small' + (player.mute.has(g) ? '.on' : ''), { style: { padding: '1px 6px' }, onclick: () => player.toggleMute(g) }, 'M'))) : null);
   }
-  player.on((ev) => {
+  player.on((ev, _p, detail) => {
     if (ev === 'time' || ev === 'seek' || ev === 'stop' || ev === 'pause' || ev === 'play' || ev === 'loaded') {
       const t = player.currentTime();
       timeEl.textContent = `${fmtTime(t, true)} / ${fmtTime(player.duration)}`;
@@ -108,6 +108,8 @@ export async function render(root, [eid], app) {
     if (ev === 'loading') loadState.textContent = 'Loading audio…';
     if (ev === 'loaded') loadState.textContent = player.long ? 'Long recording: loaded in sections around the playhead' : '';
     if (ev === 'loop') loopBtn.classList.toggle('on', !!player.loop);
+    if (ev === 'error') { toast(detail, true); loadState.textContent = detail; }
+    if (ev === 'fallback') { loadState.textContent = detail; toast(detail); drawGroups(); }
   });
   async function loadNormal() {
     const vers = versionKeys.map((k) => ({ key: k, url: api.audioUrl({ exp: eid, file: `audio/${R.files[k]}` }) }));
@@ -416,7 +418,7 @@ export async function render(root, [eid], app) {
     else if (e.key === 'Home') player.seek(0);
   };
   document.addEventListener('keydown', key);
-  return () => { document.removeEventListener('keydown', key); player.stop(); player.dispose(); if (player.ctx) player.ctx.close(); };
+  return () => { document.removeEventListener('keydown', key); player.close(); };
 }
 
 async function rerun(E, app) {
@@ -443,7 +445,7 @@ async function referencePlayer(E, app, main, target) {
   main.pause();
   modal({ title: 'Reference playback', body: h('div.stack', select(refs.map((r) => [r.id, r.title]), refs[0].id, load),
     h('div.row', h('button.primary', { onclick: () => p.toggle() }, '▶ / ❚❚'), h('button', { onclick: () => p.stop() }, '■'), timeEl), info),
-    onClose: () => { p.stop(); p.dispose(); p.ctx && p.ctx.close(); } });
+    onClose: () => p.close() });
   load(refs[0].id);
 }
 

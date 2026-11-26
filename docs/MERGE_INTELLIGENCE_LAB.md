@@ -197,7 +197,27 @@ References no longer need stems. The engineer can start with stereo masters and 
 Compatibility: older workspaces open unchanged (new folders and library files are created on first
 use); older profiles without `program_profile` keep working, and a new version adds it.
 
-## 10. Known limitations of this release
+## 10. Algorithm 0.5.0 (after the first real-audio export)
+
+See [MERGE_INTELLIGENCE_REAL_AUDIO_FINDINGS.md](MERGE_INTELLIGENCE_REAL_AUDIO_FINDINGS.md) for the evidence.
+
+- **Six source groups**: Keys and Synths are separate (`mi/layout.py`). Old profiles keep "keys" (= keys + other);
+  their page says so.
+- **No reimport needed**: *Reference Library → Review roles…* (file-name suggestions) and *Roles…* per reference
+  change stem groups in place (`POST /api/library/references/regroup`). Profiles show why they are out of date
+  (algorithm version, roles changed, references removed). **Rebuild** creates a new version from the same references
+  and weights (`POST /api/profiles/<id>/rebuild`, `parent_id` set); the original is never modified.
+- **Target reliability**: each balance pair stores `reliability` (reference medians, sample SD, bootstrap 80 %
+  interval over songs, independent windows). References count equally regardless of length. The old `confidence`
+  heuristic stays in files but is not shown.
+- **Arrangement density study** (Research Studies): five density descriptions compared by how much within-song
+  balance variance they explain. Loudness-based measures use only the *other* groups, so they cannot contain the
+  pair's own balance. The operator's classifier is unchanged until this evidence exists on real song sets.
+- **Playback**: shared audio context unlocked on the first click, WebKit media policy relaxed in the app window,
+  automatic fallback to `<audio>` elements, visible errors, *Settings → Test audio output*, UI errors recorded in
+  diagnostics, `--audio-check` for CI.
+
+## 11. Known limitations of this release
 
 - The macOS window launch is checked in CI (UI connects, screenshot); the full workflow is tested
   end-to-end through the same API (packaged self-test) and through the UI in headless Chromium.
@@ -207,5 +227,7 @@ use); older profiles without `program_profile` keep working, and a new version a
   Speech analysis streams and handles service-length recordings.
 - Not signed or notarised by Apple: the first launch needs *Open Anyway*.
 - The Windows build is a preview: packaged self-test only.
+- Playback on macOS: the failure reported on the first build was not reproducible on the build machine; 0.5.0 fixes
+  the likely causes and adds a fallback and a self-check, but needs confirmation on the engineer's Mac.
 - Programme-comparison tolerances are engineering defaults, not validated perceptual thresholds; the
   transient descriptors (onset density, block crest) are validated only on synthetic signals.

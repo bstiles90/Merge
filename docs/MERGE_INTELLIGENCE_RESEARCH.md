@@ -728,6 +728,15 @@ source (the reason source-level intelligence requires stems, §7), so no finding
 instrument or proposes processing. Not established: how well onset density and block crest track
 perceived punch on real music, and how many references give stable ranges (estimate: ≥ 10).
 
+### Real-audio findings and 0.5.0 changes
+
+The first export of real references (5 songs, separated stems) showed a near-constant density classifier, a
+conflated Keys/Synths group, duration-weighted targets and an uninformative reconstruction check. Details, evidence and
+open hypotheses (vocal activity over-detection, bleed bias, the right context variable for balance) are in
+[MERGE_INTELLIGENCE_REAL_AUDIO_FINDINGS.md](MERGE_INTELLIGENCE_REAL_AUDIO_FINDINGS.md). New tests:
+`tests/test_groups_reliability.py`, including a check that density measures exclude the pair being studied
+(a circular design would credit a measure with information that comes from the pair's own balance).
+
 ## 12. Bibliography (verified identifiers)
 
 1. S. S. Vanka, C. J. Steinmetz, J.-B. Rolland, J. D. Reiss, G. Fazekas. Diff-MST: Differentiable Mixing Style Transfer. ISMIR 2024. arXiv:2407.08889. Code: github.com/sai-soum/Diff-MST (CC BY-NC-SA 4.0).

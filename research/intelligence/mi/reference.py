@@ -16,7 +16,7 @@ from .controller import pair_key
 from .layout import GROUPS, ReferencePackage
 
 PROFILE_SCHEMA = "merge.sound-profile/1"
-ANALYSER_VERSION = "mi-prototype 0.2"
+ANALYSER_VERSION = "mi-prototype 0.5"
 
 
 def file_hash(path: Path) -> str:
@@ -65,6 +65,11 @@ def analyse_reference(pkg: ReferencePackage, activity_overrides=None) -> tuple[d
         if recon > -15:
             quality["flags"].append("stems do not reconstruct the master well (> -15 dB error): separation artefacts, "
                                     "missing stems or individually normalised stems")
+        elif recon < -60:
+            quality["exact_reconstruction"] = True
+            quality["flags"].append("stems add up to the master exactly (< -60 dB error): typical of separation tools that put the "
+                                    "remainder into one stem, or of a master rendered from the stems. Reconstruction cannot judge "
+                                    "separation quality (bleed) for this reference.")
     else:
         quality["flags"].append("no master.wav: program measures are taken from the sum of the stems")
     signals = {g: s[:, :n] for g, s in signals.items()}
@@ -110,6 +115,44 @@ def _wq(values, weights, q):
     return float(np.interp(q * w.sum(), c, v))
 
 
+def target_reliability(per_ref_data, n_boot: int = 400, seed: int = 0) -> dict:
+    """How well the references pin down a pair's target: measured statistics only (no heuristic score).
+
+    - refMedians: each reference's own median difference and co-active seconds
+    - betweenRefSD: sample SD (n-1) of the reference medians
+    - targetCI80: 10th-90th percentile of the pooled target when the references themselves are resampled
+      (bootstrap over songs: how much the target would move with a different set of songs)
+    - independentWindows: co-active time / 3 s (short-term windows overlap, so blocks are not independent)
+    """
+    if not per_ref_data:
+        return {}
+    meds = [float(np.median(d)) for _, d, _ in per_ref_data]
+    secs = [round(len(d) * A.HOP_S, 1) for _, d, _ in per_ref_data]
+    out = {"nRefs": len(per_ref_data),
+           "refMedians": [{"id": i, "median_LU": round(mv, 2), "coactive_s": s} for (i, _, _), mv, s in zip(per_ref_data, meds, secs)],
+           "betweenRefSD": round(float(np.std(meds, ddof=1)), 2) if len(meds) > 1 else None,
+           "refRange_LU": [round(min(meds), 2), round(max(meds), 2)],
+           "independentWindows": int(sum(secs) / 3.0)}
+    if len(per_ref_data) >= 3:
+        rng = np.random.default_rng(seed)
+        sub = []
+        for _, d, w in per_ref_data:  # subsample long arrays: the bootstrap is over songs, not blocks
+            k = max(1, len(d) // 400)
+            sub.append((d[::k], w[::k] * k))
+        boots = []
+        for _ in range(n_boot):
+            pick = rng.integers(0, len(sub), len(sub))
+            v = np.concatenate([sub[i][0] for i in pick])
+            ww = np.concatenate([sub[i][1] for i in pick])
+            boots.append(_wq(v, ww, 0.5))
+        lo, hi = np.percentile(boots, [10, 90])
+        out["targetCI80"] = [round(float(lo), 2), round(float(hi), 2)]
+        out["targetCI80_width"] = round(float(hi - lo), 2)
+    else:
+        out["note"] = "fewer than 3 references with this pair: no interval"
+    return out
+
+
 def build_profile(analyses: list, name: str = "Sound Profile") -> dict:
     """Aggregate per-reference analyses [(meta, GroupAnalysis)] into a Sound Profile."""
     use = [(m, ga) for m, ga in analyses if not m["excluded"]]
@@ -121,7 +164,7 @@ def build_profile(analyses: list, name: str = "Sound Profile") -> dict:
     for i, a in enumerate(groups):
         for b in groups[i + 1:]:
             pools = {c: ([], []) for c in ("sparse", "medium", "full", "all")}
-            per_ref = []
+            per_ref, per_ref_data = [], []
             for m, ga in use:
                 if a not in ga.groups or b not in ga.groups:
                     continue
@@ -130,14 +173,17 @@ def build_profile(analyses: list, name: str = "Sound Profile") -> dict:
                 if act.sum() < 10:
                     continue
                 d = ga.st[a][act] - ga.st[b][act]
-                # down-weight blocks where one stem is likely residual bleed (> 25 LU below the other)
-                wblk = np.where(np.abs(d) > 25, 0.2, 1.0) * quality_weight(m)
+                # down-weight blocks where one stem is likely residual bleed (> 25 LU below the other).
+                # Since 0.5.0 each reference contributes equally whatever its length (block weights / block count):
+                # before, a 10-minute song counted twice as much as a 5-minute one.
+                wblk = np.where(np.abs(d) > 25, 0.2, 1.0) * quality_weight(m) / len(d)
                 cls = A.density_class(ga.density, len(ga.groups))[act]
                 for c in ("sparse", "medium", "full"):
                     sel = cls == c
                     pools[c][0].extend(d[sel]); pools[c][1].extend(wblk[sel])
                 pools["all"][0].extend(d); pools["all"][1].extend(wblk)
                 per_ref.append(float(np.median(d)))
+                per_ref_data.append((m["id"], d, wblk))
             if not pools["all"][0]:
                 continue
             byd = {}
@@ -150,7 +196,8 @@ def build_profile(analyses: list, name: str = "Sound Profile") -> dict:
             sd = float(np.std(per_ref)) if len(per_ref) > 1 else None
             conf = min(1.0, len(per_ref) / 3) * (float(np.exp(-sd / 3)) if sd is not None else 0.6)
             balance[pair_key(a, b)] = {"byDensity": byd, "nRefs": len(per_ref),
-                                       "betweenRefSD": round(sd, 2) if sd is not None else None, "confidence": round(conf, 2)}
+                                       "betweenRefSD": round(sd, 2) if sd is not None else None, "confidence": round(conf, 2),
+                                       "reliability": target_reliability(per_ref_data)}
     tonal, dynamics = {}, {}
     for g in groups:
         shapes, spreads, crests = [], [], []

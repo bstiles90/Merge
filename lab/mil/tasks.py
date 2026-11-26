@@ -21,8 +21,8 @@ from . import staging as S
 
 ensure_backend_importable()
 
-CORE_GROUPS = ["vocals", "drums", "bass", "guitars", "keys"]
-GROUP_LABEL = {"vocals": "vocal", "drums": "drum", "bass": "bass", "guitars": "guitar", "keys": "keys & other"}
+CORE_GROUPS = ["vocals", "drums", "bass", "guitars", "keys", "synths"]
+GROUP_LABEL = {"vocals": "vocal", "drums": "drum", "bass": "bass", "guitars": "guitar", "keys": "keys", "synths": "synth"}
 
 
 # ============================================================================ validation
@@ -141,6 +141,11 @@ def validate(payload, report):
                                                              "Comparisons use the sum of the stems.")})
             elif recon > -20:
                 findings.append({"level": "info", "text": f"The stems add up to the {'master' if kind == 'reference' else 'mix'} reasonably well (reconstruction error {recon:.1f} dB)."})
+            elif recon < -60:
+                findings.append({"level": "info", "text": f"The stems add up to the {'master' if kind == 'reference' else 'mix'} exactly (reconstruction error {recon:.0f} dB). "
+                                                          "Real multitrack stems never sum this perfectly: these were probably made by separation software "
+                                                          "that puts the remainder into one stem, or the master was rendered from the stems. This check "
+                                                          "therefore says nothing about separation quality (bleed between stems)."})
             else:
                 findings.append({"level": "ok", "text": f"The stems add up to the {'master' if kind == 'reference' else 'mix'} well (reconstruction error {recon:.1f} dB)."})
             if kind == "reference":
@@ -355,10 +360,14 @@ def limitations(prof: dict) -> list:
     if len(refs) == 1:
         out.append("Built from one song: it says nothing about how much these relationships vary between songs. Three or more "
                    "references are recommended.")
-    for g in ["vocals", "drums", "bass", "guitars", "keys"]:
+    for g in CORE_GROUPS:
         have = sum(1 for r in refs if g in r.get("groups", {}))
         if have < len(refs):
             out.append(f"{GROUP_LABEL[g].capitalize()} is missing from {len(refs) - have} of {len(refs)} reference(s).")
+    exact = [r["title"] for r in refs if r["quality"].get("exact_reconstruction")]
+    if exact:
+        out.append(f"{len(exact)} of {len(refs)} reference(s) have stems that add up to the master exactly ({', '.join(exact)}): probably "
+                   "separated stems. Bleed between them cannot be detected; if present it pulls balance targets toward 'more equal'.")
     for r in refs:
         if r["quality"].get("reconErr_dB") is not None and r["quality"]["reconErr_dB"] > -15:
             out.append(f"'{r['title']}': its stems don't add up to the master well; it counts half in the profile.")
@@ -518,12 +527,15 @@ def run_study(payload, report):
             mix_name = S.stage_mix(ws.get("mixes", exp["inputs"]["mix_id"]), stage, baseline=c.get("baseline"),
                                    injections=exp.get("injections") or None)
         for rid in exp["inputs"].get("reference_ids", []):
-            S.stage_reference(ws.get("references", rid), stage)
+            ref = ws.get("references", rid)
+            if ref.get("stems"):  # studies of source behaviour need stems; master-only references are skipped
+                S.stage_reference(ref, stage)
         S.write_config(stage, _config_for(exp))
         run_dir.mkdir(parents=True, exist_ok=True)
         ns = argparse.Namespace(mix=mix_name, profile=str(prof_path) if prof_path else None, inject=None)
         fn = {"activity": studies.activity_study, "beta": studies.beta_study, "response": studies.response_study,
-              "generalization": studies.generalization_study, "processing": studies.processing_study}[study]
+              "generalization": studies.generalization_study, "processing": studies.processing_study,
+              "density": studies.density_study}[study]
         report("Running the study", 0.3, "this can take a few minutes")
         res = fn(stage, ns, run_dir)
         (run_dir / "result.json").write_text(json.dumps(res, indent=1, default=float))

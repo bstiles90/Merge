@@ -8,6 +8,7 @@ const STUDIES = [
   { id: 'beta', name: 'Reference influence (β)', needs: ['mix', 'profile'], text: 'Runs the operator with β from 0 (your baseline) to 1 (fully the profile) and reports how far each setting moves the mix and how well known disturbances are corrected.' },
   { id: 'response', name: 'Evidence window & correction speed', needs: ['mix', 'profile'], text: 'Tries combinations of evidence window and correction speed: faster settings react sooner but move more.' },
   { id: 'generalization', name: 'Profile generalisation', needs: ['refs'], text: 'Leave-one-out across your references: how well a profile built from the others predicts each one. Needs at least two references.' },
+  { id: 'density', name: 'Arrangement density', needs: ['refs1'], text: 'How informative is “how many groups are playing” about the balance between two sources, compared with four alternatives (sustained beds excluded, loudness-weighted count, prominent groups, section energy)? Uses your references with stems; changes nothing by itself.' },
   { id: 'processing', name: 'Processing vs performance', needs: ['mix'], text: 'Uses raw (pre-plugin) stems to tell whether loudness changes come from the plugins or from the musicians. Needs a mix imported with raw stems.' },
 ];
 
@@ -24,13 +25,14 @@ export async function render(root, [eid], app) {
     const mixOpts = (S.id === 'processing' ? mixes.filter((m) => m.raw?.length) : mixes).map((m) => [m.id, m.name]);
     if (S.id === 'processing') st.mix = mixOpts[0]?.[0];
     const missing = (S.needs.includes('mix') && !mixOpts.length) ? (S.id === 'processing' ? 'Import a mix that includes raw (pre-plugin) stems.' : 'Import a mix first.')
-      : (S.needs.includes('profile') && !done.length) ? 'Build a Sound Profile first.' : (S.needs.includes('refs') && refs.length < 2) ? 'Import at least two references.' : null;
+      : (S.needs.includes('profile') && !done.length) ? 'Build a Sound Profile first.' : (S.needs.includes('refs') && refs.length < 2) ? 'Import at least two references.'
+      : (S.needs.includes('refs1') && !refs.some((r) => r.stems?.length)) ? 'Import at least one reference with stems.' : null;
     grid.append(h('div.panel', h('div.ph', h('h2', S.name)), h('div.pb.stack', h('p.dim', S.text),
       S.needs.includes('mix') && mixOpts.length ? field('Mix', select(mixOpts, st.mix, (v) => { st.mix = v; })) : null,
       S.needs.includes('profile') && done.length ? field('Profile', select(done.map((p) => [p.id, p.name]), st.profile, (v) => { st.profile = v; })) : null,
       missing ? h('div.notice.warn', missing) : h('div.row', h('button.primary', { onclick: async () => {
         const mix = mixes.find((m) => m.id === st.mix);
-        const inputs = { ...(S.needs.includes('mix') ? { mix_id: st.mix } : {}), ...(S.needs.includes('profile') ? { profile_id: st.profile } : {}), ...(S.needs.includes('refs') ? { reference_ids: st.refs } : {}) };
+        const inputs = { ...(S.needs.includes('mix') ? { mix_id: st.mix } : {}), ...(S.needs.includes('profile') ? { profile_id: st.profile } : {}), ...(S.needs.includes('refs') || S.needs.includes('refs1') ? { reference_ids: st.refs.filter((id) => refs.find((r) => r.id === id && r.include !== false)) } : {}) };
         try {
           const r = await api.post('/api/experiments/study', { name: `${S.name} study`, inputs, config: { study: S.id, baseline: mix?.baseline || 'all' }, injections: S.id === 'beta' || S.id === 'response' ? mix?.suggested_injections : null });
           progress(status, r, { go: () => app.go(`studies/${r.exp_id}`) });

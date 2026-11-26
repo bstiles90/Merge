@@ -39,6 +39,8 @@ class LabState:
         self.token = secrets.token_urlsafe(24)
         self.info = build_info()
         self.desktop = None  # set by main.py when running in a window
+        self.client_log = []  # errors and audio checks reported by the UI (included in diagnostics)
+        self.audio_check = None
         last = self.settings.data.get("last_workspace")
         if last:
             try:
@@ -103,6 +105,20 @@ def api_state(st: LabState, q, body):
         out["levels"] = CAP.LEVELS
         out["recent_experiments"] = [_exp_brief(e) for e in exps[:8]]
     return out
+
+
+@route("POST", "/api/client-log")
+def api_client_log(st, q, body):
+    entry = {"time": now(), **{k: body.get(k) for k in ("kind", "message", "detail", "results", "userAgent")}}
+    st.client_log = (st.client_log + [entry])[-200:]
+    if body.get("kind") == "audiocheck":
+        st.audio_check = body.get("results")
+    return {"ok": True}
+
+
+@route("GET", "/api/client-log")
+def api_client_log_get(st, q, body):
+    return {"items": st.client_log, "audio_check": st.audio_check}
 
 
 @route("POST", "/api/onboarding/done")
@@ -303,6 +319,42 @@ def api_ref_batch(st, q, body):
     return out
 
 
+@route("GET", "/api/library/references/role-suggestions")
+def api_role_suggestions(st, q, body):
+    """Stems whose file name now maps to a different group (e.g. Synths that were filed under the old Keys & Other)."""
+    from mi.layout import role_for
+    out = []
+    for r in st.need_ws().items("references"):
+        for e in r.get("stems", []) or []:
+            g = role_for(e["file"]["name"])
+            if g and g != e["group"]:
+                out.append({"ref_id": r["id"], "reference": r.get("title"), "file_id": e["file"]["id"], "file": e["file"]["name"],
+                            "current": e["group"], "suggested": g})
+    return {"items": out}
+
+
+@route("POST", "/api/library/references/regroup")
+def api_regroup(st, q, body):
+    """Change the group of existing stems without reimporting audio. Profiles are not changed; rebuild them."""
+    ws = st.need_ws()
+    by_ref = {}
+    for c in body.get("changes", []):
+        by_ref.setdefault(c["ref_id"], {})[c["file_id"]] = c["group"]
+    changed = []
+    for rid, m in by_ref.items():
+        it = ws.get("references", rid)
+        stems = it.get("stems", []) or []
+        n = 0
+        for e in stems:
+            if e["file"]["id"] in m and m[e["file"]["id"]] != e["group"]:
+                e["group"] = m[e["file"]["id"]]
+                n += 1
+        if n:
+            ws.update("references", rid, {"stems": stems, "roles_changed": now()})
+            changed.append(rid)
+    return {"changed": changed}
+
+
 @route("POST", "/api/library/references/attach-stems")
 def api_ref_attach(st, q, body):
     """Attach stems to an existing reference (e.g. a master imported earlier). The master is unchanged."""
@@ -397,9 +449,48 @@ def api_relink(st, q, body):
 
 
 # ============================================================================ profiles
+def _profile_stale(ws, meta, refs_by_id, algo):
+    """Why a profile no longer reflects the current library/analysis (it is never changed: rebuild makes a new version)."""
+    why = []
+    if meta.get("status") != "complete":
+        return why
+    if meta.get("algorithm_version") and meta.get("algorithm_version") != algo:
+        why.append(f"built with algorithm {meta.get('algorithm_version')}; current is {algo}")
+    fin = meta.get("finished") or meta.get("created") or ""
+    changed = [r.get("title") or r["id"] for rid in meta.get("reference_ids", []) for r in [refs_by_id.get(rid)] if r
+               and max(r.get("roles_changed") or "", r.get("stems_attached") or "") >= fin > ""]
+    if changed:
+        why.append(f"stem roles or stems changed since: {', '.join(changed)}")
+    missing = [rid for rid in meta.get("reference_ids", []) if rid not in refs_by_id]
+    if missing:
+        why.append(f"{len(missing)} reference(s) removed from the library")
+    return why
+
+
 @route("GET", "/api/profiles")
 def api_profiles(st, q, body):
-    return {"items": st.need_ws().profiles()}
+    ws = st.need_ws()
+    refs = {r["id"]: r for r in ws.items("references")}
+    items = ws.profiles()
+    for m in items:
+        m["stale"] = _profile_stale(ws, m, refs, st.info.get("algorithm_version"))
+    return {"items": items}
+
+
+@route("POST", "/api/profiles/([\\w-]+)/rebuild")
+def api_profile_rebuild(st, q, body, pid):
+    """New version of a profile from the same references and weights, with the current stem roles and algorithm.
+    The original profile is kept unchanged."""
+    ws = st.need_ws()
+    old = read_json(ws.profile_dir(pid) / "meta.json")
+    refs = {r["id"] for r in ws.items("references")}
+    ids = [r for r in old.get("reference_ids", []) if r in refs]
+    if not ids:
+        raise ApiError("None of this profile's references are still in the library")
+    base = re.sub(r" \(rebuilt[^)]*\)$", "", old.get("name", "Sound Profile"))
+    new = {"name": body.get("name") or f"{base} (rebuilt {st.info.get('algorithm_version')})", "reference_ids": ids,
+           "weights": old.get("weights", {}), "parent_id": pid, "notes": f"Rebuilt from {old.get('name')} ({pid})."}
+    return api_profile_create(st, q, new)
 
 
 @route("POST", "/api/profiles/create")
@@ -681,6 +772,7 @@ def api_diag(st, q, body):
     dest.parent.mkdir(parents=True, exist_ok=True)
     info = {"app": st.info, "os": platform.platform(), "python": sys.version,
             "jobs": [dict(j.public(), traceback=j.traceback) for j in st.jobs.jobs.values()],
+            "client_log": st.client_log, "audio_check": st.audio_check,
             "workspace": st.ws.summary()["counts"] if st.ws else None,
             "failed_experiments": [{k: e.get(k) for k in ("id", "type", "status", "error", "algorithm_version")} for e in (st.ws.experiments() if st.ws else []) if e.get("status") != "complete"]}
     san = EXP._Sanitizer(st.ws) if st.ws else None
@@ -759,6 +851,20 @@ def peaks(path: Path, n: int = 2000) -> dict:
     return {"duration_s": info.frames / info.samplerate, "peaks": [round(x, 4) for x in out[:n + 1]], "sr": info.samplerate}
 
 
+def _test_tone() -> bytes:
+    """1.2 s stereo test signal (440 Hz then 660 Hz), 48 kHz 24-bit WAV, for the audio self-check."""
+    import io as _io
+    import numpy as np
+    import soundfile as sf
+    sr = 48000
+    t = np.arange(int(0.6 * sr)) / sr
+    env = np.minimum(1, np.minimum(t, t[::-1]) / 0.01)
+    x = np.concatenate([0.2 * np.sin(2 * np.pi * 440 * t) * env, 0.2 * np.sin(2 * np.pi * 660 * t) * env])
+    buf = _io.BytesIO()
+    sf.write(buf, np.column_stack([x, x]), sr, format="WAV", subtype="PCM_24")
+    return buf.getvalue()
+
+
 class Handler(BaseHTTPRequestHandler):
     st: LabState = None
     protocol_version = "HTTP/1.1"
@@ -802,6 +908,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorised(q):
             return self._json(403, {"error": "not authorised"})
         try:
+            if path == "/api/test-tone":
+                return self._send(200, _test_tone(), "audio/wav")
             if path in ("/api/audio", "/api/peaks", "/api/file"):
                 return self._audio(path, q)
             body = {}
@@ -839,7 +947,13 @@ class Handler(BaseHTTPRequestHandler):
         if rng and rng.startswith("bytes="):
             a, _, b = rng[6:].partition("-")
             start = int(a) if a else max(0, size - int(b))
-            end = int(b) if a and b else size - 1
+            end = min(int(b), size - 1) if a and b else size - 1   # a range past the end is clamped (RFC 9110)
+            if start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             code = 206
         length = end - start + 1
         self.send_response(code)

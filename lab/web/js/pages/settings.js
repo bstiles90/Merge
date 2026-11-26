@@ -33,6 +33,8 @@ export async function render(root, params, app) {
       h('div',
         panel('Disk usage', usageBox),
         panel('Missing files', missingBox),
+        panel('Audio output', h('div.stack', h('p.dim', 'If you hear nothing in the Listening Room, run the self-check: it plays two short tones through each playback method and records the result for diagnostics.'),
+          h('button', { onclick: () => app.go('audiocheck') }, 'Test audio output'))),
         panel('Diagnostics', h('div.stack', h('p.dim', 'If something goes wrong, export diagnostics: versions, task errors and failed experiments. Paths are removed and no audio is included.'),
           h('button', { onclick: async () => { try { const r = await api.post('/api/diagnostics/export', {}); toast('Diagnostics saved'); api.post('/api/os/reveal', { path: r.path }); } catch (e) { showError(e); } } }, 'Export diagnostics'))),
         panel('About', h('div.kv',
