@@ -174,6 +174,24 @@ function VirtualSoundcheckChip() {
   );
 }
 
+/** While a show's plugins load (one at a time): how far along, and which one. */
+function PluginLoadChip() {
+  const load = useNative((n) => n.pluginLoad);
+  const strip = useConsole((s) => {
+    const id = load?.strip;
+    if (!id) return '';
+    if (id === 'main') return 'Main LR';
+    return (id.startsWith('bus') ? s.buses : s.channels).find((x) => x.id === id)?.name ?? id;
+  });
+  if (!load) return null;
+  return (
+    <div className="load-chip" title={`Loading plugins one at a time: ${load.name} on ${strip}`}>
+      <span className="load-bar" style={{ width: `${(100 * load.done) / Math.max(1, load.total)}%` }} />
+      <span className="load-text">PLUGINS {load.done + 1}/{load.total} · {load.name} · {strip}</span>
+    </div>
+  );
+}
+
 const loadWorkspace = (): Workspace => {
   try {
     const v = localStorage.getItem('merge.workspace');
@@ -308,6 +326,7 @@ export function App() {
         )}
         {/* Record: transport and timecode (Live shows the scene in the show chip) */}
         {workspace !== 'live' && <TransportMini />}
+        <PluginLoadChip />
         <VirtualSoundcheckChip />
         <div className="show-chip-wrap" ref={showRef}>
           <button className={'show-chip' + (showOpen ? ' open' : '')} onClick={() => setShowOpen(!showOpen)} title={native.showPath ?? 'Show: name, save, open, new'} aria-haspopup="menu" aria-expanded={showOpen}>

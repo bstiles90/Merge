@@ -580,6 +580,47 @@ void testPluginHosting (const juce::String& pluginPath)
     const int gi = ins1 ? ins1->findParam (gainId) : -1;
     check (gi >= 0 && near (ins1->plugin().getParameters()[gi]->getValue(), 0.625, 0.001), "plugin state save / restore round-trips");
 
+    // sequential loading (like Logic): one plugin at a time, Main LR first, and saved settings
+    // that arrive while a plugin is queued are applied before it processes any audio
+    {
+        auto plan = tonePlan (2, "[{\"id\":\"seqC\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]");
+        plan["main"].getDynamicObject()->setProperty ("inserts", juce::JSON::parse ("[{\"id\":\"seqM\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]"));
+        plan["channels"][1].getDynamicObject()->setProperty ("inserts", juce::JSON::parse ("[{\"id\":\"seqD\",\"pluginId\":\"" + pluginId + "\",\"bypass\":false}]"));
+        sent.clear();
+        e.handleMessage (0, planMsg (plan));
+        e.handleMessage (0, "{\"type\":\"insert.setState\",\"slotId\":\"seqD\",\"state\":\"" + saved + "\"}");
+        int maxAtOnce = 0;
+        for (int i = 0; i < 400 && (e.host().numLoading() > 0); ++i)
+        {
+            int live = 0; // started but not ready: at most one
+            juce::StringArray started, done;
+            for (auto& v : sent)
+            {
+                if (v["type"] == "plugins.progress" && ! (bool) v["finished"]) started.add (v["name"].toString() + juce::String ((int) v["done"]));
+                if (v["type"] == "insert.ready") done.add (v["slotId"].toString());
+            }
+            live = started.size() - done.size();
+            maxAtOnce = juce::jmax (maxAtOnce, live);
+            pump (5);
+        }
+        juce::StringArray order;
+        juce::var readyD;
+        bool finished = false;
+        for (auto& v : sent)
+        {
+            if (v["type"] == "insert.ready") order.add (v["slotId"].toString());
+            if (v["type"] == "insert.ready" && v["slotId"] == "seqD") readyD = v;
+            if (v["type"] == "plugins.progress" && (bool) v["finished"]) finished = true;
+        }
+        check (order.size() == 3 && order[0] == "seqM" && maxAtOnce <= 1 && finished, "plugins load one at a time, Main LR first", order.joinIntoString (","));
+        auto insD = e.host().find ("seqD");
+        const int gd = insD ? insD->findParam (gainId) : -1;
+        check ((bool) readyD["stateApplied"] && gd >= 0 && near (insD->plugin().getParameters()[gd]->getValue(), 0.625, 0.001),
+               "saved settings sent while queued are in place before the plugin plays");
+        e.handleMessage (0, planMsg (tonePlan (2, ins)));
+        for (int i = 0; i < 300 && (e.host().numLoading() > 0 || ! e.host().find ("slot1")); ++i) pump (10);
+    }
+
     // docking the plugin GUI into the app window's dock layer
     {
         juce::Component holder;

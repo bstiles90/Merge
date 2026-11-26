@@ -1259,3 +1259,9 @@ tr.all-safe .sf-cell:not(.all) { opacity: 0.55; cursor: default; }
 .tl-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; background: #ff5f63; z-index: 3; pointer-events: none; }
 
 .crash-bar { display: flex; align-items: center; gap: var(--s-4); }
+
+/* plugin loading progress (header) */
+.load-chip { position: relative; overflow: hidden; height: 22px; min-width: 220px; max-width: 360px; margin-right: var(--s-3); border-radius: var(--r-md);
+  background: var(--surface-well); border: 1px solid var(--border-subtle); display: flex; align-items: center; }
+.load-bar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-muted); transition: width 0.2s; }
+.load-text { position: relative; padding: 0 8px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }

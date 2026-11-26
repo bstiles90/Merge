@@ -1,4 +1,5 @@
 #pragma once
+#include <deque>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Plan.h"
@@ -107,6 +108,10 @@ public:
 
 private:
     void timerCallback() override;
+    /** Start loading the next queued plugin if none is loading (one at a time, like Logic). */
+    void pumpLoadQueue();
+    void finishLoad();
+    static bool decodeState (const juce::String& base64, juce::MemoryBlock& out);
     void scanStep();
     void saveList();
     void sendPluginList();
@@ -125,6 +130,12 @@ private:
         bool bypass = false;
     };
     uint64_t nextGeneration = 1;
+    // sequential loading: one plugin at a time, settings applied before it joins the audio path
+    std::deque<juce::String> loadQueue;
+    juce::String loadingNow;
+    int loadTotal = 0, loadDone = 0;
+    std::map<juce::String, juce::String> pendingStates; // saved state for slots still loading
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 
     juce::AudioPluginFormatManager formats;
     juce::KnownPluginList known;

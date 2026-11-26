@@ -73,6 +73,8 @@ interface NativeState {
   notice?: string;
   /** the engine quit unexpectedly last time (most likely a plugin): offer to bypass plugins */
   crashed?: boolean;
+  /** sequential plugin loading in progress */
+  pluginLoad?: { done: number; total: number; name: string; strip: string };
   /** plugin GUI currently docked in the Merge window */
   docked?: { slotId: string; name: string; width: number; height: number } | null;
   /** the engine can't dock plugin GUIs (e.g. Linux): show parameters instead */
@@ -233,10 +235,14 @@ function schedulePlan() {
   planTimer = setTimeout(() => {
     planTimer = null;
     const json = JSON.stringify(buildMixPlan(stateOnly(useConsole.getState())));
-    if (json === lastPlanJson) return; // e.g. only UI-only state changed
-    if (!lastPlanJson) uiLog(`first mix sent (${since()})`);
-    lastPlanJson = json;
-    wsSend(`{"type":"plan","plan":${json}}`);
+    if (json !== lastPlanJson) {
+      if (!lastPlanJson) uiLog(`first mix sent (${since()})`);
+      lastPlanJson = json;
+      wsSend(`{"type":"plan","plan":${json}}`);
+    }
+    // plugin settings after the plan: the engine keeps them for plugins still queued and applies
+    // each before that plugin joins the audio path (sequential loading)
+    syncPluginStates();
   }, 15);
 }
 
@@ -350,7 +356,7 @@ function onMessage(m: any) {
     case 'insert.ready': {
       setInsert(m.slotId, { loading: false, name: m.name, latency: m.latency, hasEditor: m.hasEditor, params: m.params, error: undefined });
       const slot = findSlot(stateOnly(useConsole.getState()), m.slotId);
-      if (slot?.state) {
+      if (slot?.state && !m.stateApplied) {
         engineState.set(m.slotId, slot.state);
         sendNative({ type: 'insert.setState', slotId: m.slotId, state: slot.state });
       }
@@ -398,6 +404,9 @@ function onMessage(m: any) {
       break;
     case 'show.saved':
       useNative.setState({ showPath: m.ok ? m.path : useNative.getState().showPath, notice: m.ok ? `Saved ${String(m.path).split(/[\\/]/).pop()}` : 'Save failed' });
+      break;
+    case 'plugins.progress':
+      useNative.setState({ pluginLoad: m.finished ? undefined : { done: m.done, total: m.total, name: m.name, strip: m.strip } });
       break;
     case 'presets':
       loadPresets(m.text);
@@ -537,9 +546,7 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
       schedulePlan();
       engineState.clear();
       const offPlan = useConsole.subscribe(schedulePlan);
-      const offStates = useConsole.subscribe((st, prev) => {
-        if (st.currentScene !== prev.currentScene || st.channels !== prev.channels || st.buses !== prev.buses || st.main !== prev.main) syncPluginStates();
-      });
+      // (plugin states go out with each plan in schedulePlan, so a new slot exists in the engine first)
       // the engine runs the transport: send it the console's, take the playhead back
       const browserPlayhead = services.playhead;
       services.playhead = nativePlayhead;
@@ -555,7 +562,6 @@ export function connectNative(url = useNative.getState().url): Promise<void> {
       });
       unsubscribe = () => {
         offPlan();
-        offStates();
         offTransport();
         services.playhead = browserPlayhead;
       };
