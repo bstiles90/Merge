@@ -527,7 +527,7 @@ def api_exp(st, q, body, eid):
     res = ws.exp_dir(eid) / "results"
     out = {"experiment": exp, "analysis": read_json(res / "analysis.json"), "files": []}
     if res.is_dir():
-        out["files"] = sorted(str(p.relative_to(res)) for p in res.rglob("*") if p.is_file())
+        out["files"] = sorted(p.relative_to(res).as_posix() for p in res.rglob("*") if p.is_file())
         dec = res / "decisions.jsonl"
         out["decisions"] = [json.loads(l) for l in dec.read_text().splitlines() if l.strip()] if dec.is_file() else []
         for f in ("report.md",):
