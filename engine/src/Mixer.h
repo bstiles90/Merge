@@ -1,5 +1,6 @@
 #pragma once
 #include "Plan.h"
+#include "Multitrack.h"
 #include "PluginHost.h"
 #include "TruePeak.h"
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -40,8 +41,16 @@ private:
     double acc = 0;
     std::array<double, 30> blocks {};
     int numBlocks = 0, blockWrite = 0;
-    std::vector<double> gated; // 400 ms block energies, reserved up front
-    size_t gatedCount = 0;
+    // integrated loudness: 400 ms block energies above the -70 LUFS gate, kept as a histogram in
+    // 0.01 LU steps from -70 to +30 LUFS (count and exact energy per step), as libebur128 does.
+    // Any length of programme, constant work per block, within ~0.005 LU of exact BS.1770 gating.
+    static constexpr int kHistBins = 10000;
+    static constexpr double kHistStep = 0.01, kHistFloor = -70.0;
+    std::vector<uint32_t> histCount;
+    std::vector<double> histEnergy;
+    double gatedEnergy = 0;
+    uint64_t gatedCount = 0;
+    void clearIntegrated() noexcept;
     std::atomic<bool> resetRequested { false };
     void finishBlock() noexcept;
 };
@@ -70,6 +79,24 @@ public:
     // true-peak meter on the final program output (metering only: no processing, no latency).
     // Limiting is left to the master-bus plugin chain (main inserts).
     std::atomic<float> mainTruePeak[2] { { 0 }, { 0 } }; // linear, max since last read
+    // ---- transport (virtual soundcheck): playback channels play their clips while running
+    /** Message thread: run / stop the transport, and jump (seek < 0 = stay). */
+    void setTransport (bool run, juce::int64 seekSample = -1) noexcept
+    {
+        if (seekSample >= 0) seekTo.store (seekSample);
+        transportRunning.store (run);
+    }
+    /** Current transport position in samples (audio thread writes, anyone reads). */
+    juce::int64 transportPosition() const noexcept { return transportPos.load (std::memory_order_relaxed); }
+    bool isTransportRunning() const noexcept { return transportRunning.load(); }
+    /** Message thread: start / stop feeding a recording (stop returns the session once the
+        audio thread has let go of it, so the files can be finished). */
+    void startRecording (std::unique_ptr<RecordSession> s);
+    std::unique_ptr<RecordSession> stopRecording();
+    bool isRecording() const noexcept { return recording.load() != nullptr; }
+    juce::int64 recordedSamples() const noexcept { auto* r = recording.load(); return r ? r->samplesWritten.load() : 0; }
+    bool recordOverrun() const noexcept { auto* r = recording.load(); return r && r->overrun.load(); }
+
     double getSampleRate() const { return sampleRate; }
     int getMaxBlock() const { return maxBlock; }
     std::atomic<int> pdcSamples { 0 }; // current channel latency compensation
@@ -132,6 +159,13 @@ private:
     };
 
     float sourceSample (ChannelState&, const ChannelPlan&, const float* const* in, int numIn, int i) noexcept;
+    /** Playback: a channel's clips for the block starting at transport sample `pos`, into dst[0..1]. */
+    void readClips (const ChannelPlan&, float* const* dst, int n, juce::int64 pos) noexcept;
+
+    std::atomic<bool> transportRunning { false };
+    std::atomic<juce::int64> transportPos { 0 }, seekTo { -1 };
+    std::atomic<RecordSession*> recording { nullptr };
+    std::unique_ptr<RecordSession> recordingOwned;
 
     std::atomic<MixPlan*> current { nullptr };
     std::vector<std::pair<MixPlan*, uint64_t>> retired;
@@ -156,6 +190,9 @@ private:
     juce::AudioBuffer<float> busPre;    // the bus being processed, before its fader (for pre sends)
     juce::AudioBuffer<float> mainFromBuses; // buses routed to Main LR
     juce::AudioBuffer<float> mainBuf, cueBuf, monBuf;
+    juce::AudioBuffer<float> playBuf;   // 2: the channel's playback for this block
+    juce::AudioBuffer<float> readBuf;   // 2: file samples before resampling
+    juce::AudioBuffer<float> rawBuf;    // 2: the channel's source before gain (what gets recorded)
 };
 
 } // namespace merge

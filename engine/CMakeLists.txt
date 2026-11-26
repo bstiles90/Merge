@@ -44,6 +44,7 @@ target_sources(MergeEngine PRIVATE
   src/Main.cpp
   src/Engine.cpp
   src/Mixer.cpp
+  src/Multitrack.cpp
   src/Plan.cpp
   src/PluginHost.cpp
   src/WebSocketServer.cpp

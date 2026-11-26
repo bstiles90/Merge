@@ -59,6 +59,14 @@ std::unique_ptr<MixPlan> parsePlan (const juce::var& json, double /*sampleRate*/
             p.stereo = flag (c, "stereo", false);
             p.inputChannelR = (int) num (src, "inputR", p.inputChannel >= 0 ? (float) (p.inputChannel + 1) : -1.0f);
             p.playback = flag (c, "playback", false);
+            if (auto* clips = c["clips"].getArray())
+                for (auto& k : *clips)
+                    if (k["file"].isString())
+                    {
+                        // seconds as doubles: a float is ~10 samples coarse an hour in
+                        auto d = [&k] (const char* key) { const auto v = k[key]; return v.isDouble() || v.isInt() || v.isInt64() ? (double) v : 0.0; };
+                        p.clips.push_back ({ k["file"].toString(), d ("start"), d ("offset"), d ("duration"), nullptr });
+                    }
             p.gain = num (c, "gain", 1);
             p.delayMs = num (c, "delayMs", 0);
 

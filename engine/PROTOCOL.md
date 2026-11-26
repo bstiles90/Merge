@@ -18,6 +18,9 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 | `insert.param` | `slotId, id, value` | Set a plugin parameter (normalised 0–1). `id` comes from `insert.ready`. |
 | `insert.setState` | `slotId, state` | Restore plugin state: JUCE base64, or `b64:` + standard base64 (e.g. an AU ClassInfo plist from a Logic project). |
 | `logic.open` | — | Pick a Logic Pro `.logicx`; replies `logic.opened` with `name` and `data` (its newest ProjectData, base64) or `error`. |
+| `transport` | `playing, recording, program, seek, show, armed[{id,name,stereo}]` | Run / stop the transport; `seek` (seconds) jumps. Starting `recording` writes each armed channel's source (raw input, before gain) to its own 24-bit WAV in ~/Music/Merge Recordings/<show> <date>, plus `PGM (Main LR).wav` if `program`; stopping replies `record.done`. |
+| `media.import` | `track` (channel id or `multitrack`), `multiple` | Pick audio files; replies `media.imported` with `files[{file,name,duration,channels,sampleRate}]`. |
+| `media.peaks` | `file` | Waveform overview: replies `media.peaks` with `perSecond` and `peaks` (base64, one byte per bucket, max abs × 255). |
 | `insert.editor` | `slotId, open` | Open/close the plugin's own editor window (always-on-top). |
 | `insert.dock` | `slotId` | Dock that plugin's GUI inside the app window (one at a time). |
 | `insert.undock` | | Remove the docked GUI. |

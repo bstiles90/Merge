@@ -18,13 +18,23 @@ void LoudnessMeter::prepare (double fs)
     hp = { h, h };
     blockLen = (int) std::round (fs * 0.1);
     count = 0; acc = 0; numBlocks = 0; blockWrite = 0;
-    gated.assign (36000, 0.0); // 1 hour of 100 ms steps
+    histCount.assign (kHistBins, 0);
+    histEnergy.assign (kHistBins, 0.0);
+    clearIntegrated();
+}
+
+void LoudnessMeter::clearIntegrated() noexcept
+{
+    std::fill (histCount.begin(), histCount.end(), 0u);
+    std::fill (histEnergy.begin(), histEnergy.end(), 0.0);
+    gatedEnergy = 0;
     gatedCount = 0;
+    integrated = -INFINITY;
 }
 
 void LoudnessMeter::process (const float* l, const float* r, int n) noexcept
 {
-    if (resetRequested.exchange (false)) { gatedCount = 0; integrated = -INFINITY; }
+    if (resetRequested.exchange (false)) clearIntegrated();
     for (int i = 0; i < n; ++i)
     {
         const double yl = hp[0].run (shelf[0].run (l[i]));
@@ -50,17 +60,29 @@ void LoudnessMeter::finishBlock() noexcept
     {
         const double m = meanLast (4);
         momentary = (float) lufs (m);
-        if (lufs (m) > -70 && gatedCount < gated.size()) gated[gatedCount++] = m;
+        if (const double l = lufs (m); l > -70 && ! histCount.empty())
+        {
+            const int bin = juce::jlimit (0, kHistBins - 1, (int) std::floor ((l - kHistFloor) / kHistStep));
+            ++histCount[(size_t) bin];
+            histEnergy[(size_t) bin] += m;
+            gatedEnergy += m;
+            ++gatedCount;
+        }
     }
     shortTerm = (float) lufs (meanLast (numBlocks));
     if (gatedCount)
     {
-        double s = 0;
-        for (size_t i = 0; i < gatedCount; ++i) s += gated[i];
-        const double rel = lufs (s / (double) gatedCount) - 10;
-        double k = 0; size_t kc = 0;
-        for (size_t i = 0; i < gatedCount; ++i)
-            if (lufs (gated[i]) > rel) { k += gated[i]; ++kc; }
+        // relative gate: 10 LU below the loudness of everything above the absolute gate
+        const double rel = lufs (gatedEnergy / (double) gatedCount) - 10;
+        // steps whose centre is above the relative gate
+        const int from = juce::jlimit (0, kHistBins, (int) std::ceil ((rel - kHistFloor) / kHistStep - 0.5));
+        double k = 0;
+        uint64_t kc = 0;
+        for (int b = from; b < kHistBins; ++b)
+        {
+            k += histEnergy[(size_t) b];
+            kc += histCount[(size_t) b];
+        }
         if (kc) integrated = (float) lufs (k / (double) kc);
     }
 }
@@ -103,6 +125,9 @@ void Mixer::prepare (double sr, int block, int, int)
     busBuf.setSize (kNumBuses * 2, maxBlock);
     busFeed.setSize (kNumBuses * 2, maxBlock);
     busPre.setSize (2, maxBlock);
+    playBuf.setSize (2, maxBlock);
+    readBuf.setSize (2, maxBlock * 4 + 8); // playback up to 4x the device rate (e.g. 192k files at 48k)
+    rawBuf.setSize (2, maxBlock);
     mainFromBuses.setSize (2, maxBlock);
     mainBuf.setSize (2, maxBlock);
     cueBuf.setSize (2, maxBlock);
@@ -139,7 +164,7 @@ void Mixer::collectGarbage()
 
 float Mixer::sourceSample (ChannelState& c, const ChannelPlan& p, const float* const* in, int numIn, int i) noexcept
 {
-    if (p.playback) return 0.0f; // native recorder/playback is a later milestone
+    if (p.playback) return 0.0f; // playback channels read their clips (readClips) instead
     switch (p.source)
     {
         case ChannelPlan::Source::input:
@@ -203,6 +228,18 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
         }
         const float k = smoothCoef;
 
+        // transport (virtual soundcheck playback, recording)
+        if (const auto sk = seekTo.exchange (-1); sk >= 0) transportPos.store (sk, std::memory_order_relaxed);
+        const bool rolling = transportRunning.load (std::memory_order_relaxed);
+        const juce::int64 pos = transportPos.load (std::memory_order_relaxed);
+        RecordSession* rec = rolling ? recording.load (std::memory_order_acquire) : nullptr; // only while rolling
+        if (rec != nullptr && rec->startSample < 0) rec->startSample = pos; // stamped by the first block it takes
+        float* raw[2] = { rawBuf.getWritePointer (0), rawBuf.getWritePointer (1) };
+        auto recordChannel = [rec, &raw, n] (int c) noexcept {
+            if (rec == nullptr || c >= (int) rec->channel.size() || ! rec->channel[(size_t) c]) return;
+            if (! rec->channel[(size_t) c]->write (raw, n)) rec->overrun.store (true, std::memory_order_relaxed);
+        };
+
         // plugin delay compensation: delay every channel up to the slowest one
         int chanLat[kNumChannels] {};
         int maxLat = 0;
@@ -262,6 +299,13 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             if (cp.source == ChannelPlan::Source::none && ! cp.playback && cp.inserts.empty())
             {
                 meters[(size_t) c].raise (0, 0);
+                if (rec != nullptr)
+                {
+                    // an armed channel with nothing patched still records silence (tracks stay aligned)
+                    juce::FloatVectorOperations::clear (raw[0], n);
+                    juce::FloatVectorOperations::clear (raw[1], n);
+                    recordChannel (c);
+                }
                 continue; // nothing patched: skip DSP
             }
 
@@ -273,12 +317,26 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             auto tapPtr = [this] (int side, int slot) { return tapBuf.getWritePointer (side * kMaxInserts + slot); };
             float* tapIn[2] = { (taps & 1u) ? tapPtr (0, 0) : nullptr, (taps & 1u) && stereo ? tapPtr (1, 0) : nullptr };
             const bool inR = stereo && cp.source == ChannelPlan::Source::input && ! cp.playback;
+            // playback (virtual soundcheck): the channel's clips replace its source while the transport runs
+            const bool play = cp.playback;
+            float* pb[2] = { playBuf.getWritePointer (0), playBuf.getWritePointer (1) };
+            if (play)
+            {
+                if (rolling && ! cp.clips.empty()) readClips (cp, pb, n, pos);
+                else { juce::FloatVectorOperations::clear (pb[0], n); juce::FloatVectorOperations::clear (pb[1], n); }
+            }
+            const bool rec1 = rec != nullptr && c < (int) rec->channel.size() && rec->channel[(size_t) c] != nullptr;
             // Channels have no built-in processing: input gain/polarity and delay, then the plugin rack.
             for (int i = 0; i < n; ++i)
             {
-                float smp = sourceSample (st, cp, inPtrs, ni, i) * cp.gain;
-                float smpR = smp; // test sources: the same signal on both sides
-                if (inR) smpR = (cp.inputChannelR >= 0 && cp.inputChannelR < ni && inPtrs[cp.inputChannelR] ? inPtrs[cp.inputChannelR][i] : 0.0f) * cp.gain;
+                // the source before gain: what a recording captures, and what playback replaces
+                const float src = play ? pb[0][i] : sourceSample (st, cp, inPtrs, ni, i);
+                float srcR = src; // test sources: the same signal on both sides
+                if (play) srcR = stereo ? pb[1][i] : src;
+                else if (inR) srcR = cp.inputChannelR >= 0 && cp.inputChannelR < ni && inPtrs[cp.inputChannelR] ? inPtrs[cp.inputChannelR][i] : 0.0f;
+                if (rec1) { raw[0][i] = src; raw[1][i] = srcR; }
+                float smp = src * cp.gain;
+                float smpR = srcR * cp.gain;
                 if (tapIn[0]) tapIn[0][i] = smp; // INPUT tap: gain only
                 if (tapIn[1]) tapIn[1][i] = smpR;
                 if (delaySamples > 0)
@@ -289,6 +347,7 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
                 xs[0][i] = smp;
                 if (stereo) xs[1][i] = smpR;
             }
+            if (rec1) recordChannel (c);
             // the rack, capturing mid-rack PRE taps (after k plugins) on the way
             int latSoFar = 0;
             int tapLat[kMaxInserts] {};
@@ -521,6 +580,11 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             if (tpr > mainTruePeak[1].load (std::memory_order_relaxed)) mainTruePeak[1].store (tpr, std::memory_order_relaxed);
             meters[kMeterMain].raise (pl, pr);
             loudness.process (mainL, mainR, n);
+            if (rec != nullptr && rec->program)
+            {
+                const float* pg[2] = { mainL, mainR };
+                if (! rec->program->write (pg, n)) rec->overrun.store (true, std::memory_order_relaxed);
+            }
         }
 
         // ------------------------------------------------------------ monitor
@@ -561,9 +625,82 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
             if (src) juce::FloatVectorOperations::copy (outPtrs[o], src, n);
             else juce::FloatVectorOperations::clear (outPtrs[o], n);
         }
+        if (rolling) transportPos.store (pos + n, std::memory_order_relaxed);
+        if (rec != nullptr) rec->samplesWritten.fetch_add (n, std::memory_order_relaxed);
         offset += n;
     }
     blocksDone.fetch_add (1, std::memory_order_release);
+}
+
+void Mixer::readClips (const ChannelPlan& cp, float* const* dst, int n, juce::int64 pos) noexcept
+{
+    juce::FloatVectorOperations::clear (dst[0], n);
+    juce::FloatVectorOperations::clear (dst[1], n);
+    const double sr = sampleRate;
+    for (const auto& clip : cp.clips)
+    {
+        const auto* f = clip.src.get();
+        if (f == nullptr || f->reader == nullptr || f->sampleRate <= 0) continue;
+        // the part of this block the clip covers (in device samples)
+        const auto a = juce::jmax (pos, (juce::int64) std::ceil (clip.start * sr));
+        const auto b = juce::jmin (pos + n, (juce::int64) std::floor ((clip.start + clip.duration) * sr));
+        if (a >= b) continue;
+        const int count = (int) (b - a), at = (int) (a - pos);
+        const double ratio = f->sampleRate / sr;
+        if (ratio > 4.0) continue; // more than readBuf holds (a 192 kHz file on a 44.1 kHz device)
+        const double from = (clip.offset + ((double) a / sr - clip.start)) * f->sampleRate; // in file samples
+        float* rb[2] = { readBuf.getWritePointer (0), readBuf.getWritePointer (1) };
+        const int fch = juce::jlimit (1, 2, f->numChannels);
+        if (std::abs (ratio - 1.0) < 1e-9)
+        {
+            // same rate: sample-accurate copy
+            const auto start = (juce::int64) std::llround (from);
+            f->reader->read (rb, fch, start, count);
+            for (int c = 0; c < 2; ++c)
+                juce::FloatVectorOperations::add (dst[c] + at, rb[juce::jmin (c, fch - 1)], count);
+        }
+        else
+        {
+            // other rates: linear interpolation from exact positions (no state across blocks)
+            const auto base = (juce::int64) std::floor (from);
+            const double frac = from - (double) base;
+            const int need = juce::jmin (readBuf.getNumSamples(), (int) std::ceil (frac + count * ratio) + 2);
+            f->reader->read (rb, fch, base, need);
+            for (int c = 0; c < 2; ++c)
+            {
+                const float* in = rb[juce::jmin (c, fch - 1)];
+                for (int i = 0; i < count; ++i)
+                {
+                    const double x = frac + i * ratio;
+                    const int j = juce::jmin (need - 2, (int) x);
+                    const float t = (float) (x - j);
+                    dst[c][at + i] += in[j] + (in[j + 1] - in[j]) * t;
+                }
+            }
+        }
+    }
+    // a mono channel playing a stereo file hears both sides
+    if (! cp.stereo)
+        for (int i = 0; i < n; ++i) dst[0][i] = (dst[0][i] + dst[1][i]) * 0.5f;
+}
+
+void Mixer::startRecording (std::unique_ptr<RecordSession> s)
+{
+    if (s == nullptr) return;
+    stopRecording();
+    s->startSample = -1; // the audio thread stamps the transport position of the first recorded block
+    recordingOwned = std::move (s);
+    recording.store (recordingOwned.get(), std::memory_order_release);
+}
+
+std::unique_ptr<RecordSession> Mixer::stopRecording()
+{
+    if (recording.exchange (nullptr, std::memory_order_acq_rel) == nullptr) return nullptr;
+    // wait for the audio thread to finish any block that was still writing to it
+    const auto seen = blocksDone.load();
+    for (int t = 0; t < 100 && running.load() && blocksDone.load() < seen + 2; ++t)
+        juce::Thread::sleep (2);
+    return std::move (recordingOwned);
 }
 
 } // namespace merge

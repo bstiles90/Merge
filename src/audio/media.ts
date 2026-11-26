@@ -29,6 +29,12 @@ export function addMedia(id: string, sampleRate: number, data: Float32Array[]) {
   listeners.forEach((l) => l());
 }
 
+/** A waveform overview only (native recordings and imports: the audio stays on disk). */
+export function addPeaks(id: string, peaks: Float32Array, peaksPerSecond: number) {
+  buffers.set(id, { id, sampleRate: 0, data: [], peaks, peaksPerSecond });
+  listeners.forEach((l) => l());
+}
+
 export function getMedia(id: string) {
   return buffers.get(id);
 }

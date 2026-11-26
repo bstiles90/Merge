@@ -53,6 +53,9 @@ Engine::Engine()
 Engine::~Engine()
 {
     stopTimer();
+    alive.reset();
+    jobs.removeAllJobs (true, 2000);
+    mix.stopRecording(); // a recording still running is finished (its files closed) on the way out
     ws.stop();
     devices.removeAudioCallback (this);
     devices.closeAudioDevice();
@@ -159,7 +162,15 @@ void Engine::applyPlan (juce::var planJson)
     lastSlotCount = specs.size();
     plugins.syncInserts (specs);                 // create / remove plugin instances
     auto resolve = [this] (const juce::String& id) { return plugins.find (id); };
-    mix.setPlan (parsePlan (planJson, sr, resolve, nullptr));
+    auto plan = parsePlan (planJson, sr, resolve, nullptr);
+    // playback clips: open their files here (message thread); the audio thread only reads buffered data
+    for (auto& c : plan->channels)
+        for (auto& clip : c.clips)
+        {
+            clip.src = multitrack.open (clip.file);
+            if (clip.src == nullptr) std::cout << "[playback] can't read " << clip.file << std::endl;
+        }
+    mix.setPlan (std::move (plan));
 }
 
 void Engine::handleMessage (int clientId, const juce::String& text)
@@ -198,7 +209,23 @@ void Engine::handleMessage (int clientId, const juce::String& text)
     else if (type == "device.list") send (deviceInfo(), clientId);
     else if (type == "device.set") setDevice (msg);
     else if (type == "loudness.reset") mix.loudness.reset();
-    else if (type.startsWith ("show.") || type == "logic.open") handleShowMessage (clientId, type, msg); // file dialogs
+    else if (type.startsWith ("show.") || type == "logic.open" || type == "media.import") handleShowMessage (clientId, type, msg); // file dialogs
+    else if (type == "transport") handleTransport (clientId, msg);
+    else if (type == "media.peaks")
+    {
+        // waveform overview for the timeline, worked out off the message thread
+        const auto file = msg["file"].toString();
+        const int perSecond = 20;
+        std::weak_ptr<bool> ok = alive;
+        jobs.addJob ([this, file, perSecond, ok, clientId] {
+            auto data = multitrack.peaks (juce::File (file), perSecond);
+            juce::MessageManager::callAsync ([this, file, perSecond, ok, clientId, data = std::move (data)] {
+                if (ok.expired()) return;
+                send (obj ({ { "type", "media.peaks" }, { "file", file }, { "perSecond", perSecond },
+                             { "peaks", juce::Base64::toBase64 (data.data(), data.size()) } }), clientId);
+            });
+        });
+    }
     else if (type == "insert.dock")
     {
         if (! plugins.dock (msg["slotId"]))
@@ -211,6 +238,62 @@ void Engine::handleMessage (int clientId, const juce::String& text)
             onDockBounds ({ (int) msg["x"], (int) msg["y"], (int) msg["w"], (int) msg["h"] }, (bool) msg["visible"]);
     }
     else if (type == "ping") send (obj ({ { "type", "pong" }, { "t", msg["t"] } }), clientId);
+}
+
+/** Transport from the console: run / stop, jump, and start / stop a recording of the armed
+    channels (each to its own file, raw input before gain) and, optionally, the programme. */
+void Engine::handleTransport (int clientId, const juce::var& msg)
+{
+    const double sr = mix.getSampleRate();
+    const bool recordOn = (bool) msg["recording"];
+    const bool run = (bool) msg["playing"] || recordOn;
+    const auto seekVar = msg["seek"];
+    const juce::int64 seek = seekVar.isDouble() || seekVar.isInt() || seekVar.isInt64() ? (juce::int64) std::llround (juce::jmax (0.0, (double) seekVar) * sr) : -1;
+    if (! recordOn && mix.isRecording()) finishRecording (clientId);
+    if (recordOn && ! mix.isRecording())
+    {
+        std::vector<Multitrack::Track> tracks;
+        if (auto* armed = msg["armed"].getArray())
+            for (auto& a : *armed)
+            {
+                const auto id = a["id"].toString();
+                if (! id.startsWith ("ch")) continue;
+                tracks.push_back ({ id.substring (2).getIntValue() - 1, a["name"].toString(), (bool) a["stereo"] ? 2 : 1 });
+            }
+        const auto show = msg["show"].toString().isNotEmpty() ? msg["show"].toString() : juce::String ("Merge");
+        const auto folder = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Merge Recordings")
+                                .getChildFile (juce::File::createLegalFileName (show + " " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S")));
+        auto session = multitrack.createSession (folder, tracks, (bool) msg["program"], sr, kNumChannels);
+        if (session == nullptr || (tracks.empty() && ! session->program))
+            send (obj ({ { "type", "record.done" }, { "error", session ? "Nothing to record: arm a channel or Record PGM" : "Can't create " + folder.getFullPathName() } }), clientId);
+        else
+        {
+            std::cout << "[record] " << tracks.size() << " track(s) to " << folder.getFullPathName() << std::endl;
+            recordingShow = folder.getFullPathName();
+            mix.startRecording (std::move (session));
+        }
+    }
+    mix.setTransport (run, seek);
+}
+
+void Engine::finishRecording (int clientId)
+{
+    auto s = mix.stopRecording();
+    if (s == nullptr) return;
+    const double sr = mix.getSampleRate();
+    const double start = (double) juce::jmax ((juce::int64) 0, s->startSample.load()) / sr;
+    const double duration = (double) s->samplesWritten.load() / sr;
+    juce::Array<juce::var> takes;
+    for (size_t c = 0; c < s->channel.size(); ++c)
+        if (s->channel[c])
+            takes.add (obj ({ { "trackId", "ch" + juce::String ((int) c + 1) }, { "file", s->channelFile[c] }, { "channels", s->channelWidth[c] },
+                              { "start", start }, { "duration", duration } }));
+    if (s->program)
+        takes.add (obj ({ { "trackId", "pgm" }, { "file", s->programFile }, { "channels", 2 }, { "start", start }, { "duration", duration } }));
+    const bool overrun = s->overrun.load();
+    s.reset(); // finishes the files (the writers flush what's left in their buffers)
+    std::cout << "[record] done: " << takes.size() << " file(s), " << duration << " s" << (overrun ? " (disk overrun)" : "") << std::endl;
+    send (obj ({ { "type", "record.done" }, { "folder", recordingShow }, { "takes", takes }, { "overrun", overrun } }), clientId);
 }
 
 juce::File Engine::showFolder() const
@@ -275,6 +358,23 @@ void Engine::handleShowMessage (int clientId, const juce::String& type, const ju
                                   send (obj ({ { "type", "logic.opened" }, { "name", pkg.getFileNameWithoutExtension() },
                                                { "data", juce::Base64::toBase64 (mb.getData(), mb.getSize()) } }), clientId);
                               });
+    }
+    else if (type == "media.import")
+    {
+        // audio files for the timeline (a prerecorded multitrack for virtual soundcheck, or one file)
+        const auto track = msg["track"];
+        chooser = std::make_unique<juce::FileChooser> ("Import audio", juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+                                                       "*.wav;*.aif;*.aiff;*.flac;*.caf;*.mp3;*.m4a");
+        const int flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
+                          | ((bool) msg["multiple"] ? juce::FileBrowserComponent::canSelectMultipleItems : 0);
+        chooser->launchAsync (flags, [this, clientId, track] (const juce::FileChooser& fc) {
+            juce::Array<juce::var> files;
+            for (const auto& f : fc.getResults())
+                if (auto info = multitrack.describe (f))
+                    files.add (obj ({ { "file", info->path }, { "name", info->name }, { "duration", info->duration },
+                                      { "channels", info->channels }, { "sampleRate", info->sampleRate } }));
+            if (! files.isEmpty()) send (obj ({ { "type", "media.imported" }, { "track", track }, { "files", files } }), clientId);
+        });
     }
     else if (type == "show.open")
     {
@@ -395,6 +495,10 @@ void Engine::timerCallback()
                  { "mon", arr ({ round3 (mon.l.exchange (0)), round3 (mon.r.exchange (0)) }) },
                  { "loud", arr ({ lufs (mix.loudness.momentary), lufs (mix.loudness.shortTerm), lufs (mix.loudness.integrated) }) },
                  { "pdc", mix.pdcSamples.load() },
+                 // transport position (s), whether it runs, and recording status
+                 { "pos", (double) mix.transportPosition() / mix.getSampleRate() },
+                 { "run", mix.isTransportRunning() },
+                 { "rec", mix.isRecording() ? juce::var (obj ({ { "s", (double) mix.recordedSamples() / mix.getSampleRate() }, { "overrun", mix.recordOverrun() } })) : juce::var() },
                  // program true peak [L, R] (linear, 4x oversampled), max since last message
                  { "tp", arr ({ round3 (mix.mainTruePeak[0].exchange (0)), round3 (mix.mainTruePeak[1].exchange (0)) }) } }));
 }

@@ -73,8 +73,11 @@ private:
     void startVirtual();
     void handleShowMessage (int clientId, const juce::String& type, const juce::var& msg);
     juce::File showFolder() const;
+    void handleTransport (int clientId, const juce::var& msg);
+    void finishRecording (int clientId);
 
     juce::AudioDeviceManager devices;
+    Multitrack multitrack; // before mix: plans hold its open files, so mix must go first
     Mixer mix;
     PluginHost plugins;
     WebSocketServer ws;
@@ -86,6 +89,9 @@ private:
     juce::File settingsFile;
     int meterTick = 0;
     std::unique_ptr<juce::FileChooser> chooser;
+    juce::String recordingShow;
+    juce::ThreadPool jobs { 2 };                       // waveform overviews
+    std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 };
 
 } // namespace merge

@@ -7,6 +7,7 @@ import { useConsole } from '../core/store';
 import type { Clip } from '../core/types';
 import { Toggle } from './controls';
 import { bootEngine } from './useEngine';
+import { sendNative, useNative } from '../native/bridge';
 
 const TRACK_H = 44;
 
@@ -54,7 +55,8 @@ function ClipView({ clip, pps, selected, onSelect }: { clip: Clip; pps: number; 
 
   const drag = useRef<{ x: number; start: number } | null>(null);
   const color = s.channels.find((c) => c.id === clip.trackId)?.color ?? '#8d8d8d';
-  const offline = !getMedia(clip.bufferId);
+  // native clips play from disk: they're never offline (the waveform arrives a moment later)
+  const offline = !clip.file && !getMedia(clip.bufferId);
   return (
     <div
       className={'clip' + (selected ? ' selected' : '') + (offline ? ' offline' : '')}
@@ -71,7 +73,7 @@ function ClipView({ clip, pps, selected, onSelect }: { clip: Clip; pps: number; 
         s.update((st) => ({ clips: st.clips.map((c) => (c.id === clip.id ? { ...c, start } : c)) }));
       }}
       onPointerUp={() => (drag.current = null)}
-      title={offline ? 'Audio not loaded (recordings are kept in memory for this session)' : clip.name}
+      title={offline ? 'Audio not loaded (recordings are kept in memory for this session)' : clip.file ?? clip.name}
     >
       <div className="clip-name">{clip.name}{offline ? ' (offline)' : ''}</div>
       <canvas ref={ref} style={{ width: Math.min(w, 8000), height: TRACK_H - 16 }} />
@@ -123,9 +125,10 @@ export function TimelineView() {
   const seek = (t: number) => s.update((st) => ({ transport: { ...st.transport, position: Math.max(0, t) } }));
   const selected = s.clips.find((c) => c.id === sel);
 
+  const native = useNative((n) => n.status === 'connected');
   const exportClip = (c: Clip) => {
     const m = getMedia(c.bufferId);
-    if (!m) return;
+    if (!m || !m.data.length) return; // native clips are already WAV files on disk
     const url = URL.createObjectURL(encodeWav(m, c.offset, c.duration));
     const a = document.createElement('a');
     a.href = url;
@@ -144,6 +147,25 @@ export function TimelineView() {
         </button>
         <button className={'rec-btn' + (s.transport.recording ? ' on' : '')} onClick={() => s.dispatch({ type: 'transport.record', args: {} })}>● Rec</button>
         <button onClick={() => s.dispatch({ type: 'marker.add', args: {} })}>+ Marker</button>
+        {native && (
+          <button title="Put a multitrack's files on channels (matched by name, all starting together)" onClick={() => sendNative({ type: 'media.import', track: 'multitrack', multiple: true })}>
+            Import multitrack…
+          </button>
+        )}
+        {(() => {
+          const withClips = s.channels.filter((c) => s.clips.some((x) => x.trackId === c.id));
+          const on = withClips.length > 0 && withClips.every((c) => c.inputMode === 'playback');
+          return (
+            <Toggle
+              small
+              on={on}
+              title="Virtual soundcheck: every channel that has a recording plays it back instead of its live input"
+              onClick={() => s.update((st) => ({ channels: st.channels.map((c) => (withClips.some((w) => w.id === c.id) ? { ...c, inputMode: on ? 'live' : 'playback' } : c)) }))}
+            >
+              VIRTUAL SOUNDCHECK
+            </Toggle>
+          );
+        })()}
         <label className="row">
           <input
             type="checkbox"
@@ -161,11 +183,11 @@ export function TimelineView() {
         {selected && (
           <>
             <span className="hint">{selected.name} · {selected.duration.toFixed(1)}s</span>
-            <button onClick={() => exportClip(selected)}>Export WAV</button>
+            {!selected.file && <button onClick={() => exportClip(selected)}>Export WAV</button>}
             <button onClick={() => { s.update((st) => ({ clips: st.clips.filter((c) => c.id !== selected.id) })); setSel(null); }}>Delete</button>
           </>
         )}
-        <button disabled={!s.clips.length} onClick={() => s.clips.forEach(exportClip)}>Export all stems</button>
+        <button disabled={!s.clips.some((c) => !c.file)} onClick={() => s.clips.forEach(exportClip)}>Export all stems</button>
       </div>
       <div className="tl-body" ref={scrollRef}>
         <div className="tl-heads">
@@ -182,7 +204,7 @@ export function TimelineView() {
                       {ch.inputMode === 'live' ? 'LIVE' : 'PB'}
                     </Toggle>
                     <Toggle small kind="mute" on={ch.mute} onClick={() => s.dispatch({ type: 'channel.mute.toggle', args: { id: ch.id } })}>M</Toggle>
-                    <button className="icon-btn" title="Import audio file onto this track" onClick={() => { setImportTrack(ch.id); fileRef.current?.click(); }}>⤓</button>
+                    <button className="icon-btn" title="Import audio file onto this track" onClick={() => { if (native) sendNative({ type: 'media.import', track: ch.id }); else { setImportTrack(ch.id); fileRef.current?.click(); } }}>⤓</button>
                   </div>
                 )}
               </div>
