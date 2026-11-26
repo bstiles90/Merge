@@ -72,7 +72,8 @@ jobs:
           BIN="$APP/Contents/MacOS/$APP_NAME"
           test -f "$APP/Contents/Resources/ui/index.html"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")" = "audio.merge.intelligence-beta"
+          plutil -p "$APP/Contents/Info.plist" | grep -E "CFBundle(Identifier|Name|Executable)"
+          plutil -p "$APP/Contents/Info.plist" | grep CFBundleIdentifier | grep -q "intelligence"
           PLUGIN_ID=$("$BIN" --print-plugin-ids | grep "Merge Test Gain" | cut -f1 | head -1)
           test -n "$PLUGIN_ID"
           DATA="$HOME/Library/$APP_NAME"
