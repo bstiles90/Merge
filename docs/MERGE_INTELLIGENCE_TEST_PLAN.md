@@ -227,7 +227,7 @@ engineer signs off.
 | exp02 | Proposed controller C2: guitars +3 → −2.24; vocals −3 → +2.65; band +3 → 0; keys off → 0; 40 reversals / 120 s (integrators: 79–199) | `results/exp02.json` |
 | exp03 | Action selection correct in 5/5 cases against the own baseline; stem-referenced tonal targets wrong for a different vocalist | `results/exp03.json` |
 | exp04 | 25 (input × setting) combinations alias within tolerance; compression is not identifiable from output | `results/exp04.json` |
-| exp05 | Gain sharing matches the patent within 0.2 dB; comb ripple 4.4 → 1.2 dB; gain sharing doubles BGV offsets (soft gate does not); layered speech leveller within 0.6 dB and 0 on idle mics | `results/exp05.json` |
+| exp05 | Gain sharing matches the patent within 0.3 dB; comb ripple 4.4 → 1.2 dB; gain sharing doubles BGV offsets (soft gate does not); layered speech leveller within 0.6 dB and 0 on idle mics | `results/exp05.json` |
 
 ## 12. Supplement: speech, hybrid, audience and layer-interaction tests (November 2026)
 
@@ -250,3 +250,20 @@ See the Dugan supplement, §9, for X8–X14. Scripted versions use M8.
 **Mode progression for the activity layer:** the same gates as §9. Speech automix can
 reach Assist earlier than music balance, because gain sharing is an established technique.
 It still requires X8, X9, T-S1–T-S4 and T-L1 to pass, and the engineer's sign-off.
+
+## 13. Implemented regression suite (November 2026)
+
+`research/intelligence/tests/test_regression.py`, run with `./run.sh test`. It runs on CI
+through `.github/workflows/intelligence-research.yml`.
+
+| Test | Checks |
+|---|---|
+| exp01 | K-weighting coefficients exact; agreement with pyloudnorm within 0.1 LU; additivity p95 < 0.5 LU |
+| exp02 | C2 corrects ≥ 1.8 of 3 dB in both directions; ignores builds, dropouts and clean material (< 0.4 dB); fixes only the offender; fewer than half the pairwise integrator's reversals |
+| exp03 | Correct action type in all five cases against the own baseline; stem-anchored and energy-weighted variants fail where expected |
+| exp04 (slow) | Compression is non-identifiable with unknown input |
+| exp05 | Patent examples within 0.4 dB (recorded 0.3); comb-ripple and noise claims hold; gain sharing doubles BGV offsets, the soft gate does not; layered leveller within 1 dB and silent on idle mics |
+| Prototype end to end | Outputs exist; injected disturbances corrected 50–120 % with < 0.6 dB on other groups; continuous sources active; maturity labels; loudness-matched render; speech leveller within 1.5 dB; processing-vs-performance verdicts; all studies run; held-out references inside the band |
+
+Real-audio results do not replace these tests. They add to them: each real worship recording
+that passes review becomes a fixed regression case in `results/<date>/`, per §10.

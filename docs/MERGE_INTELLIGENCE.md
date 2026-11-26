@@ -43,6 +43,48 @@ natural-language layer that *configures* Intelligence but never runs inside it.
 
 ---
 
+## 0. Prototype status (November 2026)
+
+The **offline research prototype** now exists in
+[`research/intelligence/`](../research/intelligence/README.md). Run it with `./run.sh`.
+
+**What it does.** It implements the offline half of this architecture:
+- reference analysis and a Sound Profile;
+- comparison of a mix with the profile;
+- Music and Program specialists, plus Speech;
+- arbitration and permissions;
+- generalised `ControlAction`s carrying gain-stack layers and maturity labels;
+- a validated-only offline render with a loudness-matched blind A/B pair;
+- reports;
+- the five pre-commitment studies;
+- a regression suite of exp01–05 plus the prototype end to end.
+
+**What it needs from you.** The material is specified in
+[MERGE_INTELLIGENCE_AUDIO_SPEC.md](MERGE_INTELLIGENCE_AUDIO_SPEC.md).
+
+**Native work still to do.** The native prerequisites (virtual soundcheck, and the
+loudness-meter fix) are planned in
+[MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md](MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md).
+
+**Still not enabled:** live automatic mixing and live plugin adjustment.
+
+**Findings from building it** (synthetic demo; recorded in the research doc §11):
+1. **The activity gate's idle-floor term needs a guard.** It must only apply when a source
+   actually has quiet periods. Otherwise a continuously playing source (bass, guitars)
+   measures as never active, because its own playing level is taken for its idle floor.
+   This is fixed and covered by a regression test.
+2. **Truth-known scoring must subtract the undisturbed run.** With β > 0 the operator also
+   moves the mix toward the reference. Scoring against "ideal = minus the injected dB"
+   confounds that movement with the response to the disturbance.
+3. **Offset bounds can be used up by the reference-driven correction.** When a mix starts far
+   from the reference, the permission budget is spent on that correction and nothing is left
+   for disturbances. The report flags this as "saturated". Applying the whole-song starting
+   point first is the remedy.
+4. **Processing-vs-performance needs matched-input-level comparison.** A fixed compressor
+   shows a different loudness slope when the performer is more dynamic. The classifier
+   therefore predicts each window's output from its input through the baseline's binned
+   transfer curve.
+
 ## 1. Executive summary
 
 1. **Use deterministic, explainable, research-grounded methods, not a neural network.**

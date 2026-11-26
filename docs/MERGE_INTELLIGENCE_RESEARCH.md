@@ -666,10 +666,32 @@ Method: fit candidate actions (fader / one EQ band / both) to the band deviation
 
 All on synthetic signals [V]. Details are in the Dugan supplement, §§1–3 and §8.
 
-- **Patent examples.** The patent's worked gain-sharing examples are reproduced within 0.2 dB, and total power gain stays within ±0.07 dB.
+- **Patent examples.** The patent's worked gain-sharing examples are reproduced within 0.3 dB, and total power gain stays within ±0.07 dB.
 - **Bleed.** With bleed at −12 dB and 3 ms, comb-filter ripple falls from 4.4 to 1.2 dB and idle-room noise falls to one-mic level.
 - **Singing vocals.** Gain sharing pushes the background vocals from −6 to −12 dB relative to the lead. A soft gate leaves the balance unchanged and attenuates a tacet BGV by 6 dB.
 - **Layer separation.** A speech leveller that estimates *before* the automix and requires share **and** activity matches the true correction within 0.6 dB, with 0 dB requests on idle mics. Both a naive post-automix controller and a "share-only" controller ask for +6 dB on idle mics.
+
+### Prototype findings (offline prototype on the synthetic demo workspace)
+
+All [V], from building and running `research/intelligence` (`./run.sh all` and
+`./run.sh study …`):
+- **Idle-floor activity term.** It misclassifies continuously playing sources unless it is
+  restricted to sources with quiet periods (median − 5th percentile > 2 × margin). With the
+  guard, bass, guitars and drums are ≥ 99 % active.
+- **Truth-known response** on the demo's real-layout stems: guitars +3 dB → 72 % corrected;
+  vocals −3 dB → 68 % corrected. No other group moved more than 0.37 dB on average, and the response
+  outside the disturbances was 0.0 dB RMS.
+- **Evidence window.** 3 s windows react fastest, but give 69–75 direction reversals per
+  90 s, against 9–13 for 6–12 s windows. A 6 s window remains the default.
+- **Leave-one-reference-out.** 0 of 10 pairs fell outside the band for either synthetic
+  reference. This is a tooling check only: the synthetic songs are statistically similar by
+  construction.
+- **Processing vs performance.** The matched-input-level transfer classifier labelled the
+  known performance change (20–40 s) as performance and the known threshold change (from
+  70 s) as processing, with a 10.4 dB transfer bias. The single-slope classifier tried first
+  mislabelled the performance change as processing.
+- **Speech leveller.** Within 0.4 dB of each talker's true correction: −3.9 / +3.2 / −0.1 dB
+  against −4.2 / +2.8 / −0.2 dB needed.
 
 ## 12. Bibliography (verified identifiers)
 
