@@ -26,7 +26,8 @@ merge-lab-research-YYYYMMDD-HHMMSS/
   SUMMARY.md                 human-readable overview: versions, settings, results, feedback, blind tallies
   PROMPT.md                  review prompt (also copyable from the app)
   manifest.json              schema, versions, git commit, scope, privacy flags, file list, schemas
-  sound_profiles/<id>/       sound_profile.json, sound_profile.md, meta.json
+  sound_profiles/<id>/       sound_profile.json (incl. program_profile: per-reference programme measures and ranges),
+                             sound_profile.md, meta.json (composition: stems vs master-only)
   experiments/<id>/
     experiment.json          configuration, inputs (names + fingerprints), versions, status
     measurements.json        backend result (merge.intelligence.result/1)
@@ -35,6 +36,7 @@ merge-lab-research-YYYYMMDD-HHMMSS/
     activity.csv             detected activity per group (music)
     loudness.csv             short-term loudness per group (music)
     speech_blocks.csv        gain sharing, floor and leveller per mic (speech)
+    program_series.csv       short-term loudness and side/mid per 100 ms (broadcast comparisons)
     study_result.json        study output (studies)
     report.md, *.png         backend report and plots
     engineer_feedback.json   merge.lab.feedback/1
@@ -63,6 +65,9 @@ labels*. The preview lists every file, its category and size, and flags audio an
 anything is written. `manifest.json` records which options were used. Packages are written
 atomically (temporary file, then rename) into `<workspace>/exports/` or a location the engineer
 chooses.
+
+Broadcast comparisons appear in SUMMARY.md with their findings, explicitly marked *diagnostic only*,
+and the engineer's verdicts on them (`engineer_feedback.json` → `findings`).
 
 ## 4. Reproducibility
 

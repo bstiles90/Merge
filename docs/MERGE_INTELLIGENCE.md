@@ -59,6 +59,11 @@ exports privacy-filtered research packages for review. Backend changes made for 
 multiple baseline regions; group exclusion; activity/loudness CSVs; streaming speech analysis for
 service-length recordings; studies accept multiple baseline regions.
 
+Algorithm 0.4.0 adds **progressive reference analysis**: master-only references (batch import), a
+Program Sound Profile (spectral balance, loudness, dynamics, transients, stereo, with ranges and
+time-varying behaviour), stems attachable later, mixed profiles, and stereo broadcast comparison as
+*diagnostic evidence only* (LAB doc §9, research doc §11 "Programme analysis").
+
 Roadmap position: the Lab is where real-audio evidence (Test plan §12–13) is gathered. No capability is
 promoted beyond *synthetically validated* until that evidence and the engineer's sign-off exist.
 

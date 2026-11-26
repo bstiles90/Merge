@@ -83,7 +83,7 @@ mapping to versions never leaves the server until the trial is answered.
 ```
 <workspace>/
   lab.json                      manifest (schema merge.lab.workspace/1, name, settings)
-  library/{references,mixes,speech}.json
+  library/{references,mixes,speech,recordings}.json   (recordings: stereo broadcast/livestream files)
   audio/<item-id>/              only for files the engineer chose to copy
   profiles/<id>/                meta.json, profile.json (merge.sound-profile/1), profile.md
   experiments/<id>/
@@ -93,6 +93,8 @@ mapping to versions never leaves the server until the trial is answered.
     feedback.json               merge.lab.feedback/1
     listening.json              merge.lab.listening/1 (blind trials)
   exports/                      research packages
+  analysis/references/<id>.json programme analysis of each reference master (recomputable; keyed by
+                                file fingerprint + algorithm version)
   .staging/ .cache/             internal, safe to delete
 ```
 
@@ -159,7 +161,43 @@ Soundcheck import as *planned* pages that state their status and perform no proc
 - **Virtual Soundcheck import**: Merge already records pre-gain channel sources; once group-bus
   taps and offline render exist (native plan N2, N6), they become another import source.
 
-## 9. Known limitations of this release
+## 9. Progressive reference analysis (algorithm 0.4.0)
+
+References no longer need stems. The engineer can start with stereo masters and enrich later:
+
+1. **Master-only import.** *Reference Library → Import masters* takes many files or folders at once;
+   each file becomes a reference (titles parsed from "Artist - Title"; generic names such as
+   `master.wav` take their folder name; files that look like stems are unticked). Duplicates are
+   detected by fingerprint. Every reference with a master — imported singly or in a batch — is
+   analysed in a background job (`analyse_refs`) and the result cached per reference.
+2. **Program Sound Profile.** `mi/program.py` measures spectral balance (third-octave shape and its
+   variation over time), loudness, dynamics, transients and stereo image, plus 50-point curves of
+   how they evolve; measures and tests are listed in the research doc §11 (programme analysis).
+   The library's *Program overview* shows the live aggregate of all included references, with any
+   reference highlighted against it: spectrum bands, a strip per measure with every reference as a
+   dot, behaviour-over-time curves and stereo width per band.
+3. **Attach stems later.** *Attach stems…* on a reference adds stems (validated against its master);
+   the master and its analysis are unchanged.
+4. **Mixed profiles.** A profile may contain any mix of master-only and stem-equipped references:
+   stem references feed source-level balance/tone/dynamics exactly as before; every reference with
+   a master feeds the `program_profile` section of `profile.json` (schema
+   `merge.program-profile/1`, additive to `merge.sound-profile/1`). `meta.json` records the
+   composition. Existing profiles are never modified: attaching stems takes effect when a new
+   version is built. A master-only profile cannot drive the Music Lab (it has no source balance)
+   and the UI says so.
+5. **Broadcast Compare.** A stereo recording (library kind `recordings`) is compared with a profile's
+   Program Sound Profile in an experiment of type `program` (`results/analysis.json` with the
+   measurement, per-measure positions and findings; `program_series.csv`; `report.md`). Nothing is
+   rendered or processed. Findings are *diagnostic evidence*: they describe the finished programme,
+   never name a source, never propose processing, and the engineer records a verdict on each
+   (agree and audible / real but intended / measured but not audible / disagree / unsure). These
+   verdicts, timestamped notes, history, cross-run comparison and research export work as for the
+   other experiment types.
+
+Compatibility: older workspaces open unchanged (new folders and library files are created on first
+use); older profiles without `program_profile` keep working, and a new version adds it.
+
+## 10. Known limitations of this release
 
 - The macOS window launch is checked in CI (UI connects, screenshot); the full workflow is tested
   end-to-end through the same API (packaged self-test) and through the UI in headless Chromium.
@@ -169,3 +207,5 @@ Soundcheck import as *planned* pages that state their status and perform no proc
   Speech analysis streams and handles service-length recordings.
 - Not signed or notarised by Apple: the first launch needs *Open Anyway*.
 - The Windows build is a preview: packaged self-test only.
+- Programme-comparison tolerances are engineering defaults, not validated perceptual thresholds; the
+  transient descriptors (onset density, block crest) are validated only on synthetic signals.

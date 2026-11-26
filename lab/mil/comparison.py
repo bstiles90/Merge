@@ -37,6 +37,10 @@ def metrics(ws, eid) -> dict:
     if exp["type"] == "speech" and a:
         m.update({"handovers": a.get("handovers"), "idle_noise_reduction_dB": round((a.get("idle_noise_before_db") or 0) - (a.get("idle_noise_after_db") or 0), 2),
                   "leveller": {x["name"]: x["leveller_db"] for x in a.get("mics", [])}})
+    if exp["type"] == "program" and a:
+        cm = a.get("comparison", {})
+        m.update({"findings": len(cm.get("findings", [])), "metrics_outside": sum(1 for r in cm.get("metrics", []) if r["status"] == "outside"),
+                  "metrics_edge": sum(1 for r in cm.get("metrics", []) if r["status"] == "edge"), "profile_references": cm.get("n_references")})
     verdicts = {}
     for x in fb["decisions"]:
         verdicts[x["verdict"]] = verdicts.get(x["verdict"], 0) + 1

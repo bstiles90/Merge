@@ -19,11 +19,11 @@ enables the web inspector in the window.
 
 | Suite | Command | What it covers |
 | --- | --- | --- |
-| Research regression | `cd research/intelligence && python -m pytest -q -m "not slow"` | BS.1770, profiles, controller, speech, studies |
-| Lab unit/integration | `cd lab && python -m pytest -q -m "not slow"` | storage, never deleting originals, relink, backup, staging TOML, speech exclusions, feedback history, blind assignment, export privacy, API token, failure atomicity, cancel |
+| Research regression | `cd research/intelligence && python -m pytest -q -m "not slow"` | BS.1770, profiles, controller, speech, studies, programme measurements (truth-known) |
+| Lab unit/integration | `cd lab && python -m pytest -q -m "not slow"` | storage, never deleting originals, relink, backup, staging TOML, speech exclusions, feedback history, blind assignment, export privacy, API token, failure atomicity, cancel, batch master import, master-only → mixed profiles, attach stems, finding verdicts, older-workspace compatibility |
 | Lab slow | `cd lab && python -m pytest -q -m slow` | Lab == CLI equivalence on the demo material; full self-test |
-| UI smoke | `node lab/tests/ui_smoke.cjs <python>` (needs the `playwright` npm package + Chromium) | the first-release workflow driven through the real UI: workspace, import wizard, profile, analysis, sample-aligned A/B switching, feedback, blind trial, export, reopen |
-| Packaged self-test | `"<app>/Contents/MacOS/Merge Intelligence Lab" --selftest` | 26 checks through the HTTP API on the packaged app |
+| UI smoke | `node lab/tests/ui_smoke.cjs <python>` (needs the `playwright` npm package + Chromium) | the first-release workflow driven through the real UI: workspace, batch master import, Program overview, attaching stems, import wizard, profile, broadcast comparison, analysis, sample-aligned A/B switching, feedback, blind trial, export, reopen |
+| Packaged self-test | `"<app>/Contents/MacOS/Merge Intelligence Lab" --selftest` | 35 checks through the HTTP API on the packaged app |
 
 ## 3. Packaging
 

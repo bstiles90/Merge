@@ -173,7 +173,7 @@ def api_ws_demo(st, q, body):
 
 
 # ============================================================================ library
-@route("GET", "/api/library/(references|mixes|speech)")
+@route("GET", "/api/library/(references|mixes|speech|recordings)")
 def api_lib(st, q, body, kind):
     ws = st.need_ws()
     items = ws.items(kind)
@@ -228,7 +228,7 @@ def api_validate(st, q, body):
     return {"job": st.jobs.submit("validate", body, "Checking audio").id}
 
 
-@route("POST", "/api/library/(references|mixes|speech)/add")
+@route("POST", "/api/library/(references|mixes|speech|recordings)/add")
 def api_lib_add(st, q, body, kind):
     ws = st.need_ws()
     copy = body.get("copy")
@@ -251,10 +251,115 @@ def api_lib_add(st, q, body, kind):
         raise ApiError(str(e))
     if body.get("validation"):
         patch["validation"] = body["validation"]
-    return {"item": ws.update(kind, item["id"], patch)}
+    item = ws.update(kind, item["id"], patch)
+    out = {"item": item}
+    if kind == "references" and item.get("master"):  # programme analysis starts straight away
+        out["job"] = st.jobs.submit("analyse_refs", {"ws": str(ws.root), "ids": [item["id"]]}, f"Analysing {item.get('title') or 'reference'}").id
+    return out
 
 
-@route("POST", "/api/library/(references|mixes|speech)/update")
+def _title_from_name(name: str) -> dict:
+    """'Artist - Title.wav' -> artist/title (a common export naming); otherwise the file name is the title."""
+    stem = Path(name).stem.replace("_", " ").strip()
+    for sep in (" - ", " – ", " — "):
+        if sep in stem:
+            a, t = stem.split(sep, 1)
+            return {"artist": a.strip(), "title": t.strip()}
+    return {"artist": "", "title": stem}
+
+
+@route("POST", "/api/library/references/batch")
+def api_ref_batch(st, q, body):
+    """Batch import of stereo masters without stems: one reference per file, then programme analysis."""
+    ws = st.need_ws()
+    known = {(r.get("master") or {}).get("fingerprint") for r in ws.items("references")}
+    created, skipped = [], []
+    for f in body.get("files", []):
+        try:
+            item = ws.add("references", {**_title_from_name(f["path"]), "album": "", "version": "", "category": body.get("category", "music"),
+                                         "arrangement": body.get("arrangement", ""), "weight": float(body.get("weight", 1.0)), "include": True,
+                                         "notes": "", "batch": True, "stems": []})
+            rec = ws.file_record(f["path"], item["id"], body.get("copy"))
+            if rec.get("error"):
+                ws.remove("references", item["id"], delete_copied=True)
+                skipped.append({"name": Path(f["path"]).name, "reason": rec["error"]})
+                continue
+            if rec["fingerprint"] in known:
+                ws.remove("references", item["id"], delete_copied=True)
+                skipped.append({"name": rec["name"], "reason": "already in the library"})
+                continue
+            known.add(rec["fingerprint"])
+            if f.get("title"):
+                item["title"] = f["title"]
+            if f.get("artist") is not None:
+                item["artist"] = f["artist"]
+            ws.update("references", item["id"], {"master": rec, "title": item["title"], "artist": item["artist"]})
+            created.append(item["id"])
+        except Exception as e:
+            skipped.append({"name": Path(f.get("path", "?")).name, "reason": str(e)})
+    out = {"created": created, "skipped": skipped}
+    if created:
+        out["job"] = st.jobs.submit("analyse_refs", {"ws": str(ws.root), "ids": created}, f"Analysing {len(created)} master(s)").id
+    return out
+
+
+@route("POST", "/api/library/references/attach-stems")
+def api_ref_attach(st, q, body):
+    """Attach stems to an existing reference (e.g. a master imported earlier). The master is unchanged."""
+    ws = st.need_ws()
+    it = ws.get("references", body["id"])
+    stems = [{"file": ws.file_record(f["path"], it["id"], body.get("copy")), "group": f["group"]} for f in body.get("stems", []) if f.get("group")]
+    if not stems:
+        raise ApiError("Choose at least one stem with a group")
+    patch = {"stems": stems, "stems_attached": now()}
+    if body.get("validation"):
+        patch["validation"] = body["validation"]
+    return {"item": ws.update("references", it["id"], patch)}
+
+
+@route("POST", "/api/references/analyse")
+def api_ref_analyse(st, q, body):
+    ws = st.need_ws()
+    return {"job": st.jobs.submit("analyse_refs", {"ws": str(ws.root), "ids": body.get("ids"), "force": bool(body.get("force"))},
+                                  "Analysing masters").id}
+
+
+def _ref_program_view(a: dict) -> dict:
+    return {"scalars": a["scalars"], "spectrum_shape": a["spectrum"]["shape_dB"], "variation_p10": a["spectrum"]["variation_p10_dB"],
+            "variation_p90": a["spectrum"]["variation_p90_dB"], "stereo_bands": a["stereo_bands"]["values"], "curves": a["curves"],
+            "duration_s": a["duration_s"]}
+
+
+@route("GET", "/api/references/program-overview")
+def api_ref_overview(st, q, body):
+    """Aggregate of every analysed reference in the library (the same statistics a profile would freeze)."""
+    from mi.program import build_program_profile
+    ws = st.need_ws()
+    include_all = (q.get("all") or ["0"])[0] == "1"
+    items, refs = [], []
+    for r in ws.items("references"):
+        d = ws.program_analysis(r["id"], (r.get("master") or {}).get("fingerprint"))
+        row = {"id": r["id"], "title": r.get("title"), "artist": r.get("artist"), "include": r.get("include", True), "weight": r.get("weight", 1.0),
+               "has_stems": bool(r.get("stems")), "synthetic": bool(r.get("synthetic")), "analysed": bool(d),
+               "stale": bool(d and d.get("algorithm_version") != st.info.get("algorithm_version"))}
+        if d:
+            row.update(_ref_program_view(d["analysis"]))
+            if include_all or r.get("include", True):
+                items.append({"id": r["id"], "title": r.get("title"), "weight": float(r.get("weight", 1.0)), "has_stems": bool(r.get("stems")),
+                              "analysis": d["analysis"]})
+        refs.append(row)
+    return {"aggregate": build_program_profile(items) if items else None, "references": refs}
+
+
+@route("GET", "/api/references/([\\w-]+)/program")
+def api_ref_program(st, q, body, rid):
+    d = st.need_ws().program_analysis(rid)
+    if not d:
+        raise ApiError("This reference has not been analysed yet", 404)
+    return d
+
+
+@route("POST", "/api/library/(references|mixes|speech|recordings)/update")
 def api_lib_update(st, q, body, kind):
     ws = st.need_ws()
     allowed = {"title", "artist", "album", "version", "category", "arrangement", "weight", "include", "notes", "engineer_eval",
@@ -263,7 +368,7 @@ def api_lib_update(st, q, body, kind):
     return {"item": ws.update(kind, body["id"], patch)}
 
 
-@route("POST", "/api/library/(references|mixes|speech)/replace-file")
+@route("POST", "/api/library/(references|mixes|speech|recordings)/replace-file")
 def api_lib_replace(st, q, body, kind):
     """Replace one file of an item (e.g. a re-exported stem). The old file is not touched."""
     ws = st.need_ws()
@@ -280,7 +385,7 @@ def api_lib_replace(st, q, body, kind):
     return {"item": ws.update(kind, it["id"], {k: it.get(k) for k in ("master", "mix", "stems", "raw", "mics", "validation") if k in it or k == "validation"})}
 
 
-@route("POST", "/api/library/(references|mixes|speech)/remove")
+@route("POST", "/api/library/(references|mixes|speech|recordings)/remove")
 def api_lib_remove(st, q, body, kind):
     st.need_ws().remove(kind, body["id"], bool(body.get("delete_copied")))
     return {"ok": True}
@@ -362,9 +467,9 @@ def _exp_brief(e):
 
 def _new_experiment(st, etype, name, inputs, config, injections=None, parent_id=None, synthetic=False):
     ws = st.need_ws()
-    eid = new_id({"music": "mx", "speech": "sp", "study": "st"}[etype])
+    eid = new_id({"music": "mx", "speech": "sp", "study": "st", "program": "pg"}[etype])
     fps = []
-    for kind, key in (("mixes", "mix_id"), ("speech", "speech_id")):
+    for kind, key in (("mixes", "mix_id"), ("speech", "speech_id"), ("recordings", "recording_id")):
         if inputs.get(key):
             it = ws.get(kind, inputs[key])
             synthetic = synthetic or bool(it.get("synthetic"))
@@ -377,7 +482,8 @@ def _new_experiment(st, etype, name, inputs, config, injections=None, parent_id=
                     fps.append({"role": k2, "name": e["file"]["name"], "group": e.get("group") or e.get("role"),
                                 "fingerprint": e["file"]["fingerprint"], "sr": e["file"].get("sr"), "frames": e["file"].get("frames")})
             inputs = {**inputs, "item_name": it.get("name"), "source_mapping": {e["file"]["name"]: e["group"] for e in it.get("stems", []) or []}
-                      if kind == "mixes" else {m["file"]["name"]: {"role": m.get("role"), "weight_db": m.get("weight_db")} for m in it.get("mics", [])}}
+                      if kind == "mixes" else ({m["file"]["name"]: {"role": m.get("role"), "weight_db": m.get("weight_db")} for m in it.get("mics", [])}
+                      if kind == "speech" else {})}
     if inputs.get("profile_id"):
         pm = read_json(ws.profile_dir(inputs["profile_id"]) / "meta.json", {})
         inputs["profile_name"] = pm.get("name")
@@ -398,12 +504,12 @@ def _new_experiment(st, etype, name, inputs, config, injections=None, parent_id=
             ws.save_experiment(e)
     exp["status"] = "running"
     ws.save_experiment(exp)
-    job = st.jobs.submit({"music": "music", "speech": "speech", "study": "study"}[etype], {"ws": str(ws.root), "exp_id": eid},
+    job = st.jobs.submit(etype, {"ws": str(ws.root), "exp_id": eid},
                          f"{etype.capitalize()}: {name}", done)
     return {"exp_id": eid, "job": job.id}
 
 
-@route("POST", "/api/experiments/(music|speech|study)")
+@route("POST", "/api/experiments/(music|speech|study|program)")
 def api_exp_new(st, q, body, etype):
     return _new_experiment(st, etype, body.get("name") or f"{etype} experiment", body.get("inputs", {}), body.get("config", {}),
                            body.get("injections"), body.get("parent_id"))
@@ -444,7 +550,7 @@ def _csv(path):
     if not rows:
         return None
     head = rows[0]
-    cols = list(zip(*[[float(x) for x in r] for r in rows[1:]])) if len(rows) > 1 else [[] for _ in head]
+    cols = list(zip(*[[float(x) if x != "" else None for x in r] for r in rows[1:]])) if len(rows) > 1 else [[] for _ in head]
     return {h: list(c) for h, c in zip(head, cols)}
 
 
@@ -452,7 +558,7 @@ def _csv(path):
 def api_exp_series(st, q, body, eid):
     res = st.need_ws().exp_dir(eid) / "results"
     return {"offsets": _csv(res / "offsets.csv"), "activity": _csv(res / "activity.csv"), "loudness": _csv(res / "loudness.csv"),
-            "speech": _csv(res / "speech_blocks.csv")}
+            "speech": _csv(res / "speech_blocks.csv"), "program": _csv(res / "program_series.csv")}
 
 
 @route("POST", "/api/experiments/([\\w-]+)/(rerun|archive|unarchive|rename|delete-renders|delete)")
@@ -461,7 +567,7 @@ def api_exp_action(st, q, body, eid, action):
     exp = ws.experiment(eid)
     if action == "rerun":
         return _new_experiment(st, exp["type"], body.get("name") or f"{exp['name']} (rerun)", {k: v for k, v in exp["inputs"].items()
-                               if k in ("mix_id", "speech_id", "profile_id", "reference_ids")}, exp["config"], exp.get("injections"), parent_id=eid)
+                               if k in ("mix_id", "speech_id", "recording_id", "profile_id", "reference_ids")}, exp["config"], exp.get("injections"), parent_id=eid)
     if action in ("archive", "unarchive"):
         exp["archived"] = action == "archive"
     elif action == "rename":
@@ -486,13 +592,13 @@ def api_exp_compare(st, q, body):
 
 
 # ============================================================================ feedback & listening
-@route("POST", "/api/feedback/([\\w-]+)/(decisions|notes|missed|overall)")
+@route("POST", "/api/feedback/([\\w-]+)/(decisions|notes|missed|overall|findings)")
 def api_fb(st, q, body, eid, kind):
     ws = st.need_ws()
     return {"item": FB.upsert(ws.exp_dir(eid), kind, body, ws.experiment(eid))}
 
 
-@route("POST", "/api/feedback/([\\w-]+)/(decisions|notes|missed|overall)/delete")
+@route("POST", "/api/feedback/([\\w-]+)/(decisions|notes|missed|overall|findings)/delete")
 def api_fb_del(st, q, body, eid, kind):
     FB.delete(st.need_ws().exp_dir(eid), kind, body["id"])
     return {"ok": True}
@@ -504,7 +610,7 @@ def api_fb_all(st, q, body):
     out = []
     for e in ws.experiments():
         fb = FB.load(ws.exp_dir(e["id"]))
-        for kind in ("decisions", "notes", "missed", "overall"):
+        for kind in ("decisions", "notes", "missed", "overall", "findings"):
             for x in fb[kind]:
                 out.append({**x, "kind": kind, "experiment_name": e.get("name"), "experiment_type": e["type"]})
     trials = []
@@ -512,7 +618,8 @@ def api_fb_all(st, q, body):
         for t in FB.listening(ws.exp_dir(e["id"]))["trials"]:
             trials.append({**FB.public_trial(t), "experiment_name": e.get("name"), "experiment_type": e["type"]})
     return {"items": sorted(out, key=lambda x: x.get("created", ""), reverse=True), "trials": trials, "verdicts": FB.DECISION_VERDICTS,
-            "categories": FB.CATEGORIES, "aspects": FB.OVERALL_ASPECTS, "preferred_kinds": FB.PREFERRED_KINDS}
+            "categories": FB.CATEGORIES, "aspects": FB.OVERALL_ASPECTS, "preferred_kinds": FB.PREFERRED_KINDS,
+            "finding_verdicts": FB.FINDING_VERDICTS}
 
 
 @route("POST", "/api/listening/([\\w-]+)/trial")

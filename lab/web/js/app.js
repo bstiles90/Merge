@@ -5,7 +5,7 @@ import { h, clear, toast, showError, setDropHandler, badge } from './ui.js';
 const NAV = [
   ['Overview', [['dashboard', 'Dashboard', '◧']]],
   ['Library', [['references', 'Reference Library', '♫'], ['profiles', 'Sound Profiles', '◔']]],
-  ['Labs', [['music', 'Music Lab', '▤'], ['speech', 'Speech Lab', '◉'], ['listen', 'Listening Room', '◑'], ['studies', 'Research Studies', '∿']]],
+  ['Labs', [['music', 'Music Lab', '▤'], ['speech', 'Speech Lab', '◉'], ['broadcast', 'Broadcast Compare', '◎'], ['listen', 'Listening Room', '◑'], ['studies', 'Research Studies', '∿']]],
   ['Records', [['history', 'Experiment History', '☰'], ['feedback', 'Engineer Feedback', '✎'], ['export', 'Research Export', '⇪']]],
   ['', [['settings', 'Settings', '⚙']]],
   ['Planned modules', [['planned/plugin', 'Plugin Intelligence Lab'], ['planned/hybrid', 'Hybrid Lab'], ['planned/ambience', 'Ambience Lab'],
@@ -19,10 +19,13 @@ const PAGES = {
   listen: () => import('./pages/listen.js'), studies: () => import('./pages/studies.js'),
   history: () => import('./pages/history.js'), feedback: () => import('./pages/feedback.js'),
   export: () => import('./pages/export.js'), settings: () => import('./pages/settings.js'),
-  planned: () => import('./pages/planned.js'),
+  planned: () => import('./pages/planned.js'), broadcast: () => import('./pages/broadcast.js'),
 };
 
+export const expRoute = (e) => (e.type === 'study' ? `studies/${e.id}` : e.type === 'program' ? `broadcast/${e.id}` : `listen/${e.id}`);
+
 export const app = {
+  expRoute,
   state: null,
   async refresh() {
     this.state = await api.get('/api/state');

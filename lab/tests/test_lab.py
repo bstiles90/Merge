@@ -254,3 +254,56 @@ def test_lab_matches_cli(tmp_path, monkeypatch):
 def test_selftest_end_to_end(tmp_path):
     from mil.selftest import run
     assert run(str(tmp_path)) == 0
+
+
+# ------------------------------------------------------------------ progressive references (programme analysis)
+def test_older_workspace_without_new_kinds_still_opens(env):
+    ws, _, _ = env
+    (ws.root / "library" / "recordings.json").unlink(missing_ok=True)
+    from mil.store import Workspace
+    w2 = Workspace(ws.root)
+    assert w2.items("recordings") == [] and w2.summary()["counts"]["references"] == 0
+    assert w2.program_analysis("ref-nothing") is None
+
+
+def test_batch_master_import_dedupes_and_analyses(server):
+    st, call, files = server
+    r = call("POST", "/api/library/references/batch", {"files": [{"path": str(files["vocals"]), "title": "Song A", "artist": "X"},
+                                                                 {"path": str(files["vocals"])}, {"path": str(files["drums"])}]})
+    assert len(r["created"]) == 2 and r["skipped"][0]["reason"] == "already in the library"
+    j = _wait(st, r["job"])
+    assert j.status == "done" and len(j.result["analysed"]) == 2
+    items = call("GET", "/api/library/references")["items"]
+    a = next(x for x in items if x["title"] == "Song A")
+    assert a["artist"] == "X" and a["stems"] == [] and a["program"]["status"] == "analysed"
+    assert a["program"]["summary"]["loudness.integrated_LUFS"] is not None
+    ov = call("GET", "/api/references/program-overview")
+    assert ov["aggregate"]["n_references"] == 2
+
+
+def test_master_only_profile_then_attach_stems(server):
+    st, call, files = server
+    r = call("POST", "/api/library/references/batch", {"files": [{"path": str(files["keys"]), "title": "M"}]})
+    _wait(st, r["job"])
+    rid = r["created"][0]
+    p = call("POST", "/api/profiles/create", {"name": "prog", "reference_ids": [rid]})
+    assert _wait(st, p["job"]).status == "done"
+    prof = call("GET", f"/api/profiles/{p['profile_id']}")
+    assert prof["profile"]["program_profile"] and prof["profile"]["groups"] == [] and not prof["meta"]["composition"]["source_level"]
+    call("POST", "/api/library/references/attach-stems", {"id": rid, "stems": [{"path": str(files[g]), "group": g} for g in ("vocals", "bass", "drums")]})
+    p2 = call("POST", "/api/profiles/create", {"name": "prog+stems", "reference_ids": [rid]})
+    assert _wait(st, p2["job"]).status == "done"
+    prof2 = call("GET", f"/api/profiles/{p2['profile_id']}")
+    assert prof2["meta"]["composition"]["source_level"] and prof2["profile"]["groups"]
+    assert call("GET", f"/api/profiles/{p['profile_id']}")["profile"]["groups"] == [], "the earlier profile is not changed"
+
+
+def test_finding_verdicts_are_validated(env):
+    ws, _, _ = env
+    from mil import feedback as FB
+    edir = ws.exp_dir("pg-x")
+    edir.mkdir(parents=True)
+    FB.upsert(edir, "findings", {"finding_id": "metric:x", "verdict": "measured_not_audible"}, {"id": "pg-x"})
+    with pytest.raises(ValueError):
+        FB.upsert(edir, "findings", {"finding_id": "metric:x", "verdict": "apply_eq"}, {"id": "pg-x"})
+    assert len(FB.load(edir)["findings"]) == 1

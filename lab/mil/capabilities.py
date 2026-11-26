@@ -15,6 +15,11 @@ LEVELS = {"planned": "Planned", "implemented": "Implemented", "experimental": "E
 REGISTRY = [
     {"id": "reference_analysis", "name": "Reference analysis & Sound Profiles", "specialist": "Reference", "level": "implemented",
      "evidence": "BS.1770 loudness verified against the standard (exp01); profile building covered by the regression suite."},
+    {"id": "program_profile", "name": "Program Sound Profile (stereo masters, no stems)", "specialist": "Reference", "level": "implemented",
+     "evidence": "Spectral balance, loudness, dynamics, transients and stereo measures from stereo files; truth-known tests "
+                 "(tilt, correlation, width, balance, mono loss, onset rate, block crest) in the regression suite."},
+    {"id": "broadcast_comparison", "name": "Broadcast vs Program Sound Profile (diagnostic)", "specialist": "Program", "level": "implemented",
+     "evidence": "Places a stereo recording within the references' ranges. Diagnostic evidence only: no source attribution, no processing."},
     {"id": "group_balance", "name": "Group balance control (fader offsets)", "specialist": "Music", "level": "synthetic", "renders": True,
      "evidence": "exp02 and truth-known prototype tests: injected ±3 dB corrected 68-73 %, builds and dropouts ignored."},
     {"id": "speech_gain_sharing", "name": "Speech gain sharing", "specialist": "Speech", "level": "synthetic", "renders": True,
@@ -53,6 +58,10 @@ def capabilities(experiments: list, listening_counts: dict) -> list:
             n = []
         else:
             n = []
+        if c["id"] == "broadcast_comparison":
+            n = [e for e in real if e["type"] == "program"]
+            c["real_audio"] = {"experiments": len(n), "blind_trials": 0,
+                               "status": "Not yet used on real recordings" if not n else f"{len(n)} comparison(s) of real recordings"}
         if c["id"] in ("group_balance", "speech_gain_sharing", "speech_leveling"):
             trials = sum(listening_counts.get(e["id"], 0) for e in n)
             c["real_audio"] = {"experiments": len(n), "blind_trials": trials,

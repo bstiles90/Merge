@@ -693,6 +693,41 @@ All [V], from building and running `research/intelligence` (`./run.sh all` and
 - **Speech leveller.** Within 0.4 dB of each talker's true correction: −3.9 / +3.2 / −0.1 dB
   against −4.2 / +2.8 / −0.2 dB needed.
 
+### Programme (stereo-only) analysis — algorithm 0.4.0
+
+Added so references can be collected before stems exist, and so stereo broadcast recordings can
+be placed against them (`mi/program.py`, tests `tests/test_program.py`). Reused unchanged: BS.1770
+block power, integrated loudness, LRA, true peak, momentary spread, 3 s crest, loudness-weighted
+tonal shape (exp03). New measurements, each with a truth-known test **[V, synthetic]**:
+
+| Measure | Definition | Truth-known check |
+|---|---|---|
+| Third-octave spectral shape | STFT (8192) of the mid signal, 27 third-octave bands 40 Hz–16 kHz, energy-averaged over programme blocks (short-term within 20 LU of integrated), loudness-weighted level removed; per-frame p10/p90 give the within-song variation | pink noise tilt within ±0.5 dB/oct of 0; white noise +2.5…+3.5 dB/oct (theory +3) |
+| Spectral tilt, low/high vs mid | slope of the shape vs log2 f; mean shape 40–160 Hz and 4–16 kHz minus 400 Hz–1.6 kHz | (from the shape) |
+| Side/mid ratio (overall, per octave band) | 10·log10(E[S²]/E[M²]) | mono < −60 dB; uncorrelated channels ≈ 0 dB (±0.3) |
+| Inter-channel correlation (overall, block p10) | Σ LR / √(Σ L² Σ R²) over programme blocks | mono > 0.999; uncorrelated |r| < 0.05; inverted < −0.95 |
+| Mono-downmix loudness change | integrated loudness of (M, M) minus that of (L, R) | inverted channels < −15 LU; mono ±0.05 |
+| Left/right balance | 10·log10(E[L²]/E[R²]) | L = 2R → 6.02 dB (±0.05) |
+| Block crest (p50, p90; above 2 kHz) | peak/RMS within 100 ms blocks | sine 3.01 dB (±0.2) |
+| Onset density | half-wave-rectified log-band (1/6 octave) spectral flux, 10.7 ms hop, moving-median threshold, ≥ 50 ms apart; onsets per second of programme | 4 Hz click train → 3.5–4.5 /s |
+
+Time-varying behaviour is summarised as 50-point curves over normalised time (short-term
+loudness relative to integrated, tilt, side/mid, block crest), so songs of different lengths can
+be aggregated. A Program Sound Profile is the weighted p10/p25/median/p75/p90 (plus min/max) of
+every measure, the spectral shape per band and every curve point across references.
+
+**Comparison is diagnostic.** A recording is placed within each range; a finding is raised only
+when it lies beyond the typical range (p10–p90; min–max with fewer than 3 references) by more than
+a per-measure tolerance (≈ 1 LU for loudness measures, 0.3 dB/oct tilt, 1.5 dB band balance and
+width, 0.05 correlation; spectral bands 1.5 dB). These tolerances are engineering choices near
+measurement repeatability and common just-noticeable differences, **not validated perceptual
+thresholds** — the engineer's verdicts on findings are the intended evidence for revising them.
+Absolute loudness and peak differences are reported as expected (masters are louder than
+broadcasts) and never raised as findings. Stereo-only data cannot attribute a difference to a
+source (the reason source-level intelligence requires stems, §7), so no finding names an
+instrument or proposes processing. Not established: how well onset density and block crest track
+perceived punch on real music, and how many references give stable ranges (estimate: ≥ 10).
+
 ## 12. Bibliography (verified identifiers)
 
 1. S. S. Vanka, C. J. Steinmetz, J.-B. Rolland, J. D. Reiss, G. Fazekas. Diff-MST: Differentiable Mixing Style Transfer. ISMIR 2024. arXiv:2407.08889. Code: github.com/sai-soum/Diff-MST (CC BY-NC-SA 4.0).

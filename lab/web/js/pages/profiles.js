@@ -2,6 +2,7 @@
 import { api, waitJob } from '../api.js';
 import { h, clear, pageHead, panel, badge, statusBadge, empty, fmtDate, groupName, groupColor, modal, field, showError, toast, confirmBox, promptBox, md, select, GROUPS } from '../ui.js';
 import { rangeChart, bandChart } from '../charts.js';
+import { programView } from '../programviz.js';
 
 export async function render(root, [pid], app) {
   if (pid) return detail(root, pid, app);
@@ -14,11 +15,13 @@ export async function render(root, [pid], app) {
     if (!items.length) return clear(body, panel('Profiles', empty('No profiles yet', 'Import at least one reference, then build a profile from it. Three or more references give a more reliable profile.',
       h('button.primary', { onclick: () => createDialog(app, {}, load) }, 'Build a profile'))));
     clear(body, h('div.panel.flat', h('div.pb', h('table',
-      h('tr', h('th', 'Profile'), h('th', 'Status'), h('th', 'References'), h('th', 'Groups'), h('th', 'Created'), h('th', 'Algorithms'), h('th', '')),
+      h('tr', h('th', 'Profile'), h('th', 'Status'), h('th', 'References'), h('th', 'Contains'), h('th', 'Created'), h('th', 'Algorithms'), h('th', '')),
       items.map((p) => h('tr.click', { onclick: () => p.status === 'complete' && app.go(`profiles/${p.id}`) },
         h('td', h('b', p.name), p.parent_id ? h('div.faint.small', 'derived from an earlier profile') : null),
         h('td', statusBadge(p.status), p.error ? h('div.small', { style: { color: 'var(--danger)' } }, p.error.split('\n')[0]) : null),
-        h('td.num', p.reference_ids.length), h('td.small', (p.groups || []).map(groupName).join(', ')),
+        h('td.num', p.reference_ids.length, p.composition ? h('div.faint.small', `${p.composition.with_stems} with stems · ${p.composition.master_only} master-only`) : null),
+        h('td.small', p.composition && !p.composition.source_level ? badge('programme only', 'info') : [p.composition?.program_analysed ? badge('programme', 'info') : null, ' ',
+          (p.groups || []).length ? badge('source balance', 'implemented') : null], (p.groups || []).length ? h('div.faint', (p.groups || []).map(groupName).join(', ')) : null),
         h('td.dim', fmtDate(p.created)), h('td.small.dim', p.algorithm_version || ''),
         h('td', h('span.faint', '›'))))))));
   }
@@ -58,11 +61,12 @@ export async function createDialog(app, { from, name } = {}, onDone) {
   modal({ title: from ? 'New version of a profile' : 'Build a Sound Profile', wide: true, body: h('div.stack',
     field('Profile name', nm),
     h('p.dim', 'Choose the references this profile learns from. A new profile is always created; existing profiles are never changed.'),
-    h('table', h('tr', h('th', ''), h('th', 'Reference'), h('th', 'Stems'), h('th', 'Weight'), h('th', 'Check')),
+    h('p.dim.small', 'Master-only references feed the Program Sound Profile (spectrum, loudness, dynamics, transients, stereo). References with stems also feed source-level balance. A profile can mix both.'),
+    h('table', h('tr', h('th', ''), h('th', 'Reference'), h('th', 'Material'), h('th', 'Weight'), h('th', 'Check')),
       items.map((r) => h('tr',
         h('td', h('input', { type: 'checkbox', checked: sel.has(r.id), onchange: (e) => (e.target.checked ? sel.add(r.id) : sel.delete(r.id)) })),
         h('td', r.title, r.synthetic ? [' ', badge('synthetic', 'synthetic-data')] : null, r._missing?.length ? [' ', badge('files missing', 'error')] : null),
-        h('td.small', [...new Set((r.stems || []).map((s) => s.group))].map(groupName).join(', ')),
+        h('td.small', (r.stems || []).length ? [...new Set((r.stems || []).map((s) => s.group))].map(groupName).join(', ') : badge('master only', 'info')),
         h('td', h('input', { type: 'number', step: 0.1, min: 0, value: weights[r.id] ?? r.weight ?? 1, onchange: (e) => { weights[r.id] = +e.target.value; } })),
         h('td', r.validation ? badge(r.validation.status === 'ok' ? 'Good' : r.validation.status, r.validation.status === 'ok' ? 'ok' : r.validation.status) : h('span.faint', '–'))))),
     h('p.faint.small', 'Fewer than three references: the profile is usable for research, but its targets are less certain (the report says so).'),
@@ -89,11 +93,28 @@ async function detail(root, pid, app) {
       if (!await confirmBox('Delete profile', 'Delete this profile? Experiments that used it keep their own snapshot of it.', 'Delete', true)) return;
       try { await api.post(`/api/profiles/${pid}/delete`, {}); app.go('profiles'); } catch (e) { showError(e); }
     } }, 'Delete')), tabs, h('div', { style: { height: '12px' } }), body);
-  const T = { balance: 'Balance', tone: 'Tonal tendencies', dynamics: 'Dynamics', refs: 'References & limitations', report: 'Report' };
-  let cur = 'balance';
+  const hasSource = (profile.groups || []).length > 0, hasProgram = !!profile.program_profile;
+  const T = { ...(hasProgram ? { program: 'Program' } : {}), balance: 'Source balance', tone: 'Source tone', dynamics: 'Source dynamics', refs: 'References & limitations', report: 'Report' };
+  let cur = hasSource ? 'balance' : 'program';
+  const noStems = () => panel('No stems in this profile', empty('Source-level views need references with stems',
+    'This profile was built from stereo masters only. Attach stems to references in the Reference Library, then use “Duplicate / regenerate…” to build a new version that includes them.',
+    h('button', { onclick: () => app.go('references') }, 'Reference Library')));
   const show = (k) => { cur = k; clear(tabs, Object.entries(T).map(([id, l]) => h('button' + (id === cur ? '.on' : ''), { onclick: () => show(id) }, l))); clear(body, VIEWS[k]()); };
   const VIEWS = {
+    program() {
+      const pp = profile.program_profile;
+      if (!pp) return panel('Program', empty('No programme analysis', 'Profiles built before programme analysis existed have none. Build a new version to add it.'));
+      let sel = pp.references[0]?.id;
+      const box = h('div');
+      const drawP = () => clear(box, h('div', { style: { display: 'grid', gridTemplateColumns: '240px minmax(0, 1fr)', gap: '14px', alignItems: 'start' } },
+        h('div.panel.flat', h('div.ph', h('h2', 'References')), h('div.pb', h('table', pp.references.map((r) => h('tr.click' + (r.id === sel ? '.sel' : ''), { onclick: () => { sel = r.id; drawP(); } },
+          h('td', r.title, h('div.faint.small', r.has_stems ? 'stems' : 'master only'))))))),
+        programView({ profile: pp, refs: pp.references, selected: sel, onSelect: (id) => { sel = id; drawP(); } })));
+      drawP();
+      return box;
+    },
     balance() {
+      if (!hasSource) return noStems();
       const rows = Object.entries(profile.balance).map(([k, v]) => {
         const s = v.byDensity?.all || {};
         return { label: pairLabel(k), ...s, title: `${s.n || 0} blocks · ${v.nRefs} ref(s) · between-reference SD ${v.betweenRefSD ?? '–'} LU` };
@@ -109,26 +130,31 @@ async function detail(root, pid, app) {
           h('p', `Density breakdown: ${Object.keys(Object.values(profile.balance)[0]?.byDensity || {}).join(', ')}.`))));
     },
     tone() {
+      if (!hasSource) return noStems();
       return h('div.grid.g3', Object.entries(profile.tonal).map(([g, t]) => panel(groupName(g), [
         bandChart(t.band_centres_hz, [{ values: t.shape_dB.median, color: groupColor(g) }], { lo: -40, hi: 15 }),
         h('p.faint.small', `Spectral shape relative to the group's own level (octave bands). ${t.use}`)])));
     },
     dynamics() {
+      if (!hasSource) return noStems();
       return panel('Dynamics tendencies', [h('table', h('tr', h('th', 'Group'), h('th', 'Momentary loudness spread'), h('th', 'Crest factor'), h('th', '')),
         Object.entries(profile.dynamics).map(([g, d]) => h('tr', h('td', groupName(g)), h('td.num', `${d.momentarySpread_LU.median.toFixed(1)} LU (±${(d.momentarySpread_LU.spread ?? 0).toFixed(1)})`),
           h('td.num', `${d.crest_dB.median.toFixed(1)} dB`), h('td.small.dim', d.includesMastering ? 'includes mastering' : '')))),
         h('h3', 'Programme (mastered references)'),
-        h('div.kv', h('span', 'Integrated loudness'), h('span', `${profile.program.integrated_LUFS} LUFS`), h('span', 'Loudness range'), h('span', `${profile.program.LRA_LU} LU`),
+        h('div.kv', h('span', 'Integrated loudness'), h('span', `${profile.program?.integrated_LUFS} LUFS`), h('span', 'Loudness range'), h('span', `${profile.program.LRA_LU} LU`),
           h('span', 'True peak'), h('span', `${profile.program.truePeak_dBTP} dBTP`), h('span', 'Spectral tilt'), h('span', `${profile.program.tilt_dB_per_oct} dB/oct`)),
         h('p.faint.small', 'Programme values reflect mastering. They are reported for context and never chased with channel levels.')]);
     },
     refs() {
-      return h('div.grid.g2', panel('References used', h('table', h('tr', h('th', 'Reference'), h('th', 'Weight'), h('th', 'Length')),
-        profile.references.map((r) => h('tr', h('td', r.title, r.excluded ? [' ', badge('excluded', 'warn')] : null), h('td.num', r.weight), h('td.num', `${Math.round(r.duration_s)} s`))))),
+      const pr = profile.program_profile?.references || [];
+      const rows = [...profile.references.map((r) => ({ title: r.title, weight: r.weight, dur: r.duration_s, excluded: r.excluded, mat: 'stems' + (pr.find((x) => x.id === r.id) ? ' + programme' : '') })),
+        ...pr.filter((r) => !r.has_stems).map((r) => ({ title: r.title, weight: r.weight, dur: r.duration_s, mat: 'master only (programme)' }))];
+      return h('div.grid.g2', panel('References used', h('table', h('tr', h('th', 'Reference'), h('th', 'Used for'), h('th', 'Weight'), h('th', 'Length')),
+        rows.map((r) => h('tr', h('td', r.title, r.excluded ? [' ', badge('excluded', 'warn')] : null), h('td.small', r.mat), h('td.num', r.weight), h('td.num', `${Math.round(r.dur)} s`))))),
         panel('Limitations', h('div', (meta.limitations || []).map((l) => h('div.finding.warn', h('span.i', '!'), h('span', l))),
-          profile.notes.map((n) => h('div.finding', h('span.i', 'i'), h('span', n))))));
+          (profile.notes || []).map((n) => h('div.finding', h('span.i', 'i'), h('span', n))))));
     },
     report() { return panel('Profile report', report ? md(report) : empty('No report')); },
   };
-  show('balance');
+  show(cur);
 }

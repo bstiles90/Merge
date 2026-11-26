@@ -36,9 +36,40 @@ function startLab() {
       await page.waitForSelector('text=Capability maturity', { timeout: 300000 });
     });
     const demo = path.join(tmp, 'UI smoke', 'audio', 'demo');
+    await step('batch-import stereo masters', async () => {
+      await page.click('a[href="#/references"]');
+      await page.click('button:has-text("+ Import masters")');
+      await page.click('.modal button:has-text("Choose a folder…")');
+      await page.fill('.modal-bg:last-child input', path.join(demo, 'broadcast'));
+      await page.click('button:has-text("Use these")');
+      await page.waitForSelector('.modal table');
+      await page.click('.modal button:has-text("and analyse")');
+      await page.waitForSelector('text=Analysis finished', { timeout: 180000 });
+      await page.click('.modal button:has-text("Done")');
+    });
+    await step('program overview', async () => {
+      await page.click('.seg button:has-text("Program overview")');
+      await page.waitForSelector('text=Spectral balance');
+      await page.waitForSelector('text=Behaviour over time');
+      await page.click('.seg button:has-text("Library")');
+    });
+    await step('attach stems to a master-only reference', async () => {
+      const row = page.locator('tr', { hasText: 'Demo master-only' });
+      await row.locator('button:has-text("Attach stems…")').click();
+      await page.click('.modal button:has-text("Choose a folder…")');
+      await page.fill('.modal-bg:last-child input', path.join(demo, 'references', 'ref-a', 'stems'));
+      await page.click('button:has-text("Use these")');
+      await page.waitForSelector('.modal table');
+      await page.click('.modal button:has-text("Next")');
+      await page.click('.modal button:has-text("Check files")');
+      await page.waitForSelector('.modal .notice', { timeout: 120000 });
+      await page.click('.modal button:has-text("Next")');
+      await page.click('.modal button:has-text("Attach stems")');
+      await page.waitForSelector('tr:has-text("Demo master-only") >> text=stems', { timeout: 20000 });
+    });
     await step('import a reference with the wizard', async () => {
       await page.click('a[href="#/references"]');
-      await page.click('button:has-text("+ Import reference")');
+      await page.click('button:has-text("+ Import with stems")');
       await page.click('button:has-text("Choose a folder…")');
       await page.fill('.modal-bg:last-child input', path.join(demo, 'references', 'ref-b'));
       await page.click('button:has-text("Use these")');
@@ -74,6 +105,19 @@ function startLab() {
       if (!(t1 > 0.5 && t2 > t1)) throw new Error(`playback did not continue across the switch (${t1} → ${t2})`);
       await page.keyboard.press('Space');
     });
+    await step('compare a broadcast recording with the Program Sound Profile', async () => {
+      await page.keyboard.press('Space').catch(() => {});
+      await page.click('a[href="#/broadcast"]');
+      await page.waitForSelector('button:has-text("Compare")');
+      await page.click('button.primary:has-text("Compare")');
+      await page.waitForSelector('text=Diagnostic evidence.', { timeout: 300000 });
+      await page.waitForSelector('text=Spectral balance');
+      await page.goBack(); await page.waitForTimeout(500);
+      const exps = await page.evaluate(async () => (await (await fetch('/api/experiments', { headers: { 'X-Lab-Token': sessionStorage.getItem('mil-token') } })).json()).items);
+      const mx = exps.find((e) => e.type === 'music');
+      await page.evaluate((id) => { location.hash = '#/listen/' + id; }, mx.id);
+      await page.waitForSelector('.vbtn'); await page.waitForTimeout(2000);
+    });
     await step('record feedback', async () => {
       await page.click('.decision >> nth=0');
       await page.click('.decision.sel button:has-text("Correct adjustment")');
@@ -107,6 +151,10 @@ function startLab() {
     console.log(`UI smoke test passed. Screenshots: ${shots}`);
   } catch (e) {
     console.error('\nUI smoke test FAILED:', e.message);
+    try {
+      const jobs = await page.evaluate(async () => (await fetch('/api/jobs', { headers: { 'X-Lab-Token': sessionStorage.getItem('mil-token') } })).json());
+      console.error('Lab jobs at failure:', JSON.stringify(jobs, null, 1).slice(0, 4000));
+    } catch (x) { console.error('could not read jobs', x.message); }
     await page.screenshot({ path: path.join(shots, 'failure.png') }).catch(() => {});
     process.exitCode = 1;
   } finally {

@@ -10,3 +10,5 @@ lab/dist/
 lab/build/
 lab/packaging/build_info.json
 *.mil-workspace/
+lab/**/__pycache__/
+lab/.pytest_cache/

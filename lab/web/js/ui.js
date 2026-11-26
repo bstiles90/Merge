@@ -2,9 +2,13 @@
 import { desktop } from './api.js';
 
 export function h(tag, attrs = {}, ...kids) {
-  const [name, ...cls] = tag.split('.');
-  const el = document.createElement(name || 'div');
+  // 'tag.class1.class2#id' (any order after the tag name)
+  const parts = tag.match(/^[^.#]*|[.#][^.#]+/g) || [''];
+  const el = document.createElement(parts[0] || 'div');
+  const cls = parts.slice(1).filter((p) => p[0] === '.').map((p) => p.slice(1));
+  const id = parts.slice(1).find((p) => p[0] === '#');
   if (cls.length) el.className = cls.join(' ');
+  if (id) el.id = id.slice(1);
   if (attrs == null || typeof attrs !== 'object' || attrs instanceof Node || Array.isArray(attrs)) { kids.unshift(attrs); attrs = {}; }
   for (const [k, v] of Object.entries(attrs)) {
     if (v == null || v === false) continue;

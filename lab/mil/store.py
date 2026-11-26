@@ -12,6 +12,7 @@ The Lab creates and manages everything inside it; the engineer never edits it by
       profiles/<id>/                Sound Profiles (profile.json, profile.md, meta.json)
       experiments/<id>/             one folder per experiment - never overwritten
       exports/                      research packages for Claude
+      analysis/references/<id>.json programme analysis of each reference master (recomputable)
       .staging/  .cache/            internal (safe to delete)
 
 Original audio is never modified, moved or deleted. Imported files are referenced at their
@@ -34,7 +35,7 @@ from pathlib import Path
 from . import APP_VERSION, WORKSPACE_SCHEMA
 from .paths import user_settings_dir
 
-KINDS = ("references", "mixes", "speech")
+KINDS = ("references", "mixes", "speech", "recordings")  # recordings: stereo broadcast/livestream programmes
 _lock = threading.RLock()
 
 
@@ -187,7 +188,7 @@ class Workspace:
     def add(self, kind: str, item: dict) -> dict:
         with _lock:
             items = self.items(kind)
-            item.setdefault("id", new_id({"references": "ref", "mixes": "mix", "speech": "sp"}[kind]))
+            item.setdefault("id", new_id({"references": "ref", "mixes": "mix", "speech": "sp", "recordings": "rec"}[kind]))
             item.setdefault("created", now())
             items.append(item)
             self._save(kind, items)
@@ -255,6 +256,20 @@ class Workspace:
             raise KeyError(file_id)
 
     # ---- profiles
+    # ---- per-reference programme analysis (recomputable; keyed by file fingerprint + algorithm version)
+    def program_path(self, ref_id: str) -> Path:
+        return self.root / "analysis" / "references" / f"{ref_id}.json"
+
+    def program_analysis(self, ref_id: str, fingerprint: str | None = None, algorithm_version: str | None = None):
+        d = read_json(self.program_path(ref_id))
+        if not d:
+            return None
+        if fingerprint and d.get("fingerprint") != fingerprint:
+            return None
+        if algorithm_version and d.get("algorithm_version") != algorithm_version:
+            return None
+        return d
+
     def profiles(self) -> list:
         out = []
         for d in sorted((self.root / "profiles").iterdir()) if (self.root / "profiles").is_dir() else []:

@@ -96,6 +96,17 @@ something` to keep variants side by side.
 suite). It does **not** yet mean validated on your recordings. That is what this prototype
 is for: listen, and run the `--inject` tests on your own stems.
 
+## Stereo masters without stems (programme analysis)
+
+```bash
+./run.sh program refs/*.wav --compare service-livestream.wav --out results/program
+```
+
+Measures each stereo file (spectral balance, loudness, dynamics, transients, stereo image, behaviour
+over time), aggregates them into a Program Sound Profile, and optionally places a recording within
+the references' ranges. Findings are **diagnostic only**: a stereo file cannot say which source
+caused a difference, so nothing here names a source or proposes processing (`mi/program.py`).
+
 ## Investigations (run before final controller behaviour is fixed)
 
 | Command | Investigates |

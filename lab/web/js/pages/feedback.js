@@ -10,7 +10,7 @@ export async function render(root, params, app) {
   root.append(pageHead('Engineer Feedback', 'Your judgements of the operator’s decisions, stored as research data beside each experiment. Feedback does not change or train the operator automatically; it is evidence for review.',
     h('button', { onclick: () => app.go('export') }, 'Export for review…')),
     h('div.row', { style: { marginBottom: '10px' } },
-      select([['', 'All feedback'], ['decisions', 'Decision verdicts'], ['notes', 'Timestamped notes'], ['missed', 'Missed interventions'], ['overall', 'Overall evaluations (non-blind)']], '', (v) => { f.kind = v; draw(); }),
+      select([['', 'All feedback'], ['decisions', 'Decision verdicts'], ['findings', 'Verdicts on diagnostic findings'], ['notes', 'Timestamped notes'], ['missed', 'Missed interventions'], ['overall', 'Overall evaluations (non-blind)']], '', (v) => { f.kind = v; draw(); }),
       select([['', 'All experiments'], ...exps], '', (v) => { f.exp = v; draw(); }),
       select([['', 'Any verdict'], ...Object.entries(r.verdicts)], '', (v) => { f.verdict = v; draw(); }),
       select([['', 'Any category'], ...Object.entries(r.categories)], '', (v) => { f.category = v; draw(); })), body);
@@ -23,8 +23,8 @@ export async function render(root, params, app) {
     const answered = trials.filter((t) => t.answer);
     clear(body, h('div.grid.g-side',
       h('div.panel.flat', h('div.pb', rows.length ? h('table', h('tr', h('th', 'Experiment'), h('th', 'Type'), h('th', 'When in audio'), h('th', 'Feedback'), h('th', 'Category'), h('th', 'Recorded')),
-        rows.map((x) => h('tr.click', { onclick: () => app.go(`listen/${x.experiment_id}`) },
-          h('td.small', x.experiment_name), h('td.small', { decisions: 'Decision', notes: 'Note', missed: 'Missed', overall: 'Overall' }[x.kind]),
+        rows.map((x) => h('tr.click', { onclick: () => app.go(app.expRoute({ id: x.experiment_id, type: x.experiment_type })) },
+          h('td.small', x.experiment_name), h('td.small', { decisions: 'Decision', notes: 'Note', missed: 'Missed', overall: 'Overall', findings: 'Finding' }[x.kind]),
           h('td.num.small', x.time_s != null ? fmtTime(x.time_s, true) : x.start_s != null ? `${fmtTime(x.start_s)}–${fmtTime(x.end_s)}` : '–'),
           h('td', describe(x, r)), h('td.small.dim', x.category ? r.categories[x.category] + (x.category_auto ? ' (auto)' : '') : ''),
           h('td.small.dim', fmtDate(x.modified || x.created))))) : empty('No feedback yet', 'Open an experiment in the Listening Room and review its decisions.'))),
@@ -41,6 +41,8 @@ export async function render(root, params, app) {
 function describe(x, r) {
   if (x.kind === 'decisions') return h('div', h('b', r.verdicts[x.verdict]), ` — ${groupName(x.target)}${x.proposed != null ? ' ' + fmtDb(x.proposed) : ''}`,
     x.preferred?.kind ? h('div.small.dim', `Preferred: ${x.preferred.kind}${x.preferred.value != null ? ' ' + fmtDb(x.preferred.value) : ''}`) : null, x.comment ? h('div.small', x.comment) : null);
+  if (x.kind === 'findings') return h('div', h('b', (r.finding_verdicts || {})[x.verdict] || x.verdict), ` — ${x.metric === 'spectrum.shape' && x.band_hz ? `spectrum ${x.band_hz.join('–')} Hz` : x.metric}`,
+    h('span.faint.small', ' (diagnostic finding)'), x.comment ? h('div.small', x.comment) : null);
   if (x.kind === 'notes') return h('div', x.text, x.version ? h('span.faint.small', ` (${x.version})`) : null);
   if (x.kind === 'missed') return h('div', h('b', groupName(x.target)), ` — ${x.issue || ''}`, x.preferred?.kind ? h('div.small.dim', `Should have: ${x.preferred.kind}${x.preferred.value != null ? ' ' + fmtDb(x.preferred.value) : ''}`) : null);
   if (x.kind === 'overall') return h('div', Object.entries(x.ratings || {}).map(([a, v]) => badge(`${a.replace(/_/g, ' ')}: ${v.replace('_', ' ')}`, v === 'improved' ? 'ok' : v === 'degraded' ? 'error' : 'info')), x.comment ? h('div.small', x.comment) : null);

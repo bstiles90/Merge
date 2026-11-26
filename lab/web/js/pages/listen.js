@@ -26,6 +26,7 @@ let META = null;
 export async function render(root, [eid], app) {
   if (!META) META = await api.get('/api/feedback').then((r) => ({ verdicts: r.verdicts, categories: r.categories, kinds: r.preferred_kinds }));
   if (!eid) return picker(root, app);
+  if (eid.startsWith('pg-')) return app.go(`broadcast/${eid}`);
   let data = await api.get(`/api/experiments/${eid}`);
   const E = data.experiment, A = data.analysis || {};
   const type = E.type;
@@ -503,7 +504,7 @@ function details(E, data, app, reload) {
 
 async function picker(root, app) {
   const { items } = await api.get('/api/experiments');
-  const ok = items.filter((e) => e.status === 'complete' && e.type !== 'study' && !e.archived);
+  const ok = items.filter((e) => e.status === 'complete' && ['music', 'speech'].includes(e.type) && !e.archived);
   root.append(pageHead('Listening Room', 'Choose an experiment to listen to. Original and adjusted versions play in sync; switching never restarts playback.'));
   if (!ok.length) return root.append(panel('Experiments', empty('Nothing to listen to yet', 'Analyse a mix in the Music Lab or a recording in the Speech Lab.',
     h('button.primary', { onclick: () => app.go('music') }, 'Music Lab'), h('button', { onclick: () => app.go('speech') }, 'Speech Lab'))));

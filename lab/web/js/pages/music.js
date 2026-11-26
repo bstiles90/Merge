@@ -8,7 +8,7 @@ export const MUSIC_DEFAULTS = { beta: 0.5, evidence_s: 6, rate_db_s: 0.5, max_bo
 
 export async function render(root, [mixId], app) {
   const [{ items: mixes }, { items: profiles }] = await Promise.all([api.get('/api/library/mixes'), api.get('/api/profiles')]);
-  const done = profiles.filter((p) => p.status === 'complete');
+  const done = profiles.filter((p) => p.status === 'complete' && (p.groups || []).length);  // source-level profiles only
   root.append(pageHead('Music Lab', 'Analyse a mix of your own stems against a Sound Profile. The operator proposes group fader offsets; you hear the original and the adjusted version side by side.',
     h('button.primary', { onclick: () => openImporter('mix', { onDone: (it) => app.go(`music/${it.id}`) }) }, '+ Import mix stems')));
   if (!mixes.length) {
@@ -118,7 +118,8 @@ function experimentForm(root, mix, profiles, app) {
         lanes, h('div.row', regionsInfo, h('div', { style: { flex: 1 } }), h('button.ghost', { onclick: () => { cfg.baseline = 'all'; redraw(); } }, 'Use the whole song')))),
     h('div.grid.g2',
       panel('Operator settings', h('div.stack',
-        field('Sound Profile', profiles.length ? select(profiles.map((p) => [p.id, p.name]), profileId, (v) => { profileId = v; }) : h('div', h('span.dim', 'No profile yet. '), h('a', { href: '#/profiles' }, 'Build one'))),
+        field('Sound Profile', profiles.length ? select(profiles.map((p) => [p.id, p.name]), profileId, (v) => { profileId = v; })
+          : h('div', h('span.dim', 'No profile with stems yet (balance control needs references with stems). '), h('a', { href: '#/profiles' }, 'Sound Profiles'))),
         field('Reference influence (β)', h('div.row', betaIn, betaOut), '0 = keep your own baseline balance; 1 = move fully to the profile’s targets. 0.5 blends both.'),
         h('div.form',
           field('Evidence window', h('span', num('evidence_s', { step: 1, min: 2, max: 30 }), ' s'), 'How much recent music the operator needs before judging a balance. Longer = calmer, slower to react.'),

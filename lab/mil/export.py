@@ -21,7 +21,8 @@ from .paths import build_info
 from .store import read_json
 
 AUDIO_EXT = {".wav", ".aif", ".aiff", ".flac"}
-EVIDENCE = ["analysis.json", "decisions.jsonl", "offsets.csv", "activity.csv", "loudness.csv", "speech_blocks.csv", "result.json"]
+EVIDENCE = ["analysis.json", "decisions.jsonl", "offsets.csv", "activity.csv", "loudness.csv", "speech_blocks.csv", "result.json",
+            "program_series.csv"]
 RENAME = {"analysis.json": "measurements.json", "result.json": "study_result.json"}
 BAD_VERDICTS = {"too_much", "too_little", "wrong_direction", "wrong_type", "unnecessary", "missed", "musical_change"}
 GOOD_VERDICTS = {"correct", "correct_no_action"}
@@ -56,7 +57,7 @@ class _Sanitizer:
         self.names = {}
         # folders of every library file (external drives, shared volumes...), longest first
         dirs = set()
-        for kind in ("references", "mixes", "speech"):
+        for kind in ("references", "mixes", "speech", "recordings"):
             for it in ws.items(kind):
                 for f in ws.files_of(it):
                     for key in ("path", "original_path"):
@@ -64,7 +65,7 @@ class _Sanitizer:
                             dirs.add(str(Path(f[key]).parent))
         self.dirs = sorted((d for d in dirs if len(d) > 1), key=len, reverse=True)
         if anonymize:
-            for kind, label in (("references", "Reference"), ("mixes", "Mix"), ("speech", "Speech recording")):
+            for kind, label in (("references", "Reference"), ("mixes", "Mix"), ("speech", "Speech recording"), ("recordings", "Broadcast recording")):
                 for k, it in enumerate(ws.items(kind), 1):
                     for key in ("title", "name"):
                         if it.get(key):
@@ -156,8 +157,8 @@ def _plan(ws, sel, opts):
 
 def _strip_comments(fb):
     fb = json.loads(json.dumps(fb))
-    for k in ("decisions", "notes", "missed", "overall"):
-        for x in fb[k]:
+    for k in ("decisions", "notes", "missed", "overall", "findings"):
+        for x in fb.get(k, []):
             for f in ("comment", "notes", "text", "preferred_notes"):
                 if f in x:
                     x[f] = "<excluded>"
@@ -231,8 +232,11 @@ def summary_md(ws, sel, san, opts) -> str:
         L += ["## Sound Profiles", ""]
         for pid in sel["profiles"]:
             m = read_json(ws.profile_dir(pid) / "meta.json", {}) or {}
-            L.append(f"- **{san.text(m.get('name', pid))}** ({pid}): {len(m.get('reference_ids', []))} reference(s), "
-                     f"algorithm {m.get('algorithm_version')}, status {m.get('status')}")
+            comp = m.get("composition") or {}
+            L.append(f"- **{san.text(m.get('name', pid))}** ({pid}): {len(m.get('reference_ids', []))} reference(s)"
+                     + (f" ({comp.get('with_stems', 0)} with stems, {comp.get('master_only', 0)} master-only; programme analysis of "
+                        f"{comp.get('program_analysed', 0)})" if comp else "")
+                     + f", algorithm {m.get('algorithm_version')}, status {m.get('status')}")
             for lim in m.get("limitations", []):
                 L.append(f"  - limitation: {san.text(lim)}")
         L.append("")
@@ -268,7 +272,17 @@ def summary_md(ws, sel, san, opts) -> str:
             L += [f"- Handovers: {a.get('handovers')}; idle noise {a.get('idle_noise_before_db')} -> {a.get('idle_noise_after_db')} dB",
                   "- Mics: " + "; ".join(f"{san.text(m['name'])} floor {m['floor_s']} s, level {m['speech_LUFS']} LUFS, leveller {m['leveller_db']} dB" for m in a.get("mics", [])),
                   f"- Calibration: {a.get('calibration', {}).get('note', '')}"]
+        if exp["type"] == "program" and a:
+            c = a.get("comparison", {})
+            L += [f"- Stereo recording compared with the Program Sound Profile of {san.text(str(a.get('profile')))} "
+                  f"({c.get('n_references')} references{', few: ranges are indicative' if c.get('few_references') else ''}). "
+                  "DIAGNOSTIC ONLY: stereo findings do not identify sources and are not processing instructions.",
+                  f"- Findings: {len(c.get('findings', []))}"]
+            L += [f"  - {san.text(f['text'])}" for f in c.get("findings", [])]
         fb = FB.load(ws.exp_dir(eid))
+        if fb.get("findings"):
+            L.append(f"- Engineer verdicts on findings: " + ", ".join(f"{x.get('finding_id')}: {FB.FINDING_VERDICTS.get(x['verdict'], x['verdict'])}"
+                                                                   for x in fb["findings"]))
         bad = [x for x in fb["decisions"] if x["verdict"] in BAD_VERDICTS]
         good = [x for x in fb["decisions"] if x["verdict"] in GOOD_VERDICTS]
         L.append(f"- Engineer feedback: {len(fb['decisions'])} decision evaluations ({len(good)} judged right, {len(bad)} judged wrong), "
@@ -310,7 +324,7 @@ def summary_md(ws, sel, san, opts) -> str:
             issues.append(f"{eid}: {n} feedback item(s) in category '{FB.CATEGORIES.get(c, c)}'")
     L += [f"- {i}" for i in issues] or ["- none recorded"]
     L += ["", "Files: see manifest.json. Measurements are in `experiments/<id>/measurements.json`, every decision in "
-          "`decisions.jsonl`, per-block offsets/activity/loudness in the CSV files, engineer judgements in `engineer_feedback.json` "
+          "`decisions.jsonl` (programme comparisons: diagnostic findings), per-block offsets/activity/loudness/programme series in the CSV files, engineer judgements in `engineer_feedback.json` "
           "and blind trials in `listening_results.json`.", ""]
     return "\n".join(L)
 

@@ -109,7 +109,10 @@ def validate(payload, report):
     unassigned = [Path(f["path"]).name for f in files if not f.get("group")]
     if unassigned:
         findings.append({"level": "warn", "text": f"No source group assigned for: {', '.join(unassigned)}. These files will be ignored."})
-    if kind in ("reference", "mix"):
+    if kind == "reference" and not files and master:
+        findings.append({"level": "info", "text": "Master only (no stems): the programme will be analysed now — spectrum, loudness, "
+                                                  "dynamics, transients and stereo. Stems can be attached later for source-level balance."})
+    if kind in ("reference", "mix") and files:
         for g in CORE_GROUPS:
             if g not in groups:
                 findings.append({"level": "info", "text": f"There is no {GROUP_LABEL[g]} stem. Relationships involving "
@@ -190,10 +193,78 @@ def _recon(master, stems, max_s=600):
     return round(10 * np.log10(num / max(den, 1e-20)), 1), round(align, 2)
 
 
+# ============================================================================ programme analysis of references
+PROGRAM_SUMMARY_KEYS = ["loudness.integrated_LUFS", "loudness.LRA_LU", "loudness.truePeak_dBTP", "loudness.PLR_dB", "dynamics.crest_dB",
+                        "spectrum.tilt_dB_per_oct", "stereo.sideToMid_dB", "stereo.correlation", "transients.onsetRate_per_s"]
+
+
+def ensure_program(ws, ref: dict, force=False) -> dict | None:
+    """Programme analysis of a reference's master, cached by fingerprint + algorithm version."""
+    from mi.program import analyse_program_file, get_metric
+    if not ref.get("master"):
+        return None
+    fp, algo = ref["master"]["fingerprint"], _algo()
+    if not force:
+        d = ws.program_analysis(ref["id"], fp, algo)
+        if d:
+            return d["analysis"]
+    a = analyse_program_file(ref["master"]["path"], ref.get("title", ""))
+    atomic_write_json(ws.program_path(ref["id"]), {"ref_id": ref["id"], "fingerprint": fp, "algorithm_version": algo, "analysed": now(), "analysis": a})
+    summary = {k: get_metric(a["scalars"], k) for k in PROGRAM_SUMMARY_KEYS}
+    ws.update("references", ref["id"], {"program": {"status": "analysed", "analysed": now(), "algorithm_version": algo, "summary": summary,
+                                                    "warnings": a.get("warnings", [])}})
+    return a
+
+
+def analyse_references(payload, report):
+    """Batch programme analysis (master-only or stem-equipped references alike)."""
+    ws = Workspace(Path(payload["ws"]))
+    ids = payload.get("ids") or [r["id"] for r in ws.items("references")]
+    done, failed, skipped = [], [], []
+    for k, rid in enumerate(ids):
+        try:
+            ref = ws.get("references", rid)
+        except KeyError:
+            continue
+        report("Analysing masters", k / max(len(ids), 1), ref.get("title", rid))
+        if not ref.get("master"):
+            skipped.append({"id": rid, "reason": "no master file"})
+            continue
+        if not Path(ref["master"]["path"]).is_file():
+            skipped.append({"id": rid, "reason": "master file missing (relink it)"})
+            continue
+        try:
+            ensure_program(ws, ref, bool(payload.get("force")))
+            done.append(rid)
+        except Exception as e:
+            failed.append({"id": rid, "error": f"{e.__class__.__name__}: {e}"})
+            ws.update("references", rid, {"program": {"status": "failed", "error": str(e)}})
+    return {"analysed": done, "failed": failed, "skipped": skipped}
+
+
+def program_items(ws, ref_ids, weights=None, compute=True, report=None):
+    from mi.program import build_program_profile  # noqa: F401  (import check)
+    items = []
+    for k, rid in enumerate(ref_ids):
+        ref = ws.get("references", rid)
+        if report:
+            report("Analysing masters", 0.05 + 0.4 * k / max(len(ref_ids), 1), ref.get("title", rid))
+        a = ensure_program(ws, ref) if compute else (ws.program_analysis(rid) or {}).get("analysis")
+        if a:
+            w = float((weights or {}).get(rid, ref.get("weight", 1.0)))
+            items.append({"id": rid, "title": ref.get("title"), "weight": w, "has_stems": bool(ref.get("stems")), "analysis": a})
+    return items
+
+
 # ============================================================================ profiles
 def build_profile(payload, report):
+    """Sound Profile from any mix of master-only and stem-equipped references.
+
+    Stem-equipped references feed the source-level profile (unchanged algorithm); every reference
+    with a master feeds the Program Sound Profile."""
     from mi.layout import find_references
-    from mi.reference import analyse_reference, build_profile as _build, save_profile
+    from mi.program import build_program_profile
+    from mi.reference import PROFILE_SCHEMA, ANALYSER_VERSION, analyse_reference, build_profile as _build, save_profile
     from mi.report import profile_report
     ws = Workspace(Path(payload["ws"]))
     pid = payload["profile_id"]
@@ -203,23 +274,46 @@ def build_profile(payload, report):
     S.clean(stage)
     try:
         weights = meta.get("weights", {})
-        for rid in meta["reference_ids"]:
+        refs_all = [ws.get("references", r) for r in meta["reference_ids"]]
+        stem_ids = [r["id"] for r in refs_all if r.get("stems")]
+        for rid in stem_ids:
             S.stage_reference(ws.get("references", rid), stage, weights.get(rid))
-        refs = {r.name: r for r in find_references(stage)}
+        refs = {r.name: r for r in find_references(stage)} if stem_ids else {}
         analyses = []
-        ids = [r for r in meta["reference_ids"] if r in refs]
+        ids = [r for r in stem_ids if r in refs]
         for k, rid in enumerate(ids):
-            report("Analysing references", k / max(len(ids), 1), ws.get("references", rid).get("title", rid))
+            report("Analysing stems", 0.45 + 0.45 * k / max(len(ids), 1), ws.get("references", rid).get("title", rid))
             m, ga = analyse_reference(refs[rid], meta.get("activity"))
             m["title"] = ws.get("references", rid).get("title", rid)
             analyses.append((m, ga))
+        pitems = program_items(ws, [r["id"] for r in refs_all], weights, report=report)
         report("Building the Sound Profile", 0.95, "")
-        prof = _build(analyses, meta["name"])
-        prof["lab"] = {"profile_id": pid, "reference_ids": ids, "weights": weights}
+        if analyses:
+            prof = _build(analyses, meta["name"])
+        else:
+            prof = {"schema": PROFILE_SCHEMA, "name": meta["name"], "created": now(),
+                    "analysis": {"code": ANALYSER_VERSION, "hop_s": 0.1}, "groups": [], "references": [], "balance": {}, "tonal": {},
+                    "dynamics": {}, "program": {}, "settings": {"baselineBlend_beta": 0.5, "minRefsForAssist": 3},
+                    "notes": ["Built from stereo masters only: no source-level (stem) intelligence yet. Attach stems to references "
+                              "and build a new version to add it."]}
+        if pitems:
+            prof["program_profile"] = build_program_profile(pitems)
+            if not prof.get("program"):
+                pp = prof["program_profile"]["metrics"]
+                prof["program"] = {k.split(".")[1]: (pp[k]["stats"] or {}).get("median") for k in
+                                   ("loudness.integrated_LUFS", "loudness.LRA_LU", "loudness.truePeak_dBTP", "spectrum.tilt_dB_per_oct")}
+        if not analyses and not pitems:
+            raise ValueError("None of the chosen references has a master or stems that could be analysed.")
+        prof["composition"] = {"references": len(refs_all), "with_stems": len(ids), "master_only": sum(1 for r in refs_all if not r.get("stems")),
+                               "program_analysed": len(pitems), "source_level": bool(analyses)}
+        prof["lab"] = {"profile_id": pid, "reference_ids": meta["reference_ids"], "stem_reference_ids": ids, "weights": weights}
         save_profile(prof, pdir / "profile.json")
-        profile_report(prof, pdir / "profile.md")
+        if analyses:
+            profile_report(prof, pdir / "profile.md")
+        else:
+            (pdir / "profile.md").write_text(program_profile_md(prof))
         meta.update({"status": "complete", "finished": now(), "algorithm_version": _algo(), "limitations": limitations(prof),
-                     "groups": prof["groups"]})
+                     "groups": prof["groups"], "composition": prof["composition"]})
         atomic_write_json(pdir / "meta.json", meta)
         return {"profile_id": pid}
     except Exception:
@@ -230,9 +324,33 @@ def build_profile(payload, report):
         S.clean(stage)
 
 
+def program_profile_md(prof: dict) -> str:
+    pp = prof.get("program_profile")
+    L = [f"# Sound Profile: {prof['name']}", "", "Programme-only profile (stereo masters, no stems).", ""]
+    if pp:
+        L += [f"References analysed: {pp['n_references']}", "", "| Measure | p10 | median | p90 | unit |", "|---|---|---|---|---|"]
+        for k, m in pp["metrics"].items():
+            s = m["stats"] or {}
+            L.append(f"| {m['label']} | {s.get('p10', '–')} | {s.get('median', '–')} | {s.get('p90', '–')} | {m['unit']} |")
+        L += [""] + [f"- {n}" for n in pp["notes"]]
+    return "\n".join(L) + "\n"
+
+
 def limitations(prof: dict) -> list:
     """Plain-language limits of a profile, derived only from its contents."""
     out = []
+    comp = prof.get("composition") or {}
+    if comp and not comp.get("source_level"):
+        out.append("No stems yet: this profile describes the finished programme only (spectrum, loudness, dynamics, transients, "
+                   "stereo). It cannot guide source balance; attach stems to references and build a new version to add that.")
+        out.append("Programme measures include mastering. Comparisons against them are diagnostic evidence, not instructions.")
+        n = comp.get("program_analysed", 0)
+        if n < 3:
+            out.append(f"Only {n} analysed master(s): programme ranges are indicative. Ten or more references give useful ranges.")
+        return out
+    if comp.get("master_only"):
+        out.append(f"{comp['master_only']} of {comp['references']} reference(s) are master-only: they inform the Program Sound "
+                   "Profile but not source-level balance.")
     refs = [r for r in prof["references"] if not r["excluded"]]
     if len(refs) == 1:
         out.append("Built from one song: it says nothing about how much these relationships vary between songs. Three or more "
@@ -451,10 +569,76 @@ def make_demo(payload, report):
     item = ws.add("speech", {"name": "Demo speech (synthetic)", "notes": "Three synthetic talkers taking turns.", "synthetic": True})
     ws.update("speech", item["id"], {"mics": [{"file": ws.file_record(str(p), item["id"], copy=False), "name": p.stem, "role": "speech",
                                                "weight_db": 0.0} for p in audio_files(sp_dir / "mics")]})
+    # a master-only reference and a stereo "broadcast" recording, for the programme workflows
+    from mi import audio_io as io
+    report("Creating stereo-only demo material", 0.9, "")
+    ra = next(r for r in find_references(d) if r.name == "ref-a")
+    gains = {"vocals": 1.4, "drums": 0.8, "bass": 1.0, "guitars": 1.1, "keys": 1.2}
+    mix = sum(io.read(p).stereo() * gains.get(g, 1.0) for g in ra.stems.groups() for p in ra.stems.files[g])
+    mp_path = io.write(d / "masters" / "Demo Artist - Master Only (synthetic).wav", mix / max(1.0, float(np.max(np.abs(mix))) / 0.89))
+    item = ws.add("references", {"title": "Demo master-only (synthetic)", "artist": "", "album": "", "category": "music", "weight": 1.0,
+                                 "include": True, "synthetic": True, "notes": "Synthetic stereo master without stems."})
+    ws.update("references", item["id"], {"master": ws.file_record(str(mp_path), item["id"], copy=False), "stems": []})
+    bg = {"vocals": 0.8, "guitars": 1.6}
+    bc = sum(io.read(p).stereo() * bg.get(g, 1.0) for g in mp.stems.groups() for p in mp.stems.files[g])
+    bc_path = io.write(d / "broadcast" / "Demo livestream (synthetic).wav", 0.35 * bc / max(1e-9, float(np.max(np.abs(bc)))))
+    item = ws.add("recordings", {"name": "Demo livestream (synthetic)", "synthetic": True, "category": "broadcast",
+                                 "notes": "Synthetic stereo broadcast mix: vocals lower and guitars louder than the demo references."})
+    ws.update("recordings", item["id"], {"mix": ws.file_record(str(bc_path), item["id"], copy=False)})
+    report("Analysing the demo masters", 0.95, "")
+    analyse_references({"ws": str(ws.root)}, lambda *a: None)
     return {"ok": True}
 
 
-TASKS = {"validate": validate, "profile": build_profile, "music": run_music, "speech": run_speech, "study": run_study,
+def run_program(payload, report):
+    """Compare a stereo recording with a profile's Program Sound Profile. Diagnostic only: nothing is rendered or processed."""
+    import csv
+    from mi.program import analyse_program_file, compare_program, DIAGNOSTIC_NOTE
+    from mi import RESULT_SCHEMA
+    ws = Workspace(Path(payload["ws"]))
+    exp = ws.experiment(payload["exp_id"])
+    run_dir = ws.exp_dir(exp["id"]) / ".run"
+    shutil.rmtree(run_dir, ignore_errors=True)
+    run_dir.mkdir(parents=True)
+    try:
+        rec = ws.get("recordings", exp["inputs"]["recording_id"])
+        prof = read_json(ws.profile_dir(exp["inputs"]["profile_id"]) / "profile.json")
+        pp = (prof or {}).get("program_profile")
+        if not pp:
+            raise ValueError("This Sound Profile has no Program Sound Profile (build a new version of it with this Lab version).")
+        report("Analysing the recording", 0.1, rec.get("name", ""))
+        meas = analyse_program_file(rec["mix"]["path"], rec.get("name", ""))
+        report("Comparing with the profile", 0.8, "")
+        cmp_ = compare_program(meas, pp, float(exp["config"].get("band_margin_db", 1.5)))
+        series = meas.pop("series")
+        with open(run_dir / "program_series.csv", "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["time_s", "shortterm_LUFS", "sideToMid_dB", "programme"])
+            for i, (a, b, c) in enumerate(zip(series["shortterm_LUFS"], series["sideToMid_dB"], series["programme"])):
+                w.writerow([f"{i * series['hop_s']:.1f}", "" if a is None else a, b, c])
+        result = {"schema": RESULT_SCHEMA, "kind": "program-comparison", "algorithm_version": _algo(), "recording": rec.get("name"),
+                  "profile": prof.get("name"), "duration_s": meas["duration_s"], "measurement": meas, "comparison": cmp_,
+                  "profile_program": pp, "note": DIAGNOSTIC_NOTE, "warnings": meas.get("warnings", [])}
+        (run_dir / "analysis.json").write_text(json.dumps(result, indent=1, default=float))
+        (run_dir / "decisions.jsonl").write_text("".join(json.dumps({"kind": "programFinding", **f, "maturity": "diagnostic",
+                                                                  "status": "diagnostic-only"}) + "\n" for f in cmp_["findings"]))
+        L = [f"# Programme comparison: {rec.get('name')}", "", f"Profile: {prof.get('name')} ({pp['n_references']} analysed references)", "",
+             f"> {DIAGNOSTIC_NOTE}", "", "## Findings", ""]
+        L += [f"- {f['text']}" for f in cmp_["findings"]] or ["- The recording is within the references' typical ranges on every measure."]
+        L += ["", "## Measures", "", "| Measure | Recording | Profile p10 | median | p90 | Position |", "|---|---|---|---|---|---|"]
+        for r in cmp_["metrics"]:
+            s = r["stats"] or {}
+            L.append(f"| {r['label']} | {r['value']} {r['unit']} | {s.get('p10', '–')} | {s.get('median', '–')} | {s.get('p90', '–')} | {r['status']} |")
+        (run_dir / "report.md").write_text("\n".join(L) + "\n")
+        n_out = sum(1 for f in cmp_["findings"])
+        _finish(ws, exp, run_dir, True, extra={"algorithm_version": _algo(), "summary": {"findings": n_out, "n_references": pp["n_references"]}})
+        return {"exp_id": exp["id"]}
+    except Exception:
+        _finish(ws, exp, run_dir, False, error=traceback.format_exc(limit=6))
+        raise
+
+
+TASKS = {"validate": validate, "profile": build_profile, "analyse_refs": analyse_references, "program": run_program, "music": run_music, "speech": run_speech, "study": run_study,
          "demo": make_demo}
 
 

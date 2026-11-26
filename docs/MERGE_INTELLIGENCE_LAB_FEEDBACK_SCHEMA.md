@@ -24,8 +24,10 @@ Every feedback item gets, on save:
 
 ```json
 { "schema": "merge.lab.feedback/1", "modified": "…",
-  "decisions": [ … ], "notes": [ … ], "missed": [ … ], "overall": [ … ] }
+  "decisions": [ … ], "notes": [ … ], "missed": [ … ], "overall": [ … ], "findings": [ … ] }
 ```
+
+(`findings` was added with programme comparisons; files without it read as an empty list.)
 
 ### 2.1 `decisions` — a verdict on one operator decision
 
@@ -100,6 +102,29 @@ Aspects: `overall`, `vocal_balance`, `instrument_balance`, `tonal_clarity`, `low
 `vocal_intelligibility`, `dynamics`, `transients`, `musical_expression`, `naturalness`,
 `ambience`, `speech_clarity`, `broadcast_quality`.
 Values: `improved`, `no_difference`, `degraded`, `na`.
+
+### 2.5 `findings` — verdict on a diagnostic finding (programme comparisons)
+
+Stereo-only comparisons produce findings, not decisions: they describe where a recording sits
+relative to the references and never name a source or propose processing.
+
+| Field | Meaning |
+| --- | --- |
+| `finding_id` | id of the finding in `results/analysis.json` (`metric:<key>` or `spectrum:<f0>-<f1>`) |
+| `metric`, `domain` | measure (`spectrum.tilt_dB_per_oct`, `spectrum.shape`, …) and domain (spectrum, loudness, dynamics, transients, stereo) |
+| `deviation`, `band_hz` | the reported deviation beyond the typical range, and the band for spectral findings |
+| `verdict` | see below |
+| `comment` | free text |
+
+| Verdict | Label |
+| --- | --- |
+| `agree_audible` | Agree — I can hear it |
+| `agree_intended` | Real, but intended for this recording/venue |
+| `measured_not_audible` | Measured, but not audible to me |
+| `disagree` | Disagree — the finding is wrong |
+| `unsure` | Unsure |
+
+Notes on programme comparisons use `version: "recording"`.
 
 ## 3. Problem categories
 

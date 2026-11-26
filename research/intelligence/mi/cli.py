@@ -168,6 +168,33 @@ def cmd_study(a):
     print(f"-> {out}/report.md")
 
 
+def cmd_program(a):
+    """Programme analysis of stereo files; Program Sound Profile from them; optional diagnostic comparison."""
+    from .program import analyse_program_file, build_program_profile, compare_program
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    items = []
+    for p in a.files:
+        m = analyse_program_file(p, Path(p).stem)
+        m.pop("series", None)
+        items.append({"id": Path(p).stem, "title": Path(p).stem, "analysis": m})
+        s = m["scalars"]
+        print(f"{Path(p).name}: {s['loudness']['integrated_LUFS']} LUFS, LRA {s['loudness']['LRA_LU']} LU, "
+              f"tilt {s['spectrum']['tilt_dB_per_oct']} dB/oct, side/mid {s['stereo']['sideToMid_dB']} dB")
+    prof = build_program_profile(items)
+    (out / "program_profile.json").write_text(json.dumps(prof, indent=1, default=float))
+    print(f"-> {out}/program_profile.json ({prof['n_references']} references)")
+    if a.compare:
+        m = analyse_program_file(a.compare, Path(a.compare).stem)
+        m.pop("series", None)
+        c = compare_program(m, prof)
+        (out / "comparison.json").write_text(json.dumps(c, indent=1, default=float))
+        print(c["note"])
+        for f in c["findings"]:
+            print(" -", f["text"])
+        print(f"-> {out}/comparison.json")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="mi", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -199,6 +226,11 @@ def main(argv=None):
     s.add_argument("workspace"); s.add_argument("--mix", help="mix name (default: first under mixes/)")
     s.add_argument("--profile"); s.add_argument("--inject", help="disturbances for the response study")
     s.set_defaults(fn=cmd_study)
+    s = sub.add_parser("program", help="programme analysis of stereo masters (no stems) and diagnostic comparison")
+    s.add_argument("files", nargs="+", help="stereo reference masters")
+    s.add_argument("--compare", help="a stereo recording to place within the references' ranges (diagnostic only)")
+    s.add_argument("--out", default="results/program")
+    s.set_defaults(fn=cmd_program)
     a = ap.parse_args(argv)
     a.fn(a)
 

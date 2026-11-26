@@ -15,7 +15,7 @@ export async function render(root, [eid], app) {
   if (eid) return view(root, eid, app);
   const [{ items: mixes }, { items: profiles }, { items: refs }, { items: exps }] = await Promise.all([
     api.get('/api/library/mixes'), api.get('/api/profiles'), api.get('/api/library/references'), api.get('/api/experiments')]);
-  const done = profiles.filter((p) => p.status === 'complete');
+  const done = profiles.filter((p) => p.status === 'complete' && (p.groups || []).length);
   root.append(pageHead('Research Studies', 'Systematic investigations of the operator’s behaviour on your material. Results are research evidence only and never change any setting by themselves.'));
   const grid = h('div.grid.g2');
   for (const S of STUDIES) {

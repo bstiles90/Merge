@@ -36,6 +36,13 @@ AUTO_CATEGORY = {"too_much": "excessive_gain", "too_little": "insufficient_gain"
                  "wrong_type": "wrong_type", "unnecessary": "excessive_gain", "musical_change": "expression", "missed": "insufficient_gain"}
 PREFERRED_KINDS = ["fader", "group_fader", "eq", "compression", "dynamic_eq", "deesser", "transient", "mic_activity",
                    "speech_level", "none", "other"]
+FINDING_VERDICTS = {  # verdicts on stereo-only diagnostic findings (programme comparisons)
+    "agree_audible": "Agree — I can hear it",
+    "agree_intended": "Real, but intended for this recording/venue",
+    "measured_not_audible": "Measured, but not audible to me",
+    "disagree": "Disagree — the finding is wrong",
+    "unsure": "Unsure",
+}
 OVERALL_ASPECTS = ["overall", "vocal_balance", "instrument_balance", "tonal_clarity", "low_end", "vocal_intelligibility", "dynamics",
                    "transients", "musical_expression", "naturalness", "ambience", "speech_clarity", "broadcast_quality"]
 OVERALL_VALUES = ["improved", "no_difference", "degraded", "na"]
@@ -49,7 +56,7 @@ def _fb_path(edir):
 def load(edir):
     fb = read_json(_fb_path(edir)) or {}
     fb.setdefault("schema", FEEDBACK_SCHEMA)
-    for k in ("decisions", "notes", "missed", "overall"):
+    for k in ("decisions", "notes", "missed", "overall", "findings"):
         fb.setdefault(k, [])
     return fb
 
@@ -60,9 +67,11 @@ def _save(edir, fb):
 
 
 def upsert(edir, kind: str, item: dict, exp: dict) -> dict:
-    """kind: decisions | notes | missed | overall. New items get an id; edits keep history."""
-    if kind not in ("decisions", "notes", "missed", "overall"):
+    """kind: decisions | notes | missed | overall | findings. New items get an id; edits keep history."""
+    if kind not in ("decisions", "notes", "missed", "overall", "findings"):
         raise ValueError(kind)
+    if kind == "findings" and item.get("verdict") not in FINDING_VERDICTS:
+        raise ValueError("unknown finding verdict")
     fb = load(edir)
     item = dict(item)
     if kind == "decisions":

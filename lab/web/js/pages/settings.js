@@ -51,7 +51,7 @@ export async function render(root, params, app) {
       ['Exports', U.exports], ['Temporary files (safe to delete)', U.cache], ['Referenced audio outside the workspace', U.external_audio_referenced]].map(([l, v]) => h('tr', h('td', l), h('td.num', fmtBytes(v))))),
       h('p.faint.small', 'To save space, delete rendered audio of old experiments in Experiment History (measurements and feedback are kept).'));
     const libs = {};
-    for (const k of ['references', 'mixes', 'speech']) libs[k] = (await api.get(`/api/library/${k}`)).items;
+    for (const k of ['references', 'mixes', 'speech', 'recordings']) libs[k] = (await api.get(`/api/library/${k}`)).items;
     clear(missingBox, u.missing.length ? [h('p.dim', 'These files were moved or renamed. Relink each one to its new location; the Lab checks it is the same file.'),
       h('table', u.missing.map((m) => h('tr', h('td', m.item, h('div.faint.small', m.kind)), h('td', m.name, h('div.faint.small', m.path)),
         h('td', h('button', { onclick: () => relinkFile(m.kind, libs[m.kind].find((x) => x.id === m.item_id), { id: m.file_id }, () => app.route()) }, 'Relink…')))))]

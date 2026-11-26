@@ -63,18 +63,36 @@ def run(base_dir=None) -> int:
         refs = call("GET", "/api/library/references")["items"]
         mixes = call("GET", "/api/library/mixes")["items"]
         sp = call("GET", "/api/library/speech")["items"]
-        ok(len(refs) == 2 and len(mixes) == 1 and len(sp) == 1, "library holds 2 references, 1 mix, 1 speech set")
-        ref = refs[0]
+        recs = call("GET", "/api/library/recordings")["items"]
+        ok(len(refs) == 3 and len(mixes) == 1 and len(sp) == 1 and len(recs) == 1, "library holds 3 references, 1 mix, 1 speech set, 1 recording")
+        ref = [x for x in refs if x.get("stems")][0]
         v = wait(call("POST", "/api/validate", {"kind": "reference", "master": ref["master"]["path"],
                                                 "files": [{"path": s["file"]["path"], "group": s["group"]} for s in ref["stems"]]})["job"],
                  "reference validation")
         val = v["result"]
         ok(val["reconstruction_error_dB"] is not None and val["reconstruction_error_dB"] < -15, "reconstruction error measured",
            str(val.get("reconstruction_error_dB")))
+        # progressive references: batch-import stereo masters (no stems), programme analysis, master-only profile
+        bad = tmp / "not-audio.wav"
+        bad.write_text("not audio")
+        b = call("POST", "/api/library/references/batch", {"files": [{"path": recs[0]["mix"]["path"]}, {"path": str(bad)}]})
+        ok(len(b["created"]) == 1 and len(b["skipped"]) == 1, "batch import of masters (unreadable file skipped)", json.dumps(b["skipped"]))
+        wait(b["job"], "programme analysis of imported masters")
+        ov = call("GET", "/api/references/program-overview")
+        ok(ov["aggregate"] and ov["aggregate"]["n_references"] == 4 and all(x["analysed"] for x in ov["references"]),
+           "every reference analysed; library aggregate available")
+        mo = [x["id"] for x in call("GET", "/api/library/references")["items"] if not x.get("stems")]
+        r = call("POST", "/api/profiles/create", {"name": "Masters only", "reference_ids": mo})
+        wait(r["job"], "programme-only Sound Profile built")
+        pm = call("GET", f"/api/profiles/{r['profile_id']}")
+        ok(pm["profile"]["program_profile"]["n_references"] == 2 and not pm["profile"]["balance"] and not pm["meta"]["composition"]["source_level"],
+           "master-only profile has programme ranges and no source balance")
+        prog_pid = r["profile_id"]
         r = call("POST", "/api/profiles/create", {"name": "Selftest profile", "reference_ids": [x["id"] for x in refs]})
-        wait(r["job"], "Sound Profile built")
+        wait(r["job"], "Sound Profile built (stems + master-only)")
         prof = call("GET", f"/api/profiles/{r['profile_id']}")
-        ok(prof["meta"]["status"] == "complete" and prof["profile"]["balance"], "profile has balance targets")
+        ok(prof["meta"]["status"] == "complete" and prof["profile"]["balance"] and prof["profile"]["program_profile"]["n_references"] == 3
+           and prof["meta"]["composition"]["master_only"] == 1, "mixed profile has balance targets and programme ranges")
         mix = mixes[0]
         cfg = {"beta": 0.5, "evidence_s": 6.0, "rate_db_s": 0.5, "max_boost_db": 4, "max_cut_db": 4, "baseline": [[0, 15]],
                "render_experimental": True, "render_groups": True, "seed": 1}
@@ -96,6 +114,17 @@ def run(base_dir=None) -> int:
         wait(sp_r["job"], "speech experiment")
         se = call("GET", f"/api/experiments/{sp_r['exp_id']}")
         ok(se["analysis"]["handovers"] >= 2, "speech handovers detected")
+        # broadcast recording vs the Program Sound Profile (diagnostic only)
+        pg = call("POST", "/api/experiments/program", {"name": "Selftest broadcast", "inputs": {"recording_id": recs[0]["id"], "profile_id": prog_pid}, "config": {}})
+        wait(pg["job"], "broadcast comparison")
+        pe = call("GET", f"/api/experiments/{pg['exp_id']}")
+        cmpn = pe["analysis"]["comparison"]
+        ok(pe["experiment"]["status"] == "complete" and "not processing instructions" in cmpn["note"] and not any(f.endswith(".wav") for f in pe["files"]),
+           "broadcast comparison is diagnostic and renders nothing")
+        if cmpn["findings"]:
+            call("POST", f"/api/feedback/{pg['exp_id']}/findings", {"finding_id": cmpn["findings"][0]["id"], "metric": cmpn["findings"][0]["metric"],
+                                                                     "verdict": "agree_audible", "comment": "selftest"})
+        ok(len(call("GET", f"/api/experiments/{pg['exp_id']}")["feedback"]["findings"]) == (1 if cmpn["findings"] else 0), "finding verdict stored")
         # feedback, notes, blind trial
         d0 = e["analysis"]["events"][0]
         call("POST", f"/api/feedback/{music_id}/decisions", {"decision_index": 0, "time_s": d0["t"], "target": d0["group"],
@@ -118,15 +147,16 @@ def run(base_dir=None) -> int:
         ok(any(row["metric"] == "direction_reversals" and row["change"] == "unchanged" for row in cmp_["rows"]),
            "rerun with the same algorithm reproduces the result")
         # export
-        pv = call("POST", "/api/export/preview", {"scope": {"experiments": [music_id, sp_r["exp_id"]]}, "options": {}})
+        pv = call("POST", "/api/export/preview", {"scope": {"experiments": [music_id, sp_r["exp_id"], pg["exp_id"]]}, "options": {}})
         ok(not pv["contains_audio"], "default export contains no audio")
-        out = call("POST", "/api/export/build", {"scope": {"experiments": [music_id, sp_r["exp_id"]]}, "options": {}})
+        out = call("POST", "/api/export/build", {"scope": {"experiments": [music_id, sp_r["exp_id"], pg["exp_id"]]}, "options": {}})
         with zipfile.ZipFile(out["path"]) as z:
             names = z.namelist()
             blob = b"".join(z.read(n) for n in names if not n.endswith("/"))
         ok(any(n.endswith("SUMMARY.md") for n in names) and any(n.endswith("engineer_feedback.json") for n in names),
            "research package has summary and feedback")
         ok(not any(n.lower().endswith(".wav") for n in names), "research package excludes audio")
+        ok(any(n.endswith("program_series.csv") for n in names) and b"DIAGNOSTIC ONLY" in blob, "research package includes the broadcast comparison")
         ok(str(tmp).encode() not in blob, "research package contains no absolute workspace paths")
         # reopen
         ws_root = st.ws.root
