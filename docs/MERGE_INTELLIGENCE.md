@@ -62,8 +62,9 @@ The **offline research prototype** now exists in
 **What it needs from you.** The material is specified in
 [MERGE_INTELLIGENCE_AUDIO_SPEC.md](MERGE_INTELLIGENCE_AUDIO_SPEC.md).
 
-**Native work still to do.** The native prerequisites (virtual soundcheck, and the
-loudness-meter fix) are planned in
+**Native work.** Native virtual soundcheck (recording and playback) and the loudness-meter
+fix were merged in parallel (commit a614eee). Still open are group-bus and pre-master
+recording taps, faster-than-real-time rendering, the long soak test and LRA. See
 [MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md](MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md).
 
 **Still not enabled:** live automatic mixing and live plugin adjustment.

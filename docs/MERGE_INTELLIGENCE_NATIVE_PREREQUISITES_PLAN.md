@@ -1,16 +1,55 @@
-# Native Prerequisites — Implementation Plan
+# Native Prerequisites — Status and Remaining Plan
 
-*This is a plan only. Nothing in it is implemented yet. It covers two items from the
-architecture audit in [MERGE_INTELLIGENCE.md](MERGE_INTELLIGENCE.md) §3.*
+This document covers two items from the architecture audit in
+[MERGE_INTELLIGENCE.md](MERGE_INTELLIGENCE.md) §3:
 
-1. **Native virtual soundcheck.** Multitrack recording and playback in the JUCE engine, so
-   real third-party plugins are in the evaluation loop. Today this exists only in the browser
-   engine; the native `Mixer::sourceSample` returns silence for `playback`.
-2. **The integrated-loudness limit.** The native `LoudnessMeter` stops adding blocks after
-   60 minutes. It also does growing, O(n) work on the audio thread.
+1. **Native virtual soundcheck:** multitrack recording and playback in the JUCE engine, so real
+   third-party plugins are in the evaluation loop.
+2. **The integrated-loudness limit:** the meter stopped at 60 minutes and did growing O(n)
+   work on the audio thread.
 
-Tags: **[V]** = verified in the code; **[K]** = prior knowledge, to verify during
-implementation; **[P]** = proposal.
+## Status update (26 November 2026)
+
+While this plan was being written, a parallel session merged **commit a614eee** ("Native
+virtual soundcheck; loudness meter works past 60 minutes"), which implements most of it.
+
+What it contains, per the commit and `engine/PROTOCOL.md` [V, read]:
+- `engine/src/Multitrack.*` records each armed channel's **source** (raw input, before gain)
+  to its own 24-bit WAV through `ThreadedWriter`, plus the programme. Recordings go to
+  `~/Music/Merge Recordings/<show> <date>`.
+- Playback runs through the whole strip and plugin chain, with read-ahead on a disk thread.
+- Transport, seek, timeline clips with waveforms, multitrack import and a VIRTUAL SOUNDCHECK
+  switch.
+- **0.01 LU histogram** integrated gating, with a 75-minute self-test.
+
+I have **not** re-run that commit's engine self-tests in this session. Its message reports
+79 engine checks and 60 UI tests passing.
+
+Mapping it against the milestones below:
+
+| Milestone | Status |
+|---|---|
+| N1 recorder core (channel sources) | **done** (a614eee) |
+| N3 playback core | **done** (a614eee) |
+| N4 protocol / UI / transport / clips / peaks | **done** (a614eee) |
+| N5 import of existing multitracks | **done** (a614eee) |
+| Part 2 integrated-loudness fix | **done**: histogram, any duration (a614eee) |
+| **N2 group-bus, pre-master and per-tap recording** | **open.** This is what the Intelligence prototype's *comparison mixes* need: post-processing group stems, pre-master (audio spec §4.1). Today only channel sources and the programme are recorded |
+| **N6 `--render` offline mode** | **open.** Renders a recorded take through the real plugin chain to group stems, faster than real time |
+| **N7 soak and stress** (64 tracks × 3 h; drop/underrun counters reported to the UI) | **open** |
+| **LRA** (Tech 3342) | **open.** Second histogram; add to the `meters` message |
+| Agreement tests vs reference values; constant-cost test | **open.** Proposed in §2.3 |
+| Files over 4 GB (RF64) | **check.** At 24-bit mono a 3 h track is about 1.6 GB, so it is only relevant for long stereo or float recordings |
+
+**Recommended next native step: N2, then N6.**
+- With those, a recorded service goes straight from Merge into the prototype: channel
+  sources become `speech/<name>/mics/` and group-bus stems become `mixes/<name>/stems/`,
+  through the real plugins.
+- The channel-source recordings that exist today **already fit the speech prototype**: one
+  raw mono file per mic.
+
+The sections below are the original plan. They are kept unchanged as the design reference
+for the open items.
 
 ---
 

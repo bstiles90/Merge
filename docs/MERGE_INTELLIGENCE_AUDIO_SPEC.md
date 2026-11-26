@@ -143,8 +143,11 @@ pre-master mix.
 - **In Logic:** solo each group's summing bus (or the tracks routed to it), bypass the
   stereo-out plugins, and bounce. Alternatively, use *Export All Tracks* on the group buses
   with the stereo-out inserts bypassed.
-- **In Merge, once native recording exists (see the native plan):** record each group bus as
-  a stem.
+- **In Merge:** native recording currently records channel sources and the programme, not
+  group buses. Group-bus recording is milestone N2 in the
+  [native plan](MERGE_INTELLIGENCE_NATIVE_PREREQUISITES_PLAN.md). Until then, bounce the group
+  stems from Logic, or play the take back in Merge and record each bus through an output to
+  another recorder.
 
 Effects returns should be included in the group they belong to:
 - a reverb fed only by vocals goes in the Vocals stem;
@@ -185,7 +188,7 @@ own raw track**, even when nobody is using it:
 
 | Setting | Required |
 |---|---|
-| Tracks | One **mono** WAV per microphone, raw, **post-preamp/gain, pre-plugins and pre-fader**. Include the congregation or room mics as separate files if you have them |
+| Tracks | One **mono** WAV per microphone, raw, **post-preamp/gain, pre-plugins and pre-fader**. Merge's own native recordings (`~/Music/Merge Recordings/…`, raw channel source) are exactly this: copy them into `mics/`. Include the congregation or room mics as separate files if you have them |
 | Alignment | All from the same recording pass, identical start |
 | Names | The microphone's role or position: `pulpit.wav`, `lectern.wav`, `host.wav`, `handheld-1.wav`, `worship-leader.wav`, `congregation-L.wav` |
 | Length | At least 2 minutes per segment, ideally a whole sermon (20–40 min is fine) |
