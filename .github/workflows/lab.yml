@@ -5,8 +5,10 @@ name: Merge Intelligence Lab
 # never marks a release "Latest", so Merge's own downloads are unaffected.
 on:
   push:
-    paths: ["lab/**", "research/intelligence/**", ".github/workflows/lab.yml"]
+    # branches + tags: listing only tags would exclude branch pushes (path filters don't apply to tags)
+    branches: ["**"]
     tags: ["lab-v*"]
+    paths: ["lab/**", "research/intelligence/**", ".github/workflows/lab.yml"]
   pull_request:
     paths: ["lab/**", "research/intelligence/**", ".github/workflows/lab.yml"]
   workflow_dispatch:
