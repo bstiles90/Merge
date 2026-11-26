@@ -329,3 +329,26 @@ def test_regroup_and_rebuild_preserve_the_original_profile(server, tmp_path):
     assert "synths" in new["profile"]["groups"] and "synths" not in old["profile"]["groups"]
     assert new["meta"]["parent_id"] == p["profile_id"]
     assert any(v.get("reliability") for v in new["profile"]["balance"].values())
+
+
+# ------------------------------------------------------------------ 0.5.1: bounded, incremental reconstruction check
+def test_reconstruction_check_is_bounded_and_reports_progress(tmp_path):
+    from mil.tasks import _recon
+    sr, rng = 48000, np.random.default_rng(5)
+    stems = []
+    total = None
+    for i in range(3):
+        x = 0.1 * rng.standard_normal((sr * 60, 2))
+        p = tmp_path / f"s{i}.wav"
+        sf.write(p, x, sr, subtype="FLOAT")
+        stems.append(str(p))
+        total = x if total is None else total + x
+    noise = 0.01 * rng.standard_normal(total.shape)
+    sf.write(tmp_path / "m.wav", total + noise, sr, subtype="FLOAT")
+    calls = []
+    recon, align = _recon(str(tmp_path / "m.wav"), stems, lambda st, fr, tx="": calls.append((fr, tx)), n_excerpts=6, excerpt_s=5)
+    expect = 10 * np.log10(np.sum(noise ** 2) / np.sum((total + noise) ** 2))
+    assert abs(recon - expect) < 0.5 and align == 0.0
+    excerpts = [c for c in calls if c[1].startswith("excerpt")]
+    assert len(excerpts) == 6 and all(0.9 <= f < 1.0 for f, _ in excerpts)
+    assert [f for f, _ in excerpts] == sorted(f for f, _ in excerpts)

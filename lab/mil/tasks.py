@@ -26,8 +26,9 @@ GROUP_LABEL = {"vocals": "vocal", "drums": "drum", "bass": "bass", "guitars": "g
 
 
 # ============================================================================ validation
-def _stream_stats(path, sr_expected=48000, block=48000 * 10):
-    """Peak, clipped samples, integrated loudness - streamed, constant memory."""
+def _stream_stats(path, sr_expected=48000, block=48000 * 10, progress=None):
+    """Peak, clipped samples, integrated loudness - streamed, constant memory.
+    `progress(fraction)` is called after every block so long files never look stuck."""
     import soundfile as sf
     from scipy.signal import lfilter
     from mi import features as F
@@ -51,6 +52,8 @@ def _stream_stats(path, sr_expected=48000, block=48000 * 10):
             if nb:
                 pows.append((y[:, : nb * hop].reshape(y.shape[0], nb, hop) ** 2).mean(axis=2).sum(axis=0))
             rem = y[:, nb * hop:]
+            if progress and info.frames:
+                progress(min(1.0, f.tell() / info.frames))
     p = np.concatenate(pows) if pows else np.zeros(0)
     lufs = A._integrated_from_p(p) if len(p) >= 4 else float("-inf")
     m = F.lufs_from_ms(F.windowed(p, 4)) if len(p) >= 4 else np.array([-np.inf])
@@ -70,13 +73,15 @@ def validate(payload, report):
     findings, per_file = [], []
     allp = ([{"path": master, "group": "master"}] if master else []) + files
     for k, f in enumerate(allp):
-        report("Checking files", k / max(len(allp), 1), Path(f["path"]).name)
+        report("Checking files", 0.9 * k / max(len(allp), 1), Path(f["path"]).name)
         rec = {"name": Path(f["path"]).name, "path": f["path"], "group": f.get("group")}
         try:
             i = sf.info(f["path"])
             rec.update({"sr": i.samplerate, "channels": i.channels, "subtype": i.subtype, "duration_s": round(i.frames / i.samplerate, 2),
                         "frames": i.frames})
-            rec.update(_stream_stats(f["path"]))
+            name = Path(f["path"]).name
+            rec.update(_stream_stats(f["path"], progress=lambda fr, k=k, name=name: report(
+                "Checking files", 0.9 * (k + fr) / max(len(allp), 1), name)))
         except Exception as e:
             rec["error"] = f"This file can't be read as audio ({e.__class__.__name__})."
             findings.append({"level": "error", "text": f"{rec['name']}: this file can't be read as audio."})
@@ -123,9 +128,9 @@ def validate(payload, report):
     recon = None
     align = None
     if master and ok and all(r.get("sr") == ok[0]["sr"] for r in ok) and "error" not in per_file[0]:
-        report("Comparing the stems with the master", 0.9, "")
+        report("Comparing the stems with the master", 0.9, "alignment")
         try:
-            recon, align = _recon(master, [f["path"] for f in files if f.get("group")])
+            recon, align = _recon(master, [f["path"] for f in files if f.get("group")], report)
         except Exception as e:
             findings.append({"level": "info", "text": f"The stems could not be compared with the master ({e.__class__.__name__})."})
         if align is not None and abs(align) > 1.0:
@@ -162,40 +167,56 @@ def validate(payload, report):
             "checked": now()}
 
 
-def _recon(master, stems, max_s=600):
+RECON_EXCERPTS, RECON_EXCERPT_S = 12, 10.0
+
+
+def _recon(master, stems, report=None, n_excerpts=RECON_EXCERPTS, excerpt_s=RECON_EXCERPT_S):
+    """Reconstruction error (stems summed vs master) and stem alignment.
+
+    Measured on `n_excerpts` excerpts of `excerpt_s` seconds spread evenly over the part of the song all
+    files cover, so the work is bounded whatever the file length (at most ~2 minutes of audio per file),
+    and progress is reported after every excerpt. Until 0.5.1 it read up to the first 10 minutes of every
+    file in parallel with no progress, which on slow storage looked like a freeze at 90 %."""
     import soundfile as sf
     from mi import audio_io as io
-    m = sf.read(master, frames=int(30 * sf.info(master).samplerate), dtype="float64", always_2d=True)[0]
     srate = sf.info(master).samplerate
-    st = None
+    stereo = lambda x: np.column_stack([x[:, 0], x[:, 0]]) if x.shape[1] == 1 else x[:, :2]
+    # alignment: first 30 s, as before
+    m = stereo(sf.read(master, frames=int(30 * srate), dtype="float64", always_2d=True)[0])
+    st = np.zeros_like(m)
     for p in stems:
-        x = sf.read(p, frames=len(m), dtype="float64", always_2d=True)[0]
-        x = np.column_stack([x[:, 0], x[:, 0]]) if x.shape[1] == 1 else x[:, :2]
-        x = np.pad(x, ((0, max(0, len(m) - len(x))), (0, 0)))[: len(m)]
-        st = x if st is None else st + x
-    mm = np.column_stack([m[:, 0], m[:, 0]]) if m.shape[1] == 1 else m[:, :2]
-    align = io.estimate_offset(mm.mean(axis=1), st.mean(axis=1), srate)
+        x = stereo(sf.read(p, frames=len(m), dtype="float64", always_2d=True)[0])
+        st[: len(x)] += x[: len(m)]
+    align = io.estimate_offset(m.mean(axis=1), st.mean(axis=1), srate)
+    del m, st
+    # reconstruction: evenly spaced excerpts over the common length
+    common = min([sf.info(master).frames] + [sf.info(p).frames for p in stems])
+    L = int(excerpt_s * srate)
+    if common <= L:
+        starts = [0]
+        L = common
+    else:
+        k = max(1, min(n_excerpts, common // L))
+        starts = [int(round(i * (common - L) / max(k - 1, 1))) for i in range(k)]
     num = den = 0.0
     handles = [sf.SoundFile(master)] + [sf.SoundFile(p) for p in stems]
     try:
-        total = 0
-        while total < max_s * srate:
-            blk = handles[0].read(srate * 10, dtype="float64", always_2d=True)
-            if not len(blk):
-                break
-            blk = np.column_stack([blk[:, 0], blk[:, 0]]) if blk.shape[1] == 1 else blk[:, :2]
+        for i, s0 in enumerate(starts):
+            if report:
+                report("Comparing the stems with the master", 0.9 + 0.095 * i / len(starts), f"excerpt {i + 1} of {len(starts)}")
+            handles[0].seek(s0)
+            blk = stereo(handles[0].read(L, dtype="float64", always_2d=True))
             ssum = np.zeros_like(blk)
             for h in handles[1:]:
-                x = h.read(len(blk), dtype="float64", always_2d=True)
-                x = np.column_stack([x[:, 0], x[:, 0]]) if x.shape[1] == 1 else x[:, :2]
+                h.seek(s0)
+                x = stereo(h.read(len(blk), dtype="float64", always_2d=True))
                 ssum[: len(x)] += x
             num += float(np.sum((blk - ssum) ** 2))
             den += float(np.sum(blk ** 2))
-            total += len(blk)
     finally:
         for h in handles:
             h.close()
-    return round(10 * np.log10(num / max(den, 1e-20)), 1), round(align, 2)
+    return round(10 * np.log10(num / max(den, 1e-20) + 1e-30), 1), round(align, 2)
 
 
 # ============================================================================ programme analysis of references

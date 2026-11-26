@@ -28,6 +28,7 @@ import soundfile as sf
 
 LIMIT_S = 180          # a full check must finish well within this
 LATENCY_LIMIT_S = 2.0  # worst API response while a check runs
+QUIET_LIMIT_S = 15.0   # longest acceptable time without a progress update
 
 
 def make_files(d: Path, minutes: float, sr: int = 48000, subtype: str = "PCM_24", stem_short_s: float = 0.0) -> None:
@@ -108,6 +109,7 @@ def main():
         t0 = time.time()
         jid = call("POST", "/api/validate", payload)["job"]
         worst, peak_main, peak_job, last = 0.0, 0.0, 0.0, None
+        last_change, quiet_worst = time.time(), 0.0
         while True:
             a = time.time()
             j = call("GET", f"/api/jobs/{jid}")["job"]
@@ -116,8 +118,10 @@ def main():
             peak_main = max(peak_main, rss_mb(proc.pid))
             for c in children(proc.pid):
                 peak_job = max(peak_job, rss_mb(c))
-            s = (j["stage"], j["fraction"])
+            s = (j["stage"], j["fraction"], j.get("text"))
+            quiet_worst = max(quiet_worst, time.time() - last_change)
             if s != last:
+                last_change = time.time()
                 print(f"{time.time() - t0:6.1f} s  {j['stage']}  {100 * j['fraction']:.0f} %  {j.get('text') or ''}", flush=True)
                 last = s
             if j["status"] in ("done", "error", "cancelled"):
@@ -131,7 +135,9 @@ def main():
         res = j.get("result") or {}
         print(f"result: status={j['status']} in {took:.1f} s; reconstruction {res.get('reconstruction_error_dB')} dB, "
               f"alignment {res.get('alignment_ms')} ms; worst API latency {worst * 1000:.0f} ms; "
-              f"peak memory main {peak_main:.0f} MB, job {peak_job:.0f} MB", flush=True)
+              f"peak memory main {peak_main:.0f} MB, job {peak_job:.0f} MB; longest time without progress {quiet_worst:.1f} s", flush=True)
+        if quiet_worst > QUIET_LIMIT_S:
+            failures.append(f"no progress for {quiet_worst:.1f} s during the check (looks frozen to the engineer)")
         if j["status"] != "done":
             failures.append(f"check ended with status {j['status']}: {j.get('error')}")
         if res.get("reconstruction_error_dB") is None and j["status"] == "done":
