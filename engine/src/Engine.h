@@ -92,6 +92,7 @@ private:
     juce::String recordingShow;
     juce::File runMarker;
     bool crashedLastRun = false;
+    juce::var crashedPlugin; // {kind, slotId, name} of the plugin blamed for the last crash
     juce::ThreadPool jobs { 2 };                       // waveform overviews
     std::shared_ptr<bool> alive = std::make_shared<bool> (true);
 };

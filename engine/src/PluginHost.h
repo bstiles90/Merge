@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Plan.h"
+#include "CrashGuard.h"
 #include <map>
 #include <optional>
 
@@ -38,6 +39,10 @@ public:
     int numParams = 0;
 
     juce::var describeParams (const std::vector<int>* onlyIndices = nullptr) const;
+
+    /** Crash attribution: who to blame if a call into this plugin crashes Merge. */
+    void setCrashName (const juce::String& slotId);
+    crash::Tag renderTag, mainTag;
     int findParam (const juce::String& id) const;
 
 private:
@@ -110,6 +115,7 @@ private:
     void timerCallback() override;
     /** Start loading the next queued plugin if none is loading (one at a time, like Logic). */
     void pumpLoadQueue();
+    crash::Tag loadTag; // the plugin being created right now
     void finishLoad();
     static bool decodeState (const juce::String& base64, juce::MemoryBlock& out);
     void scanStep();

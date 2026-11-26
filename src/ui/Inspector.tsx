@@ -13,7 +13,7 @@ import type { Channel, InsertSlot } from '../core/types';
 import { sendNative, useNative } from '../native/bridge';
 import { Knob, Toggle, parsePan } from './controls';
 import { addPreset, applyPreset, deletePreset, makePreset, usePresets } from '../core/stripPresets';
-import { ChannelOutput, MonoStereoSwitch, SendRow, newInsert, replaceInsert, useSlotClicks } from './Strip';
+import { ChannelOutput, MonoStereoSwitch, SendRow, newInsert, replaceInsert, setInsertOffline, useSlotClicks } from './Strip';
 import { TallMeter } from './StripOverview';
 import { PluginPicker } from './PluginPicker';
 import { useEngineInputs } from './useEngine';
@@ -93,19 +93,20 @@ function Rack({ ch }: { ch: Channel }) {
           );
         const n = native[ins.id];
         const name = getPlugin(ins.pluginId)?.name ?? ins.pluginName ?? 'Plugin';
-        const canWin = nativeOn && !ins.pluginId.startsWith('builtin.') && !n?.error;
+        const canWin = nativeOn && !ins.pluginId.startsWith('builtin.') && !n?.error && !ins.offline;
         return (
-          <div key={ins.id} className={'ins-slot used' + (ins.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}>
+          <div key={ins.id} className={'ins-slot used' + (ins.bypass ? ' byp' : '') + (ins.offline ? ' offline' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}>
             <button className="ins-dot" title={ins.bypass ? 'Bypassed' : 'On'} onClick={() => set(ch.inserts.map((x) => (x.id === ins.id ? { ...x, bypass: !x.bypass } : x)))} />
             <button
               className="ins-name"
               data-slot={ins.id}
-              title={n?.error ?? `${name} — click: change or remove · double-click: window`}
+              title={ins.offline ? `${name} is switched off (not loaded, settings kept) — click to turn it on` : n?.error ?? `${name} — click: change or remove · double-click: window`}
               {...clicks(
                 () => setPicker({ at: (document.querySelector(`.ins-name[data-slot="${ins.id}"]`) as HTMLElement).getBoundingClientRect(), slot: ins }),
                 () => canWin && sendNative({ type: 'insert.editor', slotId: ins.id, open: !n?.editorOpen }),
               )}
             >
+              {ins.offline && <span className="rs-off">OFF</span>}
               {name}
             </button>
             <button className={'ins-lock' + (ins.recallSafe ? ' on' : '')} title="Recall safe" onClick={() => set(ch.inserts.map((x) => (x.id === ins.id ? { ...x, recallSafe: !x.recallSafe } : x)))}>
@@ -120,8 +121,10 @@ function Rack({ ch }: { ch: Channel }) {
           anchor={picker.at}
           title={picker.slot ? 'Plugin' : undefined}
           current={picker.slot?.pluginId}
+          offline={picker.slot?.offline}
+          onOffline={picker.slot && nativeOn ? () => { const sl = picker.slot!; setPicker(null); setInsertOffline(sl.id, !sl.offline); } : undefined}
           onClose={() => setPicker(null)}
-          onOpen={picker.slot && nativeOn ? () => { const sl = picker.slot!; setPicker(null); sendNative({ type: 'insert.editor', slotId: sl.id, open: true }); } : undefined}
+          onOpen={picker.slot && nativeOn && !picker.slot.offline ? () => { const sl = picker.slot!; setPicker(null); sendNative({ type: 'insert.editor', slotId: sl.id, open: true }); } : undefined}
           onNone={picker.slot ? () => { const id = picker.slot!.id; setPicker(null); set(replaceInsert(ch.inserts, id, null)); } : undefined}
           onPick={(p: PluginDescriptor) => {
             const sl = picker.slot;

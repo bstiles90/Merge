@@ -27,6 +27,9 @@ export const isSafe = (strip: { recallSafe: boolean; safe?: SafeSet }, part: Saf
 
 /** Scene rack with the current rack's safed slots kept (in their place, with their settings). */
 function mergeInserts(cur: InsertSlot[], saved: InsertSlot[]): InsertSlot[] {
+  // a plugin switched off (e.g. it crashed Merge) stays off through scene recalls
+  const off = new Set(cur.filter((i) => i.offline).map((i) => i.id));
+  if (off.size) saved = saved.map((i) => (off.has(i.id) ? { ...i, offline: true } : i));
   const keep = cur.filter((i) => i.recallSafe);
   if (!keep.length) return saved;
   const out = saved.filter((i) => !keep.some((k) => k.id === i.id));

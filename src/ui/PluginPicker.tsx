@@ -9,7 +9,7 @@ import { usePluginsVersion } from './NativePanel';
 
 const fmtLabel = (f: string) => (f === 'builtin' ? 'Built-in' : f.toUpperCase());
 
-export function PluginPicker({ anchor, onPick, onClose, title, onNone, onOpen, current }: {
+export function PluginPicker({ anchor, onPick, onClose, title, onNone, onOpen, current, offline, onOffline }: {
   anchor: DOMRect;
   onPick: (p: PluginDescriptor) => void;
   onClose: () => void;
@@ -20,6 +20,9 @@ export function PluginPicker({ anchor, onPick, onClose, title, onNone, onOpen, c
   onOpen?: () => void;
   /** the plugin in the slot now (marked in the list) */
   current?: string;
+  /** the slot is switched off (not loaded); onOffline turns it on / off */
+  offline?: boolean;
+  onOffline?: () => void;
 }) {
   const version = usePluginsVersion();
   const nativeOn = useNative((st) => st.status === 'connected');
@@ -80,9 +83,15 @@ export function PluginPicker({ anchor, onPick, onClose, title, onNone, onOpen, c
           <button key={f} className={'chip' + (fmt === f ? ' on' : '')} onClick={() => setFmt(f)}>{f === 'all' ? 'All' : fmtLabel(f)}</button>
         ))}
       </div>
-      {(onNone || onOpen) && (
+      {(onNone || onOpen || onOffline) && (
         <div className="pp-slot-actions">
-          {onOpen && <button className="pp-item" onClick={onOpen}><span className="pp-name">Open window</span></button>}
+          {onOffline && (
+            <button className={'pp-item' + (offline ? ' pp-turnon' : '')} onClick={onOffline}>
+              <span className="pp-name">{offline ? 'Turn on' : 'Switch off'}</span>
+              <span className="pp-fmt">{offline ? 'load it again' : 'unload, keep settings'}</span>
+            </button>
+          )}
+          {onOpen && !offline && <button className="pp-item" onClick={onOpen}><span className="pp-name">Open window</span></button>}
           {onNone && <button className="pp-item pp-none" onClick={onNone}><span className="pp-name">None</span><span className="pp-fmt">remove</span></button>}
         </div>
       )}

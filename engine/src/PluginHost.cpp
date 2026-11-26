@@ -85,7 +85,10 @@ void HostedInsert::process (float* const* chans, int numChans, int n) noexcept
         scratch.copyFrom (c, 0, chans[juce::jmin (c, numChans - 1)], n);
     juce::AudioBuffer<float> view (scratch.getArrayOfWritePointers(), pluginChannels, n);
     midi.clear();
-    instance->processBlock (view, midi);
+    {
+        const crash::Scope blame (&renderTag); // a crash in here names this plugin
+        instance->processBlock (view, midi);
+    }
 
     if (numChans == 1 && pluginChannels > 1)
     {
@@ -99,6 +102,12 @@ void HostedInsert::process (float* const* chans, int numChans, int n) noexcept
         for (int c = 0; c < numChans; ++c)
             juce::FloatVectorOperations::copy (chans[c], scratch.getReadPointer (juce::jmin (c, pluginChannels - 1)), n);
     }
+}
+
+void HostedInsert::setCrashName (const juce::String& slotId)
+{
+    renderTag.set ("render", slotId, instance->getName());
+    mainTag.set ("load", slotId, instance->getName());
 }
 
 void HostedInsert::parameterValueChanged (int index, float)
@@ -616,6 +625,9 @@ void PluginHost::pumpLoadQueue()
         const auto gen = it->second.generation;
         std::cout << "[insert] loading " << desc->name << " (" << slotId << ") " << (loadDone + 1) << "/" << loadTotal << std::endl;
         send (obj ({ { "type", "plugins.progress" }, { "done", loadDone }, { "total", loadTotal }, { "name", desc->name }, { "strip", strip } }));
+        // until it's ready, a crash on the message thread is blamed on this plugin
+        loadTag.set ("load", slotId, desc->name);
+        crash::enter (&loadTag);
         formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
             [this, slotId, pluginId, stripChannels, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
                 auto it = slots.find (slotId);
@@ -635,6 +647,7 @@ void PluginHost::pumpLoadQueue()
                     return;
                 }
                 auto ins = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
+                ins->setCrashName (slotId);
                 ins->bypass = sl.bypass;
                 // its saved settings first, while nothing is rendering it yet
                 bool stateApplied = false;
@@ -663,6 +676,7 @@ void PluginHost::pumpLoadQueue()
 
 void PluginHost::finishLoad()
 {
+    if (crash::current() == &loadTag) crash::enter (nullptr);
     loadingNow = {};
     ++loadDone;
     if (loadQueue.empty())
@@ -732,6 +746,7 @@ bool PluginHost::setState (const juce::String& slotId, const juce::String& base6
         // (Softube, seen crashing in render) rebuild their internals in setStateInformation.
         // The audio thread only try-locks this, so the strip passes audio through meanwhile.
         const juce::ScopedLock sl (ins->plugin().getCallbackLock());
+        const crash::Scope blame (&ins->mainTag);
         ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
     }
     // report all values back so the UI's generic editor matches the restored state
@@ -762,6 +777,7 @@ void PluginHost::openEditor (const juce::String& slotId)
         return;
     }
     auto& p = slot.insert->plugin();
+    const crash::Scope blame (&slot.insert->mainTag);
     auto* ed = p.hasEditor() ? p.createEditorIfNeeded() : nullptr;
     if (! ed) ed = new juce::GenericAudioProcessorEditor (p);
     slot.editor = std::make_unique<EditorWindow> (p.getName() + " — " + slot.strip, ed, slot.pluginId, slot.strip, slot.bypass,
@@ -790,6 +806,7 @@ bool PluginHost::dock (const juce::String& slotId)
     undock();
     it->second.editor.reset(); // close its floating window, if open (frees the active editor)
     auto& p = it->second.insert->plugin();
+    const crash::Scope blame (&it->second.insert->mainTag);
     auto* ed = p.hasEditor() ? p.createEditorIfNeeded() : nullptr;
     if (! ed) ed = new juce::GenericAudioProcessorEditor (p);
     dockedEditor.reset (ed);

@@ -43,7 +43,7 @@ Engine::Engine()
     ws.onMessage = [this] (int id, const juce::String& t) { handleMessage (id, t); };
     ws.onConnect = [this] (int id) {
         std::cout << "[ws] UI client connected" << std::endl;
-        send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION }, { "crashed", crashedLastRun } }), id);
+        send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION }, { "crashed", crashedLastRun }, { "crashedPlugin", crashedPlugin } }), id);
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
     };
@@ -72,6 +72,14 @@ bool Engine::start (const Options& opt)
     crashedLastRun = runMarker.existsAsFile();
     runMarker.getParentDirectory().createDirectory();
     runMarker.replaceWithText (juce::Time::getCurrentTime().toISO8601 (true));
+    // ...and which plugin it was in, if it was in one
+    const auto culprit = runMarker.getSiblingFile ("crash-plugin.txt");
+    if (auto r = crash::takeReport (culprit); r && crashedLastRun)
+    {
+        crashedPlugin = obj ({ { "kind", r->kind }, { "slotId", r->slotId }, { "name", r->name } });
+        std::cout << "[crash] last run crashed in " << r->name << " (" << r->slotId << ", " << r->kind << ")" << std::endl;
+    }
+    crash::install (culprit);
     if (! opt.virtualDevice)
     {
         auto saved = juce::parseXML (settingsFile);

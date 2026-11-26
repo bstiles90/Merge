@@ -14,7 +14,7 @@ export interface PlanInsert {
   bypass: boolean;
 }
 
-const inserts = (list: InsertSlot[]): PlanInsert[] => list.map((i) => ({ id: i.id, pluginId: i.pluginId, bypass: i.bypass }));
+const inserts = (list: InsertSlot[]): PlanInsert[] => list.filter((i) => !i.offline).map((i) => ({ id: i.id, pluginId: i.pluginId, bypass: i.bypass }));
 const r = (x: number) => Math.round(x * 1e6) / 1e6; // keep the JSON small and stable
 
 /** Where a bus goes: 'main', another bus id, or '' (outputs only). Loops are cut. */

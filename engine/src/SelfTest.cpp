@@ -6,6 +6,10 @@
 #include "ConsoleWindow.h"
 #include <iostream>
 #include <cstdlib>
+#if ! JUCE_WINDOWS
+ #include <sys/wait.h>
+ #include <unistd.h>
+#endif
 
 namespace merge
 {
@@ -452,6 +456,38 @@ void testLoudnessLong()
 
 float dbOf (float g) { return juce::Decibels::gainToDecibels (g, -120.0f); }
 
+void testCrashAttribution()
+{
+    std::cout << "crash attribution" << std::endl;
+   #if ! JUCE_WINDOWS
+    const auto f = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("merge-crash-test.txt");
+    f.deleteFile();
+    // a child process "crashes inside a plugin"; the parent reads what it left behind
+    const pid_t pid = fork();
+    if (pid == 0)
+    {
+        crash::install (f);
+        static crash::Tag t;
+        t.set ("render", "ins_test1", "Bad Plugin");
+        const crash::Scope blame (&t);
+        ::raise (SIGSEGV);
+        _exit (0);
+    }
+    int status = 0;
+    waitpid (pid, &status, 0);
+    check (WIFSIGNALED (status) && WTERMSIG (status) == SIGSEGV, "the crash still ends the process (system crash report intact)");
+    const auto r = crash::takeReport (f);
+    check (r && r->slotId == "ins_test1" && r->name == "Bad Plugin" && r->kind == "render", "names the plugin it crashed in",
+           r ? r->kind + " " + r->slotId + " " + r->name : juce::String ("no report"));
+    check (! f.existsAsFile(), "the report is used once");
+    // a crash outside any plugin blames nothing
+    const pid_t pid2 = fork();
+    if (pid2 == 0) { crash::install (f); ::raise (SIGSEGV); _exit (0); }
+    waitpid (pid2, &status, 0);
+    check (! crash::takeReport (f), "a crash outside plugins blames none");
+   #endif
+}
+
 void testTruePeak()
 {
     std::cout << "True-peak metering" << std::endl;
@@ -771,6 +807,7 @@ int runSelfTest (const juce::StringArray& args)
     testMixer();
     testRouting();
     testLoudnessLong();
+    testCrashAttribution();
     testVirtualSoundcheck();
     testSendTaps();
     testStereoChannels();
