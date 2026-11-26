@@ -41,6 +41,7 @@ class LabState:
         self.desktop = None  # set by main.py when running in a window
         self.client_log = []  # errors and audio checks reported by the UI (included in diagnostics)
         self.audio_check = None
+        self.ui_check = None
         last = self.settings.data.get("last_workspace")
         if last:
             try:
@@ -113,7 +114,15 @@ def api_client_log(st, q, body):
     st.client_log = (st.client_log + [entry])[-200:]
     if body.get("kind") == "audiocheck":
         st.audio_check = body.get("results")
+    if body.get("kind") == "uicheck":
+        st.ui_check = body.get("results")
     return {"ok": True}
+
+
+@route("GET", "/api/uicheck-config")
+def api_uicheck_config(st, q, body):
+    import os
+    return {"dir": os.environ.get("MIL_UICHECK_DIR")}
 
 
 @route("GET", "/api/client-log")

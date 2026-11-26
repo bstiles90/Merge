@@ -112,6 +112,25 @@ def run_window(state, url, audio_check=False):
         except Exception as ex:  # drag and drop is a convenience; dialogs always work
             print("drag and drop unavailable:", ex)
     win.events.loaded += on_loaded
+    if os.environ.get("MIL_UICHECK_DIR"):  # CI: drive the import wizard in the real window, watch the main thread
+        def ui_watch():
+            import time
+            t0, worst, samples = time.time(), 0.0, 0
+            while time.time() - t0 < 300 and not state.ui_check:
+                done = threading.Event()
+                a = time.time()
+                threading.Thread(target=lambda: (win.evaluate_js("1"), done.set()), daemon=True).start()
+                if not done.wait(30):
+                    worst = max(worst, 30.0)
+                    print("[lab] ui check: main thread or page did not answer for 30 s", flush=True)
+                else:
+                    worst = max(worst, time.time() - a)
+                samples += 1
+                time.sleep(0.5)
+            print("[lab] ui check:", json.dumps({"result": state.ui_check or {"error": "no result within 300 s"},
+                                                  "main_thread_worst_s": round(worst, 3), "samples": samples}), flush=True)
+            win.destroy()
+        threading.Thread(target=ui_watch, daemon=True).start()
     if audio_check:  # CI: run the audio self-check in the real window, print the result, quit
         def watch():
             import time
@@ -140,7 +159,8 @@ def main(argv=None):
     from .server import LabState, start_server
     state = LabState()
     srv = start_server(state, a.port)
-    url = f"http://127.0.0.1:{srv.server_address[1]}/#t={state.token}" + ("&audiocheck=auto" if a.audio_check else "")
+    url = f"http://127.0.0.1:{srv.server_address[1]}/#t={state.token}" + ("&audiocheck=auto" if a.audio_check else "") \
+        + ("&uicheck=auto" if os.environ.get("MIL_UICHECK_DIR") else "")
     if a.serve:
         print(url, flush=True)
         threading.Event().wait()

@@ -5,7 +5,7 @@ let TOKEN = null;
   if (m) {
     TOKEN = m[1];
     try { sessionStorage.setItem('mil-token', TOKEN); } catch (e) {}
-    history.replaceState(null, '', location.pathname + (/audiocheck=auto/.test(location.hash) ? '#/audiocheck/auto' : '#/'));
+    history.replaceState(null, '', location.pathname + (/audiocheck=auto/.test(location.hash) ? '#/audiocheck/auto' : /uicheck=auto/.test(location.hash) ? '#/uicheck' : '#/'));
   } else {
     try { TOKEN = sessionStorage.getItem('mil-token'); } catch (e) {}
   }
