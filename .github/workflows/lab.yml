@@ -95,7 +95,11 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p "$RUNNER_TEMP/audio"
-          MIL_SETTINGS_DIR="$RUNNER_TEMP/audio" timeout 120 "lab/dist/Merge Intelligence Lab.app/Contents/MacOS/Merge Intelligence Lab" --audio-check > audio.log 2>&1 || true
+          # macOS has no `timeout`: run in the background and stop it after 90 s at most
+          MIL_SETTINGS_DIR="$RUNNER_TEMP/audio" "lab/dist/Merge Intelligence Lab.app/Contents/MacOS/Merge Intelligence Lab" --audio-check > audio.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 90); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+          kill $PID 2>/dev/null || true
           cat audio.log
           grep -q "webkit media policy" audio.log
           grep "\[lab\] audio check:" audio.log
