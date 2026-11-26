@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { busMuteReason, channelMuteReason, formatDb } from '../core/mix';
 import { defaultParams, getPlugin, type PluginDescriptor } from '../core/plugins';
 import { newId } from '../core/defaults';
@@ -22,16 +22,24 @@ export function sameRef(a: StripRef | null, b: StripRef | null) {
 }
 
 /** Height of the fader area, measured so faders use whatever space the window gives the strip. */
+/**
+ * The live height of an element. A callback ref, so it follows the element when React replaces it
+ * (a strip that was briefly empty, e.g. during a show import, rebuilds its fader area: a ref read
+ * once on mount kept measuring the old, detached one and the fader stayed at a stale height).
+ */
 function useHeight<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
   const [h, setH] = useState(220);
-  useEffect(() => {
-    const el = ref.current;
+  const ro = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: T | null) => {
+    ro.current?.disconnect();
+    ro.current = null;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setH(Math.max(100, Math.round(e.contentRect.height))));
-    ro.observe(el);
-    return () => ro.disconnect();
+    const measure = (px: number) => setH(Math.max(100, Math.round(px)));
+    measure(el.getBoundingClientRect().height || 220);
+    ro.current = new ResizeObserver(([e]) => measure(e.contentRect.height));
+    ro.current.observe(el);
   }, []);
+  useEffect(() => () => ro.current?.disconnect(), []);
   return [ref, h] as const;
 }
 
