@@ -262,6 +262,8 @@ export interface TransportState {
   recording: boolean;
   position: number; // seconds, updated when stopped/seeked
   recordProgram: boolean;
+  /** loop playback (native engine; not while recording) */
+  loop?: { on: boolean; start: number; end: number };
 }
 
 /** Two mono channels linked as a stereo pair. */

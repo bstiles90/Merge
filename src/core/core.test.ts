@@ -47,9 +47,12 @@ describe('mute groups and DCAs', () => {
   });
 });
 
+/** A show with a mix-minus feed on bus 7 that leaves out ch4 (hidden in the UI for now, still supported). */
+const withMixMinus = (s = defaultState()) => ({ ...s, buses: s.buses.map((b) => (b.id === 'bus7' ? { ...b, type: 'mixminus' as const, mixMinusExclude: 'ch4' } : b)) });
+
 describe('mix-minus', () => {
   it('excludes the remote guest from their own feed', () => {
-    const s = defaultState();
+    const s = withMixMinus();
     const remote = s.channels.find((c) => c.id === 'ch4')!;
     const host = s.channels.find((c) => c.id === 'ch1')!;
     expect(computeChannelGains(s, remote).sends['bus7'].gain).toBe(0);

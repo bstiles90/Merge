@@ -322,7 +322,7 @@ function BusDetail({ id }: { id: string }) {
         <div className="row wrap">
           <select value={b.type} onChange={(e) => up({ type: e.target.value as typeof b.type })}>
             <option value="aux">Bus (group, aux, FX, feed: routing decides)</option>
-            <option value="mixminus">Mix-minus / N-1 (auto)</option>
+            {b.type === 'mixminus' && <option value="mixminus">Mix-minus / N-1 (auto)</option>}
           </select>
           {b.type === 'mixminus' && (
             <label className="row">

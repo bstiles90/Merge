@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { faderDbToPos, faderPosToDb, formatDb } from '../core/mix';
 import { registerMeter } from './meterLoop';
 import { useConsole } from '../core/store';
@@ -182,10 +182,12 @@ export function Knob({
   onChange,
   label,
   format,
+  parse,
   log = false,
   size = 34,
   defaultValue,
   step,
+  centre,
   color = 'var(--accent)',
   valueColor,
 }: {
@@ -195,22 +197,32 @@ export function Knob({
   onChange: (v: number) => void;
   label?: string;
   format?: (v: number) => string;
+  /** typed text → value (default: the first number in it, e.g. "+6 dB") */
+  parse?: (text: string) => number | null;
   log?: boolean;
   size?: number;
   defaultValue?: number;
   step?: number;
+  /** the value at 12 o'clock (e.g. 0 dB on a -24..+48 gain): each side of it gets half the travel */
+  centre?: number;
   color?: string;
   valueColor?: string;
 }) {
-  const toT = (v: number) => (log ? Math.log(v / min) / Math.log(max / min) : (v - min) / (max - min));
+  const c0 = centre !== undefined && centre > min && centre < max && !log ? centre : undefined;
+  const toT = (v: number) => {
+    if (log) return Math.log(v / min) / Math.log(max / min);
+    if (c0 !== undefined) return v <= c0 ? (0.5 * (v - min)) / (c0 - min) : 0.5 + (0.5 * (v - c0)) / (max - c0);
+    return (v - min) / (max - min);
+  };
   const fromT = (t: number) => {
     const c = Math.max(0, Math.min(1, t));
-    let v = log ? min * Math.pow(max / min, c) : min + c * (max - min);
+    let v = log ? min * Math.pow(max / min, c) : c0 !== undefined ? (c <= 0.5 ? min + (c / 0.5) * (c0 - min) : c0 + ((c - 0.5) / 0.5) * (max - c0)) : min + c * (max - min);
     if (step) v = Math.round(v / step) * step;
     return v;
   };
   const t = Math.max(0, Math.min(1, toT(value)));
-  const drag = useRef<{ y: number; t: number } | null>(null);
+  const drag = useRef<{ y: number; t: number; moved: boolean } | null>(null);
+  const [editing, setEditing] = useState(false);
   const a0 = -135, a1 = 135;
   const ang = a0 + t * (a1 - a0);
   const r = size / 2 - 3;
@@ -220,8 +232,15 @@ export function Knob({
     const [x1, y1] = p(to);
     return `M${x0},${y0} A${r},${r} 0 ${to - from > 180 ? 1 : 0} 1 ${x1},${y1}`;
   };
-  const centreT = min < 0 && max > 0 && !log ? toT(0) : 0;
+  // the arc grows from the centre value (0 dB / centre pan) when the range spans it
+  const centreT = c0 !== undefined ? 0.5 : min < 0 && max > 0 && !log ? toT(0) : 0;
   const ca = a0 + centreT * (a1 - a0);
+  const commit = (text: string) => {
+    setEditing(false);
+    const v = parse ? parse(text) : (() => { const m = /[-+]?\d*\.?\d+/.exec(text.replace(',', '.')); return m ? Number(m[0]) : null; })();
+    if (v === null || !isFinite(v)) return;
+    onChange(Math.max(min, Math.min(max, step ? Math.round(v / step) * step : v)));
+  };
   return (
     <div className="knob" title={label} onClick={(e) => e.stopPropagation()}>
       <svg
@@ -229,15 +248,29 @@ export function Knob({
         height={size}
         onPointerDown={(e) => {
           (e.target as Element).setPointerCapture(e.pointerId);
-          drag.current = { y: e.clientY, t };
+          drag.current = { y: e.clientY, t, moved: false };
         }}
         onPointerMove={(e) => {
-          if (!drag.current) return;
+          const d = drag.current;
+          if (!d) return;
+          if (Math.abs(d.y - e.clientY) > 2) d.moved = true;
+          if (!d.moved) return;
           const k = e.shiftKey ? 0.001 : 0.005;
-          onChange(fromT(drag.current.t + (drag.current.y - e.clientY) * k));
+          onChange(fromT(d.t + (d.y - e.clientY) * k));
         }}
-        onPointerUp={() => (drag.current = null)}
-        onDoubleClick={() => defaultValue !== undefined && onChange(defaultValue)}
+        onPointerUp={(e) => {
+          const d = drag.current;
+          drag.current = null;
+          // a click (no drag) types a value; Option-click resets
+          if (d && !d.moved) {
+            if (e.altKey && defaultValue !== undefined) onChange(defaultValue);
+            else setEditing(true);
+          }
+        }}
+        onDoubleClick={() => {
+          setEditing(false);
+          if (defaultValue !== undefined) onChange(defaultValue);
+        }}
       >
         <path d={arc(a0, a1)} style={{ stroke: 'var(--border-subtle)' }} strokeWidth={3} fill="none" />
         {Math.abs(ang - ca) > 0.5 && <path d={ang > ca ? arc(ca, ang) : arc(ang, ca)} stroke={color} strokeWidth={3} fill="none" />}
@@ -253,9 +286,38 @@ export function Knob({
         />
       </svg>
       {label && <div className="knob-label">{label}</div>}
-      <div className="knob-value" style={valueColor ? { color: valueColor } : undefined}>{format ? format(value) : value.toFixed(1)}</div>
+      {editing ? (
+        <input
+          className="knob-edit"
+          autoFocus
+          defaultValue={format ? format(value) : value.toFixed(1)}
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') commit(e.currentTarget.value);
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          onBlur={(e) => commit(e.currentTarget.value)}
+          aria-label={label ?? 'Value'}
+        />
+      ) : (
+        <div className="knob-value" style={valueColor ? { color: valueColor } : undefined} onClick={() => setEditing(true)}>
+          {format ? format(value) : value.toFixed(1)}
+        </div>
+      )}
     </div>
   );
+}
+
+/** Pan text: "C", "L30", "R 20", "-30" (left) … → -1..1 */
+export function parsePan(text: string): number | null {
+  const t = text.trim().toUpperCase().replace(/^BAL\s*/, '');
+  if (t === 'C' || t === '0') return 0;
+  const m = /^([LR])?\s*([-+]?\d*\.?\d+)\s*([LR])?$/.exec(t);
+  if (!m) return null;
+  const side = m[1] ?? m[3];
+  const n = Math.min(100, Math.abs(Number(m[2]))) / 100;
+  return side === 'L' ? -n : side === 'R' ? n : Math.max(-1, Math.min(1, Number(m[2]) / 100));
 }
 
 export function Toggle({

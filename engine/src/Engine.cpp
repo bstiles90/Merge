@@ -43,7 +43,7 @@ Engine::Engine()
     ws.onMessage = [this] (int id, const juce::String& t) { handleMessage (id, t); };
     ws.onConnect = [this] (int id) {
         std::cout << "[ws] UI client connected" << std::endl;
-        send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION } }), id);
+        send (obj ({ { "type", "hello" }, { "engine", "merge-engine" }, { "version", MERGE_ENGINE_VERSION }, { "crashed", crashedLastRun } }), id);
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
     };
@@ -56,6 +56,7 @@ Engine::~Engine()
     alive.reset();
     jobs.removeAllJobs (true, 2000);
     mix.stopRecording(); // a recording still running is finished (its files closed) on the way out
+    if (runMarker != juce::File()) runMarker.deleteFile(); // a clean quit
     ws.stop();
     devices.removeAudioCallback (this);
     devices.closeAudioDevice();
@@ -65,6 +66,12 @@ Engine::~Engine()
 
 bool Engine::start (const Options& opt)
 {
+    // crash detection: the marker is removed on a clean quit, so finding it means the last run
+    // ended unexpectedly (most likely a plugin): the console then offers to bypass every plugin
+    runMarker = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/running.marker");
+    crashedLastRun = runMarker.existsAsFile();
+    runMarker.getParentDirectory().createDirectory();
+    runMarker.replaceWithText (juce::Time::getCurrentTime().toISO8601 (true));
     if (! opt.virtualDevice)
     {
         auto saved = juce::parseXML (settingsFile);
@@ -273,6 +280,9 @@ void Engine::handleTransport (int clientId, const juce::var& msg)
             mix.startRecording (std::move (session));
         }
     }
+    const auto loop = msg["loop"];
+    if (loop.isObject())
+        mix.setLoop ((bool) loop["on"], (juce::int64) std::llround ((double) loop["start"] * sr), (juce::int64) std::llround ((double) loop["end"] * sr));
     mix.setTransport (run, seek);
 }
 
@@ -311,6 +321,19 @@ void Engine::handleShowMessage (int clientId, const juce::String& type, const ju
     appData.createDirectory();
     const auto autosave = appData.getChildFile ("current-show.merge.json");
 
+    if (type == "show.presets.load")
+    {
+        // channel strip presets: one library file for every show
+        const auto f = appData.getChildFile ("strip-presets.json");
+        send (obj ({ { "type", "presets" }, { "text", f.existsAsFile() ? juce::var (f.loadFileAsString()) : juce::var() } }), clientId);
+        return;
+    }
+    if (type == "show.presets.save")
+    {
+        juce::TemporaryFile tmp (appData.getChildFile ("strip-presets.json"));
+        if (tmp.getFile().replaceWithText (msg["text"].toString())) tmp.overwriteTargetFileWithTemporary();
+        return;
+    }
     if (type == "show.autosave")
     {
         // atomic: write a temp file then swap, so a crash mid-write never corrupts the show

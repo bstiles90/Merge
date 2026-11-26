@@ -211,7 +211,7 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
     int offset = 0;
     while (offset < numSamples)
     {
-        const int n = juce::jmin (maxBlock, numSamples - offset);
+        int n = juce::jmin (maxBlock, numSamples - offset);
         // offset views onto the device buffers
         const float* inPtrs[64] {};
         float* outPtrs[64] {};
@@ -231,8 +231,19 @@ void Mixer::process (const float* const* in, int numIn, float* const* out, int n
         // transport (virtual soundcheck playback, recording)
         if (const auto sk = seekTo.exchange (-1); sk >= 0) transportPos.store (sk, std::memory_order_relaxed);
         const bool rolling = transportRunning.load (std::memory_order_relaxed);
-        const juce::int64 pos = transportPos.load (std::memory_order_relaxed);
+        juce::int64 pos = transportPos.load (std::memory_order_relaxed);
         RecordSession* rec = rolling ? recording.load (std::memory_order_acquire) : nullptr; // only while rolling
+        // loop playback (not while recording): jump back at the loop end, sample-accurately, by
+        // ending this chunk exactly there
+        if (rolling && rec == nullptr && loopOn.load (std::memory_order_relaxed))
+        {
+            const auto ls = loopStart.load (std::memory_order_relaxed), le = loopEnd.load (std::memory_order_relaxed);
+            if (le > ls)
+            {
+                if (pos >= le) { pos = ls; transportPos.store (pos, std::memory_order_relaxed); }
+                if (pos < le && pos + n > le) n = (int) (le - pos);
+            }
+        }
         if (rec != nullptr && rec->startSample < 0) rec->startSample = pos; // stamped by the first block it takes
         float* raw[2] = { rawBuf.getWritePointer (0), rawBuf.getWritePointer (1) };
         auto recordChannel = [rec, &raw, n] (int c) noexcept {

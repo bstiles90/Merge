@@ -13,7 +13,8 @@ describe('mix plan for the native engine', () => {
   });
 
   it('carries mix-minus as computed sends', () => {
-    const p = buildMixPlan(defaultState());
+    const s0 = defaultState();
+    const p = buildMixPlan({ ...s0, buses: s0.buses.map((b) => (b.id === 'bus7' ? { ...b, type: 'mixminus' as const, mixMinusExclude: 'ch4' } : b)) });
     const remote = p.channels[3];
     const host = p.channels[0];
     expect(remote.sends.find((x) => x.bus === 'bus7')).toBeUndefined();

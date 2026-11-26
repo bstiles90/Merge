@@ -86,6 +86,13 @@ public:
         if (seekSample >= 0) seekTo.store (seekSample);
         transportRunning.store (run);
     }
+    /** Message thread: loop playback between two positions (samples); off while recording. */
+    void setLoop (bool on, juce::int64 start, juce::int64 end) noexcept
+    {
+        loopStart.store (start);
+        loopEnd.store (end);
+        loopOn.store (on && end > start);
+    }
     /** Current transport position in samples (audio thread writes, anyone reads). */
     juce::int64 transportPosition() const noexcept { return transportPos.load (std::memory_order_relaxed); }
     bool isTransportRunning() const noexcept { return transportRunning.load(); }
@@ -164,6 +171,8 @@ private:
 
     std::atomic<bool> transportRunning { false };
     std::atomic<juce::int64> transportPos { 0 }, seekTo { -1 };
+    std::atomic<bool> loopOn { false };
+    std::atomic<juce::int64> loopStart { 0 }, loopEnd { 0 };
     std::atomic<RecordSession*> recording { nullptr };
     std::unique_ptr<RecordSession> recordingOwned;
 

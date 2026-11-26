@@ -52,3 +52,17 @@ describe('native virtual soundcheck', () => {
     expect(plan.channels[1].clips).toBeUndefined();
   });
 });
+
+import { applyPreset, makePreset } from './stripPresets';
+describe('channel strip presets', () => {
+  it('keep the rack (with plugin states) and input settings, and load as new plugin instances', () => {
+    const s = defaultState();
+    const ch = { ...s.channels[0], gainDb: 12, phaseInvert: true, delayMs: 3, pan: -0.5, inserts: [{ id: 'ins_a', pluginId: 'aucode:aufx,FQ4p,FabF', pluginName: 'Pro-Q 4', bypass: false, params: {}, state: 'b64:abc', recallSafe: true }] };
+    const p = makePreset(ch, 'Lead Vox');
+    const onto = applyPreset(s.channels[5], p);
+    expect(onto).toMatchObject({ gainDb: 12, phaseInvert: true, delayMs: 3, pan: -0.5 });
+    expect(onto.inserts![0]).toMatchObject({ pluginId: 'aucode:aufx,FQ4p,FabF', state: 'b64:abc' });
+    expect(onto.inserts![0].id).not.toBe('ins_a');
+    expect(onto.inserts![0].recallSafe).toBeUndefined(); // safes belong to the show, not the preset
+  });
+});

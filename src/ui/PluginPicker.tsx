@@ -9,7 +9,18 @@ import { usePluginsVersion } from './NativePanel';
 
 const fmtLabel = (f: string) => (f === 'builtin' ? 'Built-in' : f.toUpperCase());
 
-export function PluginPicker({ anchor, onPick, onClose, title }: { anchor: DOMRect; onPick: (p: PluginDescriptor) => void; onClose: () => void; title?: string }) {
+export function PluginPicker({ anchor, onPick, onClose, title, onNone, onOpen, current }: {
+  anchor: DOMRect;
+  onPick: (p: PluginDescriptor) => void;
+  onClose: () => void;
+  title?: string;
+  /** a used slot: "None" removes the plugin */
+  onNone?: () => void;
+  /** a used slot: open its window */
+  onOpen?: () => void;
+  /** the plugin in the slot now (marked in the list) */
+  current?: string;
+}) {
   const version = usePluginsVersion();
   const nativeOn = useNative((st) => st.status === 'connected');
   const [q, setQ] = useState('');
@@ -69,6 +80,12 @@ export function PluginPicker({ anchor, onPick, onClose, title }: { anchor: DOMRe
           <button key={f} className={'chip' + (fmt === f ? ' on' : '')} onClick={() => setFmt(f)}>{f === 'all' ? 'All' : fmtLabel(f)}</button>
         ))}
       </div>
+      {(onNone || onOpen) && (
+        <div className="pp-slot-actions">
+          {onOpen && <button className="pp-item" onClick={onOpen}><span className="pp-name">Open window</span></button>}
+          {onNone && <button className="pp-item pp-none" onClick={onNone}><span className="pp-name">None</span><span className="pp-fmt">remove</span></button>}
+        </div>
+      )}
       <div className="pp-list">
         {!all.length && <div className="hint pp-empty">{nativeOn ? 'No plugins yet: scan for plugins on the I/O page.' : 'Connect the engine to use your VST3 / AU plugins.'}</div>}
         {all.length > 0 && !groups.count && <div className="hint pp-empty">Nothing matches “{q}”.</div>}
@@ -80,7 +97,7 @@ export function PluginPicker({ anchor, onPick, onClose, title }: { anchor: DOMRe
               {arr.map((p) => {
                 if (shown++ >= LIMIT) return null;
                 return (
-                  <button key={p.id} className="pp-item" onClick={() => onPick(p)} title={`${p.name} · ${p.vendor} · ${fmtLabel(p.format)} · ${p.category}`}>
+                  <button key={p.id} className={'pp-item' + (p.id === current ? ' on' : '')} onClick={() => onPick(p)} title={`${p.name} · ${p.vendor} · ${fmtLabel(p.format)} · ${p.category}`}>
                     <span className="pp-name">{p.name}</span>
                     <span className="pp-fmt">{fmtLabel(p.format)}</span>
                   </button>

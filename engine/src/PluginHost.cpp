@@ -292,6 +292,7 @@ PluginHost::PluginHost()
 
 PluginHost::~PluginHost()
 {
+    alive.reset();
     stopTimer();
     if (scanChild) scanChild->kill(); // don't leave a scan helper running after quitting
     send = nullptr; // the engine's socket may already be gone at shutdown
@@ -540,6 +541,7 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
         {
             if (it->first == dockedSlot) undock();
             it->second.editor.reset(); // editor must go before the instance (instance lives on in old plans briefly)
+            if (w == wanted.end()) pendingStates.erase (it->first);
             it = slots.erase (it);
             changed = true;
         }
@@ -574,20 +576,54 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
             slots[s.slotId] = std::move (slot);
             continue;
         }
-        // Load asynchronously: licence checks (iLok/PACE, Waves, NI, UA...) can take seconds or open an
-        // activation window, and must never stall the engine. Plugins are always created and shown on
-        // the message thread, which is what copy-protection dialogs expect.
+        // Queued, then loaded one at a time (pumpLoadQueue): licence checks (iLok/PACE, Waves,
+        // Softube...) and activation dialogs run without piling up, and each plugin gets its saved
+        // settings before it ever processes audio.
         slot.loading = true;
-        const auto slotId = s.slotId, pluginId = s.pluginId;
-        const int stripChannels = s.channels;
-        const auto gen = slot.generation;
-        slots[slotId] = std::move (slot);
-        std::cout << "[insert] loading " << desc->name << " (" << slotId << ")" << std::endl;
-        send (obj ({ { "type", "insert.loading" }, { "slotId", slotId }, { "pluginId", pluginId } }));
+        std::cout << "[insert] queued " << desc->name << " (" << s.slotId << ")" << std::endl;
+        send (obj ({ { "type", "insert.loading" }, { "slotId", s.slotId }, { "pluginId", s.pluginId } }));
+        slots[s.slotId] = std::move (slot);
+        loadQueue.push_back (s.slotId);
+        ++loadTotal;
+    }
+    // Main LR first, then the buses, then the channels: the mix chain is in place before sources
+    std::stable_sort (loadQueue.begin(), loadQueue.end(), [this] (const juce::String& a, const juce::String& b) {
+        auto rank = [this] (const juce::String& id) {
+            auto it = slots.find (id);
+            const auto strip = it == slots.end() ? juce::String() : it->second.strip;
+            return strip == "main" ? 0 : strip.startsWith ("bus") ? 1 : 2;
+        };
+        return rank (a) < rank (b);
+    });
+    pumpLoadQueue();
+    return changed;
+}
+
+void PluginHost::pumpLoadQueue()
+{
+    if (loadingNow.isNotEmpty()) return;
+    while (! loadQueue.empty())
+    {
+        const auto slotId = loadQueue.front();
+        loadQueue.pop_front();
+        auto it = slots.find (slotId);
+        if (it == slots.end() || ! it->second.loading || it->second.insert) continue; // removed meanwhile
+        const auto desc = findDescription (it->second.pluginId);
+        if (! desc) { it->second.loading = false; continue; }
+        loadingNow = slotId;
+        const auto pluginId = it->second.pluginId, strip = it->second.strip;
+        const int stripChannels = it->second.channels;
+        const auto gen = it->second.generation;
+        std::cout << "[insert] loading " << desc->name << " (" << slotId << ") " << (loadDone + 1) << "/" << loadTotal << std::endl;
+        send (obj ({ { "type", "plugins.progress" }, { "done", loadDone }, { "total", loadTotal }, { "name", desc->name }, { "strip", strip } }));
         formats.createPluginInstanceAsync (*desc, sampleRate, maxBlock,
             [this, slotId, pluginId, stripChannels, gen] (std::unique_ptr<juce::AudioPluginInstance> inst, const juce::String& err) {
                 auto it = slots.find (slotId);
-                if (it == slots.end() || it->second.generation != gen) return; // slot removed/replaced meanwhile
+                if (it == slots.end() || it->second.generation != gen)
+                {
+                    finishLoad(); // slot removed / replaced meanwhile: carry on with the next one
+                    return;
+                }
                 auto& sl = it->second;
                 sl.loading = false;
                 if (! inst)
@@ -595,19 +631,59 @@ bool PluginHost::syncInserts (const std::vector<InsertSpec>& specs)
                     std::cout << "[insert] failed " << pluginId << ": " << err << std::endl;
                     send (obj ({ { "type", "insert.error" }, { "slotId", slotId }, { "pluginId", pluginId },
                                  { "message", err.isNotEmpty() ? err : juce::String ("Plugin failed to load (check its licence / authorisation)") } }));
+                    finishLoad();
                     return;
                 }
-                sl.insert = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
-                sl.insert->bypass = sl.bypass;
-                auto& p = sl.insert->plugin();
-                std::cout << "[insert] ready " << p.getName() << " (" << slotId << ")" << std::endl;
+                auto ins = std::make_shared<HostedInsert> (std::move (inst), stripChannels, sampleRate, maxBlock);
+                ins->bypass = sl.bypass;
+                // its saved settings first, while nothing is rendering it yet
+                bool stateApplied = false;
+                if (auto ps = pendingStates.find (slotId); ps != pendingStates.end())
+                {
+                    juce::MemoryBlock mb;
+                    if (decodeState (ps->second, mb))
+                    {
+                        ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
+                        stateApplied = true;
+                    }
+                    pendingStates.erase (ps);
+                }
+                sl.insert = ins;
+                auto& p = ins->plugin();
+                std::cout << "[insert] ready " << p.getName() << " (" << slotId << ")" << (stateApplied ? " with its settings" : "") << std::endl;
                 send (obj ({ { "type", "insert.ready" }, { "slotId", slotId }, { "pluginId", pluginId }, { "name", p.getName() },
-                             { "latency", sl.insert->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", sl.insert->getPluginChannels() },
-                             { "params", sl.insert->describeParams() } }));
-                if (onInstancesChanged) onInstancesChanged();
+                             { "latency", ins->getLatency() }, { "hasEditor", p.hasEditor() }, { "channels", ins->getPluginChannels() },
+                             { "stateApplied", stateApplied }, { "params", ins->describeParams() } }));
+                if (onInstancesChanged) onInstancesChanged(); // now it joins the audio path
+                finishLoad();
             });
+        return;
     }
-    return changed;
+}
+
+void PluginHost::finishLoad()
+{
+    loadingNow = {};
+    ++loadDone;
+    if (loadQueue.empty())
+    {
+        send (obj ({ { "type", "plugins.progress" }, { "done", loadDone }, { "total", loadTotal }, { "finished", true } }));
+        loadDone = loadTotal = 0;
+    }
+    // next one from the message loop, so UI messages and the plan get handled in between
+    std::weak_ptr<bool> ok = alive;
+    juce::MessageManager::callAsync ([this, ok] { if (! ok.expired()) pumpLoadQueue(); });
+}
+
+bool PluginHost::decodeState (const juce::String& base64, juce::MemoryBlock& mb)
+{
+    if (base64.startsWith ("b64:"))
+    {
+        // standard base64 (e.g. an Audio Unit's ClassInfo plist imported from a Logic project)
+        juce::MemoryOutputStream out (mb, false);
+        return juce::Base64::convertFromBase64 (out, base64.substring (4));
+    }
+    return mb.fromBase64Encoding (base64);
 }
 
 int PluginHost::numLoading() const
@@ -641,16 +717,23 @@ bool PluginHost::setParam (const juce::String& slotId, const juce::String& param
 bool PluginHost::setState (const juce::String& slotId, const juce::String& base64)
 {
     auto ins = find (slotId);
-    if (! ins) return false;
-    juce::MemoryBlock mb;
-    if (base64.startsWith ("b64:"))
+    if (! ins)
     {
-        // standard base64 (e.g. an Audio Unit's ClassInfo plist imported from a Logic project)
-        juce::MemoryOutputStream out (mb, false);
-        if (! juce::Base64::convertFromBase64 (out, base64.substring (4))) return false;
+        // not loaded yet: kept and applied when it loads, before it processes any audio
+        auto it = slots.find (slotId);
+        if (it == slots.end() || ! it->second.loading) return false;
+        pendingStates[slotId] = base64;
+        return true;
     }
-    else if (! mb.fromBase64Encoding (base64)) return false;
-    ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
+    juce::MemoryBlock mb;
+    if (! decodeState (base64, mb)) return false;
+    {
+        // never change a plugin's state while the audio thread is inside it: some plugins
+        // (Softube, seen crashing in render) rebuild their internals in setStateInformation.
+        // The audio thread only try-locks this, so the strip passes audio through meanwhile.
+        const juce::ScopedLock sl (ins->plugin().getCallbackLock());
+        ins->plugin().setStateInformation (mb.getData(), (int) mb.getSize());
+    }
     // report all values back so the UI's generic editor matches the restored state
     send (obj ({ { "type", "insert.params" }, { "slotId", slotId }, { "params", ins->describeParams() } }));
     return true;
@@ -736,7 +819,13 @@ void PluginHost::closeEditor (const juce::String& slotId)
     // (the window leaves the slot now, so a quick re-open makes a fresh one)
     auto* window = it->second.editor.release();
     juce::MessageManager::callAsync ([window] { delete window; });
-    if (it->second.insert) it->second.insert->stateDirty = true;
+    // closing the window: save what was changed in it straight away
+    if (it->second.insert)
+    {
+        it->second.insert->stateDirty = false;
+        it->second.lastStateSent = ticks;
+        send (obj ({ { "type", "insert.state" }, { "slotId", slotId }, { "state", getState (slotId) } }));
+    }
     send (obj ({ { "type", "insert.editor" }, { "slotId", slotId }, { "open", false } }));
 }
 
@@ -755,16 +844,19 @@ void PluginHost::timerCallback()
     {
         auto& ins = slot.insert;
         if (! ins) continue;
-        if (ins->paramsDirty.exchange (false))
+        // parameter echoes at most 5 a second per plugin (plugins that move their own parameters,
+        // e.g. meters or analysers, would otherwise flood the console with 166 plugins loaded)
+        if (ticks - slot.lastParamsSent >= 4 && ins->paramsDirty.exchange (false))
         {
+            slot.lastParamsSent = ticks;
             std::vector<int> changed;
             for (int i = 0; i < ins->numParams; ++i)
                 if (ins->paramDirty[(size_t) i].exchange (false)) changed.push_back (i);
             if (! changed.empty())
                 send (obj ({ { "type", "insert.params" }, { "slotId", id }, { "params", ins->describeParams (&changed) } }));
         }
-        // persist plugin state (for show files) at most once a second while it changes
-        if (ticks - slot.lastStateSent >= 20 && ins->stateDirty.exchange (false))
+        // persist plugin state (for show files) at most every 5 s per plugin while it changes
+        if (ticks - slot.lastStateSent >= 100 && ins->stateDirty.exchange (false))
         {
             slot.lastStateSent = ticks;
             send (obj ({ { "type", "insert.state" }, { "slotId", id }, { "state", getState (id) } }));

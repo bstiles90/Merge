@@ -7,10 +7,10 @@ import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
 import type { Bus, Channel, InsertSlot, Send, StripRef } from '../core/types';
 import { applyTapValue, sendTap, tapChoices, tapCode, tapValue } from '../core/sends';
-import { Fader, Knob, Meter, MeterScale, PeakReadout, Toggle } from './controls';
+import { Fader, Knob, Meter, MeterScale, PeakReadout, Toggle, parsePan } from './controls';
 import { setStripFader } from '../control/midi';
 import { createsLoop } from '../core/plan';
-import { createBus, createdBuses, isCreated, routableBuses } from '../core/buses';
+import { createBus, isCreated, routableBuses } from '../core/buses';
 import { sendNative, useNative } from '../native/bridge';
 import { closeDrawer, openDrawer, toggleRack, useUi } from './uiState';
 
@@ -90,8 +90,12 @@ const gainColor = (db: number) => (db > 0.05 ? '#f2a33c' : db < -0.05 ? '#3cc6d9
 function InputSection({ ch }: { ch: Channel }) {
   const s = useConsole();
   const device = useNative((st) => (st.status === 'connected' ? st.device : undefined));
-  const value = ch.source.kind === 'input' ? `in:${ch.source.deviceChannel ?? 0}` : ch.source.kind;
+  const playing = ch.inputMode === 'playback';
+  const value = playing ? 'playback' : ch.source.kind === 'input' ? `in:${ch.source.deviceChannel ?? 0}` : ch.source.kind;
+  const hasTake = useConsole((st) => st.clips.some((c) => c.trackId === ch.id));
   const choose = (v: string) => {
+    if (v === 'playback') return s.updateChannel(ch.id, { inputMode: 'playback' });
+    if (playing) s.updateChannel(ch.id, { inputMode: 'live' });
     if (v.startsWith('in:'))
       s.updateChannel(ch.id, { source: { ...ch.source, kind: 'input', deviceId: device ? 'native' : ch.source.deviceId, deviceChannel: Number(v.slice(3)), deviceChannelR: undefined } });
     else s.updateChannel(ch.id, { source: { ...ch.source, kind: v as Channel['source']['kind'] } });
@@ -101,11 +105,12 @@ function InputSection({ ch }: { ch: Channel }) {
     <div className="sec sec-input">
       <div className="src-row">
       <MonoStereoSwitch ch={ch} />
-      <div className="sec-src pickable" title={`Input: ${sourceLabel(ch)}. Click to change`} onClick={(e) => e.stopPropagation()}>
-        {sourceLabel(ch)}
+      <div className={'sec-src pickable' + (playing ? ' playback' : '')} title={playing ? `Virtual soundcheck: playing back its recording (live input ${sourceLabel(ch)} is off)` : `Input: ${sourceLabel(ch)}. Click to change`} onClick={(e) => e.stopPropagation()}>
+        {playing ? '▶ PB' : sourceLabel(ch)}
         {ch.phaseInvert && <span className="phase">Ø</span>}
         <select className="src-select" value={value} onChange={(e) => choose(e.target.value)}>
           <option value="none">— No source</option>
+          {(hasTake || playing) && <option value="playback">▶ Playback (virtual soundcheck)</option>}
           {inputs.length > 0 && (
             <optgroup label={device?.inputDevice || 'Interface inputs'}>
               {inputs.map((name, i) =>
@@ -137,6 +142,7 @@ function InputSection({ ch }: { ch: Channel }) {
         value={ch.gainDb}
         min={-24}
         max={48}
+        centre={0}
         defaultValue={0}
         // gain colour: amber when boosting, cyan when cutting, grey at 0 dB
         color={gainColor(ch.gainDb)}
@@ -150,22 +156,52 @@ function InputSection({ ch }: { ch: Channel }) {
 
 /** Rack slots: click a plugin to open (or close) its own floating window;
  *  click the next empty slot to pick a plugin for it. */
-function RackSection({ inserts, onSelect, onAdd, onBypass }: { inserts?: InsertSlot[]; onSelect?: () => void; onAdd?: (p: PluginDescriptor) => void; onBypass?: (slotId: string) => void }) {
+/** Rack slot clicks: one click = the plugin menu, a double click = the plugin's window. */
+export function useSlotClicks() {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  return (single: () => void, double: () => void) => ({
+    onClick: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        single();
+      }, 230);
+    },
+    onDoubleClick: (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = null;
+      double();
+    },
+  });
+}
+
+/** Put a plugin in a slot, or empty it (null). */
+export function replaceInsert(list: InsertSlot[], slotId: string, p: PluginDescriptor | null): InsertSlot[] {
+  if (!p) return list.filter((x) => x.id !== slotId);
+  return list.map((x) => (x.id === slotId ? newInsert(p) : x));
+}
+
+function RackSection({ inserts, onSelect, onAdd, onBypass, onReplace }: {
+  inserts?: InsertSlot[];
+  onSelect?: () => void;
+  onAdd?: (p: PluginDescriptor) => void;
+  onBypass?: (slotId: string) => void;
+  onReplace?: (slotId: string, p: PluginDescriptor | null) => void;
+}) {
   const hidden = useUi((u) => u.rackHidden);
   const nativeOn = useNative((st) => st.status === 'connected');
-  const native = useNative((st) => st.inserts);
-  const [picker, setPicker] = useState<DOMRect | null>(null);
-  const click = (e: React.MouseEvent, ins?: InsertSlot) => {
-    if (!ins) {
-      if (onAdd) setPicker((e.currentTarget as HTMLElement).getBoundingClientRect());
-      return;
-    }
-    if (nativeOn && !ins.pluginId.startsWith('builtin.')) {
-      sendNative({ type: 'insert.editor', slotId: ins.id, open: !native[ins.id]?.editorOpen });
-      return;
-    }
-    onSelect?.(); // browser effect: its settings are in the drawer's RACK tab
+  // redraw only when one of this rack's plugins opens / closes / fails, not on every plugin update
+  useNative((st) => (inserts ?? []).map((x) => { const n = st.inserts[x.id]; return `${n?.editorOpen ? 1 : 0}${n?.loading ? 'l' : ''}${n?.error ?? ''}`; }).join('|'));
+  const native = useNative.getState().inserts;
+  const [picker, setPicker] = useState<{ at: DOMRect; slot?: InsertSlot } | null>(null);
+  const clicks = useSlotClicks();
+  const openWindow = (ins: InsertSlot) => {
+    if (nativeOn && !ins.pluginId.startsWith('builtin.')) sendNative({ type: 'insert.editor', slotId: ins.id, open: !native[ins.id]?.editorOpen });
+    else onSelect?.(); // browser effect: its settings are in the drawer
   };
+  const el = (id: string) => () => (document.querySelector(`[data-slot="${id}"]`) as HTMLElement | null)?.getBoundingClientRect() ?? new DOMRect(innerWidth / 2, innerHeight / 3, 0, 0);
   const slots = Array.from({ length: 8 }, (_, i) => inserts?.[i]);
   const nextFree = inserts ? inserts.length : -1;
   if (hidden) {
@@ -199,10 +235,21 @@ function RackSection({ inserts, onSelect, onAdd, onBypass }: { inserts?: InsertS
               className={'rack-slot' + (ins ? ' used' : '') + (addable ? ' add' : '') + (ins?.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}
               title={
                 ins
-                  ? `${name}${ins.bypass ? ' (bypassed)' : ''}${n?.error ? ` — ${n.error}` : ''} — ${isWin ? (n?.editorOpen ? 'click to close its window' : 'click to open its window') : 'click for settings'}`
+                  ? `${name}${ins.bypass ? ' (bypassed)' : ''}${n?.error ? ` — ${n.error}` : ''} — click: change or remove · double-click: ${isWin ? 'window' : 'settings'}`
                   : addable ? 'Click to add a plugin' : ''
               }
-              onClick={(e) => click(e, ins)}
+              {...(ins
+                ? clicks(
+                    (() => { const at = el(ins.id); return () => setPicker({ at: at(), slot: ins }); })(),
+                    () => openWindow(ins),
+                  )
+                : {
+                    onClick: (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      if (addable) setPicker({ at: (e.currentTarget as HTMLElement).getBoundingClientRect() });
+                    },
+                  })}
+              data-slot={ins?.id}
             >
               {ins && (
                 <span
@@ -221,13 +268,19 @@ function RackSection({ inserts, onSelect, onAdd, onBypass }: { inserts?: InsertS
             </div>
           );
         })}
-      {picker && onAdd && (
+      {picker && (
         <PluginPicker
-          anchor={picker}
+          anchor={picker.at}
+          title={picker.slot ? 'Plugin' : undefined}
+          current={picker.slot?.pluginId}
           onClose={() => setPicker(null)}
+          onOpen={picker.slot ? () => { const sl = picker.slot!; setPicker(null); openWindow(sl); } : undefined}
+          onNone={picker.slot && onReplace ? () => { const id = picker.slot!.id; setPicker(null); onReplace(id, null); } : undefined}
           onPick={(p) => {
+            const sl = picker.slot;
             setPicker(null);
-            onAdd(p);
+            if (sl) onReplace?.(sl.id, p);
+            else onAdd?.(p);
           }}
         />
       )}
@@ -325,7 +378,8 @@ export function SendsSection({ ch, bus }: { ch?: Channel; bus?: Bus }) {
   if (!owner) return <div className="sec sec-sends" />;
   const sends = ch ? ch.sends : bus?.sends ?? {};
   const used = routableBuses(s).filter((b) => b.id !== owner.id && sendUsed(sends[b.id]));
-  const mm = ch ? createdBuses(s).filter((b) => b.type === 'mixminus') : [];
+  // mix-minus buses are hidden for now (older shows that have one keep working)
+  const mm: Bus[] = [];
   const targets = routableBuses(s).filter((b) => b.type !== 'mixminus' && b.id !== owner.id && !sendUsed(sends[b.id]) && !(bus && createsLoop(s, bus.id, b.id)));
   return (
     <div className="sec sec-sends">
@@ -480,11 +534,11 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <InputSection ch={ch} />
-        <RackSection inserts={ch.inserts} onSelect={select} onBypass={(id) => s.updateChannel(ch.id, { inserts: ch.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateChannel(ch.id, { inserts: [...ch.inserts, newInsert(p)] })} />
+        <RackSection inserts={ch.inserts} onSelect={select} onBypass={(id) => s.updateChannel(ch.id, { inserts: ch.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateChannel(ch.id, { inserts: [...ch.inserts, newInsert(p)] })} onReplace={(id, p) => s.updateChannel(ch.id, (c) => ({ inserts: replaceInsert(c.inserts, id, p) }))} />
         <SendsSection ch={ch} />
         <ChannelOutput ch={ch} />
         <div className="sec sec-pan">
-          <Knob size={30} value={ch.pan} min={-1} max={1} defaultValue={0} format={ch.stereo ? (p) => `BAL ${panText(p)}` : panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
+          <Knob size={30} value={ch.pan} min={-1} max={1} defaultValue={0} parse={parsePan} format={ch.stereo ? (p) => `BAL ${panText(p)}` : panText} onChange={(pan) => s.updateChannel(ch.id, { pan: Math.abs(pan) < 0.02 ? 0 : pan })} />
         </div>
         <div className="sec sec-groups">
           {s.muteGroups.map((g) => (
@@ -529,7 +583,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">{b.type === 'mixminus' ? 'N-1' : 'BUS'}</div></div>
-        <RackSection inserts={b.inserts} onSelect={select} onBypass={(id) => s.updateBus(b.id, { inserts: b.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateBus(b.id, { inserts: [...b.inserts, newInsert(p)] })} />
+        <RackSection inserts={b.inserts} onSelect={select} onBypass={(id) => s.updateBus(b.id, { inserts: b.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateBus(b.id, { inserts: [...b.inserts, newInsert(p)] })} onReplace={(id, p) => s.updateBus(b.id, (x) => ({ inserts: replaceInsert(x.inserts, id, p) }))} />
         {b.type === 'mixminus' ? <SendsSection /> : <SendsSection bus={b} />}
         <BusOutput b={b} />
         <div className="sec sec-pan" />
@@ -592,7 +646,7 @@ export function Strip({ refr, index }: { refr: StripRef | null; index: number })
     sections = (
       <>
         <div className="sec sec-input"><div className="sec-src">PGM</div></div>
-        <RackSection inserts={s.main.inserts} onSelect={select} onBypass={(id) => s.updateMain({ inserts: s.main.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateMain({ inserts: [...s.main.inserts, newInsert(p)] })} />
+        <RackSection inserts={s.main.inserts} onSelect={select} onBypass={(id) => s.updateMain({ inserts: s.main.inserts.map((x) => (x.id === id ? { ...x, bypass: !x.bypass } : x)) })} onAdd={(p) => s.updateMain({ inserts: [...s.main.inserts, newInsert(p)] })} onReplace={(id, p) => s.updateMain({ inserts: replaceInsert(useConsole.getState().main.inserts, id, p) })} />
         <SendsSection />
         <div className="sec sec-out"><div className="out-pill" title="Main LR goes to the physical outputs patched on the I/O page">Outputs</div></div>
         <div className="sec sec-pan" />
