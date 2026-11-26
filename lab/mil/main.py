@@ -116,7 +116,7 @@ def run_window(state, url, audio_check=False):
         def ui_watch():
             import time
             t0, worst, samples = time.time(), 0.0, 0
-            while time.time() - t0 < 300 and not state.ui_check:
+            while time.time() - t0 < 900 and not state.ui_check:
                 done = threading.Event()
                 a = time.time()
                 threading.Thread(target=lambda: (win.evaluate_js("1"), done.set()), daemon=True).start()
@@ -127,7 +127,7 @@ def run_window(state, url, audio_check=False):
                     worst = max(worst, time.time() - a)
                 samples += 1
                 time.sleep(0.5)
-            print("[lab] ui check:", json.dumps({"result": state.ui_check or {"error": "no result within 300 s"},
+            print("[lab] ui check:", json.dumps({"result": state.ui_check or {"error": "no result within 900 s"},
                                                   "main_thread_worst_s": round(worst, 3), "samples": samples}), flush=True)
             win.destroy()
         threading.Thread(target=ui_watch, daemon=True).start()

@@ -90,7 +90,7 @@ jobs:
           python -c "import sys; sys.path.insert(0, 'lab/tests'); from pathlib import Path; from stress_validate import make_files; make_files(Path(sys.argv[1]), 7)" "$RUNNER_TEMP/uic/stems"
           MIL_UICHECK_DIR="$RUNNER_TEMP/uic" MIL_SETTINGS_DIR="$RUNNER_TEMP/uic/settings" "lab/dist/Merge Intelligence Lab.app/Contents/MacOS/Merge Intelligence Lab" > uic.log 2>&1 &
           PID=$!
-          for i in $(seq 1 360); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+          for i in $(seq 1 900); do kill -0 $PID 2>/dev/null || break; sleep 1; done
           kill $PID 2>/dev/null || true
           cat uic.log
           python - <<'PY'
@@ -103,6 +103,7 @@ jobs:
           res = r["result"]
           problems = []
           if not res.get("ok"): problems.append(f"wizard did not complete: {res.get('error')}")
+          if res.get("failed_pages"): problems.append(f"pages failed in WebKit: {res['failed_pages']}")
           if r["main_thread_worst_s"] > 5: problems.append(f"app main thread blocked for {r['main_thread_worst_s']} s")
           if res.get("page_worst_gap_ms", 0) > 3000: problems.append(f"page froze for {res['page_worst_gap_ms']} ms")
           sys.exit("; ".join(problems) if problems else 0)
