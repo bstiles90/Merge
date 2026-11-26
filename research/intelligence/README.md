@@ -6,6 +6,9 @@ files. It is research code:
 - nothing touches a live mixer;
 - it makes no network connections.
 
+> **Prefer a graphical app?** [Merge Intelligence Lab](../../docs/MERGE_INTELLIGENCE_LAB_USER_GUIDE.md)
+> (`lab/`) runs this same code with an import wizard, A/B listening, feedback and research export.
+
 It does seven things:
 
 1. Imports mastered reference recordings and their stems, then builds an inspectable

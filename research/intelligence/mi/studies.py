@@ -57,11 +57,8 @@ def _prepare(ws, mix, profile, cfg, injections=None, activity_overrides=None):
     if injections:
         dist = inject(sig, injections, 48000)
         ga = A.analyse_groups({g: dist[g] for g in groups}, 48000, activity_overrides=over, with_bands=False)
-    bw = pkg.meta.get("baseline", [0, 60])
-    if bw == "all":
-        bw = [0, n / 48000]
-    bmask = np.zeros(ga.nb, bool)
-    bmask[int(bw[0] / A.HOP_S):int(bw[1] / A.HOP_S)] = True
+    from .compare import baseline_mask
+    bmask, _ = baseline_mask(pkg.meta.get("baseline", [0, 60]), ga.nb, n / 48000)
     return pkg, sig, groups, ga_clean, ga, bmask
 
 
@@ -313,6 +310,7 @@ def processing_study(ws, a, out):
         raise SystemExit(f"mix '{mix}' has no raw/ folder: export the same groups BEFORE their plugins to raw/")
     proc, _ = load_group_signals(pkg.stems)
     raw, _ = load_group_signals(pkg.raw)
+    from .compare import baseline_mask
     bw = pkg.meta.get("baseline", [0, 60])
     res, lines = {}, ["Compares each group's raw (pre-plugin) and processed stems. The baseline window calibrates the processing's "
                       "level transfer (output loudness vs input loudness, per 2 LU input bin). Each later window's output is predicted "
@@ -327,8 +325,7 @@ def processing_study(ws, a, out):
         nb = min(len(pr), len(pp))
         pr, pp = pr[:nb], pp[:nb]
         act = A.activity(pr, pr, A.activity_params(g, cfg.get("activity")))
-        bmask = np.zeros(nb, bool)
-        bmask[int(bw[0] / A.HOP_S):int(bw[1] / A.HOP_S)] = True
+        bmask, _ = baseline_mask(bw, nb, nb * A.HOP_S)
         base, wins = classify_processing(pr, pp, act, bmask)
         res[g] = {"baseline": base, "windows": wins}
         if base is None:

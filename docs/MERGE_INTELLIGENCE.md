@@ -14,6 +14,7 @@
 | [Plugin architecture](MERGE_INTELLIGENCE_PLUGIN_ARCHITECTURE.md) | third-party plugin control |
 | [Technology matrix](MERGE_INTELLIGENCE_TECHNOLOGY_MATRIX.md) | approaches, libraries, licences |
 | [Test plan](MERGE_INTELLIGENCE_TEST_PLAN.md) | experiments, validation, mode progression |
+| [Intelligence Lab](MERGE_INTELLIGENCE_LAB.md) | standalone research app: references, profiles, listening, feedback, export |
 
 > The human engineer defines the sound. Merge Intelligence operates the mixer to achieve and maintain it.
 
@@ -42,6 +43,24 @@ rack" section and its offline solvers. It remains useful for a future, optional
 natural-language layer that *configures* Intelligence but never runs inside it.
 
 ---
+
+## 0a. Merge Intelligence Lab (November 2026)
+
+The research backend now has a graphical front end: **Merge Intelligence Lab**
+(`lab/`, documents [MERGE_INTELLIGENCE_LAB.md](MERGE_INTELLIGENCE_LAB.md),
+[user guide](MERGE_INTELLIGENCE_LAB_USER_GUIDE.md), [feedback schema](MERGE_INTELLIGENCE_LAB_FEEDBACK_SCHEMA.md),
+[research export](MERGE_INTELLIGENCE_LAB_RESEARCH_EXPORT.md), [build](MERGE_INTELLIGENCE_LAB_BUILD.md)).
+It is a separate macOS app (Windows preview) built by its own workflow (`lab.yml`, release `lab-beta`),
+runs entirely offline, and never connects to the console or engine. It calls the same `mi` code as the
+CLI (equivalence is tested), records every run with inputs, settings and algorithm version, collects
+the engineer's decision verdicts, notes, missed interventions, overall and blind evaluations, and
+exports privacy-filtered research packages for review. Backend changes made for it: algorithm version
+0.3.0 and result schema `merge.intelligence.result/1`; per-version listening gains; group-stem renders;
+multiple baseline regions; group exclusion; activity/loudness CSVs; streaming speech analysis for
+service-length recordings; studies accept multiple baseline regions.
+
+Roadmap position: the Lab is where real-audio evidence (Test plan §12–13) is gathered. No capability is
+promoted beyond *synthetically validated* until that evidence and the engineer's sign-off exist.
 
 ## 0. Prototype status (November 2026)
 

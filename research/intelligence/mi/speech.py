@@ -15,11 +15,14 @@ import json
 from pathlib import Path
 
 import numpy as np
+import soundfile as sf
+from scipy.signal import lfilter
 
 from . import analysis as A
 from . import audio_io as io
 from . import features as F
 from . import render as R
+from . import ALGORITHM_VERSION, RESULT_SCHEMA
 from .actions import ControlAction, permissions_from_config, validate, write_jsonl
 from .layout import audio_files, load_toml
 
@@ -98,6 +101,134 @@ def leveller(p_pre, floor, target_lufs, evidence_s=6.0, rate_db_s=1.0, hyst_db=1
     return out
 
 
+CHUNK = 480000  # 10 s at 48 kHz; a multiple of the 1 ms control hop and the 100 ms block
+
+
+class _Sources:
+    """Synchronised mono readers for every mic file, streamed in 10 s chunks (constant memory).
+    Files at another sample rate are loaded whole and resampled (warned) - supply 48 kHz."""
+
+    def __init__(self, files, sr):
+        self.files, self.sr, self.warnings, self.pos = files, sr, [], 0
+        self.mem = {}
+        frames = []
+        for p in files:
+            info = sf.info(str(p))
+            if info.samplerate != sr:
+                a = io.read(p, sr)
+                self.mem[str(p)] = a.mono()
+                self.warnings += a.warnings
+                frames.append(len(self.mem[str(p)]))
+            else:
+                frames.append(info.frames)
+                if info.channels > 1:
+                    self.warnings.append(f"{p.name}: {info.channels} channels mixed to mono (supply one mono file per mic)")
+        self.frames = min(frames)
+        if max(frames) - self.frames > 0.01 * sr:
+            self.warnings.append(f"mic files differ in length by {(max(frames) - self.frames) / sr:.2f} s; trimmed to the "
+                                 "shortest (they must come from the same recording pass)")
+
+    def chunks(self):
+        self.pos = 0
+        handles = {str(p): sf.SoundFile(str(p)) for p in self.files if str(p) not in self.mem}
+        try:
+            while self.pos < self.frames:
+                k = min(CHUNK, self.frames - self.pos)
+                out = []
+                for p in self.files:
+                    key = str(p)
+                    if key in self.mem:
+                        out.append(self.mem[key][self.pos:self.pos + k].astype(np.float64))
+                    else:
+                        x = handles[key].read(k, dtype="float64", always_2d=True)
+                        x = x.mean(axis=1)
+                        if len(x) < k:
+                            x = np.concatenate([x, np.zeros(k - len(x))])
+                        out.append(x)
+                self.pos += k
+                yield out
+        finally:
+            for f in handles.values():
+                f.close()
+
+
+class _KBlocks:
+    """Streaming K-weighted 100 ms block power (filter state carried across chunks)."""
+
+    def __init__(self, sr):
+        (self.bs, self.as_), (self.bh, self.ah) = F.k_weighting_coeffs(sr)
+        self.z1 = np.zeros(2)
+        self.z2 = np.zeros(2)
+        self.hop = int(round(sr * A.HOP_S))
+        self.rem = np.zeros(0)
+        self.out = []
+
+    def push(self, x):
+        y, self.z1 = lfilter(self.bs, self.as_, x, zi=self.z1)
+        y, self.z2 = lfilter(self.bh, self.ah, y, zi=self.z2)
+        y = np.concatenate([self.rem, y])
+        nb = len(y) // self.hop
+        if nb:
+            self.out.append((y[: nb * self.hop].reshape(nb, self.hop) ** 2).mean(axis=1))
+        self.rem = y[nb * self.hop:]
+
+    def result(self):
+        return np.concatenate(self.out) if self.out else np.zeros(0)
+
+
+def _hop_power(x, h):
+    n = len(x) // h
+    return (x[: n * h].reshape(n, h) ** 2).mean(axis=1)
+
+
+def _gains_from_powers(cp, cref, depth_db=-40.0, attack_ms=10.0, release_ms=150.0, last_hold=True, hold_db=-3.0, hold_s=0.5):
+    """gain_share() on precomputed 1 kHz side-chain powers (identical maths, streaming-friendly)."""
+    n = min(len(c) for c in cp + [cref])
+    e = np.stack([ar_smooth(c[:n], attack_ms, release_ms, CTRL_HZ) for c in cp])
+    eref = ar_smooth(cref[:n], attack_ms, release_ms, CTRL_HZ)
+    share = np.clip(np.sqrt(np.maximum(e, 1e-24) / np.maximum(eref, 1e-24)), 10 ** (depth_db / 20), 1.0)
+    return _last_hold(share, last_hold, hold_db, hold_s), share
+
+
+def _last_hold(share, enabled=True, hold_db=-3.0, hold_s=0.5):
+    g = share.copy()
+    if not enabled or share.shape[0] < 2:
+        return g
+    thr = 10 ** (hold_db / 20)
+    need = int(hold_s * CTRL_HZ)
+    holder, run_m, run_n = -1, -1, 0
+    top = np.argmax(share, axis=0)
+    above = share[top, np.arange(share.shape[1])] > thr
+    for k in range(share.shape[1]):
+        if above[k]:
+            if top[k] == run_m:
+                run_n += 1
+            else:
+                run_m, run_n = top[k], 1
+            if run_n >= need:
+                holder = run_m
+        elif holder >= 0:
+            g[holder, k] = 1.0
+    return g
+
+
+def _calibration(names, p_pre, floor):
+    """Input calibration check: speech level of each mic while it holds the floor."""
+    lv = {}
+    for i, k in enumerate(names):
+        if floor[i].sum() >= 20:
+            st = F.short_term(p_pre[i])[floor[i]]
+            st = st[np.isfinite(st)]
+            if len(st):
+                lv[k] = round(float(np.median(st)), 1)
+    spread = round(max(lv.values()) - min(lv.values()), 1) if len(lv) > 1 else 0.0
+    note = ("Mic inputs are not level-matched: the talkers differ by "
+            f"{spread} dB. Gain sharing compares raw levels, so a hot mic wins the floor more easily; "
+            "use the mic weights (or input gain) to compensate. The leveller corrects each talker within its limits."
+            if spread > 10 else "Talker levels are within 10 dB of each other.")
+    return {"speech_level_LUFS": lv, "spread_dB": spread, "note": note}
+
+
 def run_speech(workspace: Path, name: str, cfg: dict, out_dir: Path, seed=None, plots=True, log=print):
     folder = workspace / "speech" / name
     meta = load_toml(folder / "speech.toml")
@@ -107,43 +238,91 @@ def run_speech(workspace: Path, name: str, cfg: dict, out_dir: Path, seed=None, 
     files = [p for p in files if p.stem not in excluded]
     if len(files) < 1:
         raise ValueError(f"speech '{name}': no mic files in {folder}/mics")
-    auds = {p.stem: io.read(p, sr) for p in files}
-    _, warns = io.align_lengths(auds)
-    for a in auds.values():
-        warns += a.warnings
-    names = list(auds)
-    mono = [auds[k].mono() for k in names]
-    n = min(len(m) for m in mono)
-    mono = [m[:n] for m in mono]
+    names = [p.stem for p in files]
+    src = _Sources(files, sr)
+    warns = list(src.warnings)
+    n = src.frames
     weights = [float(meta.get("weights", {}).get(k, 0.0)) for k in names]
     perm = permissions_from_config(cfg)
     depth = float(meta.get("depth_db", perm["speechAutomix"].get("depth_db", -40.0)))
     target = float(meta.get("target_lufs", -20.0))
     log(f"speech: {len(names)} mics, {n / sr:.0f} s, target {target} LUFS")
 
-    g_ctrl, share_ctrl = gain_share(mono, sr, weights, depth_db=depth, last_hold=bool(meta.get("last_hold", True)))
-    # 100 ms block views
+    # ---- pass 1 (analysis, streaming): side-chain envelopes at 1 kHz, K-weighted 100 ms block powers
+    w = 10 ** (np.asarray(weights, float) / 20)
+    h = sr // CTRL_HZ
+    cp = [[] for _ in names]
+    cref = []
+    kb = [_KBlocks(sr) for _ in names]
+    for chunk in src.chunks():
+        for i, x in enumerate(chunk):
+            cp[i].append(_hop_power(w[i] * x, h))
+            kb[i].push(x)
+        cref.append(_hop_power(sum(w[i] * chunk[i] for i in range(len(names))), h))
+        log(f"progress analysis {min(1.0, src.pos / max(n, 1)):.2f}")
+    cp = [np.concatenate(c) if c else np.zeros(0) for c in cp]
+    cref = np.concatenate(cref) if cref else np.zeros(0)
+    g_ctrl, share_ctrl = _gains_from_powers(cp, cref, depth_db=depth, last_hold=bool(meta.get("last_hold", True)))
     per_blk = int(A.HOP_S * CTRL_HZ)
-    nb = min(len(F.block_power(m, sr)) for m in mono)
+    p_pre_list = [k.result() for k in kb]
+    nb = min(min(len(p) for p in p_pre_list), share_ctrl.shape[1] // per_blk)
     share_blk = np.stack([20 * np.log10(np.maximum(share_ctrl[i][: nb * per_blk].reshape(nb, per_blk).mean(axis=1), 1e-9)) for i in range(len(names))])
-    p_pre = np.stack([F.block_power(m, sr)[:nb] for m in mono])
+    p_pre = np.stack([p[:nb] for p in p_pre_list])
     p_prog = p_pre.sum(axis=0)
     act = np.stack([A.activity(p_pre[i], p_prog, A.activity_params("speech", cfg.get("activity"))) for i in range(len(names))])
     floor = (share_blk > -6.0) & act
     lev = np.stack([leveller(p_pre[i], floor[i], target, lo=perm["speechLevel"]["min"], hi=perm["speechLevel"]["max"],
                              rate_db_s=perm["speechLevel"].get("rate_db_s", 1.0)) for i in range(len(names))])
 
-    gs = [to_samples(g_ctrl[i], n, sr) for i in range(len(names))]
-    lv = [R.block_gain_to_samples(lev[i], n, sr) for i in range(len(names))]
-    st2 = lambda v: np.vstack([v, v])
-    before = st2(sum(mono))
-    after_am = st2(sum(gs[i] * mono[i] for i in range(len(names))))
-    after = st2(sum(gs[i] * lv[i] * mono[i] for i in range(len(names))))
+    # ---- pass 2 (render, streaming): before / automix / automix+leveller, float32 temp files
+    out_dir.mkdir(parents=True, exist_ok=True)
+    adir = out_dir / "audio"
+    adir.mkdir(parents=True, exist_ok=True)
+    versions = ["before", "after_automix", "after"]
+    tmp = {v: adir / f".{v}.tmp.wav" for v in versions}
+    wr = {v: sf.SoundFile(str(tmp[v]), "w", sr, 1, "FLOAT") for v in versions}
+    okb = {v: _KBlocks(sr) for v in versions}
+    peak = {v: 0.0 for v in versions}
+    ctrl_x = (np.arange(g_ctrl.shape[1]) + 0.5) * h
+    blk_x = (np.arange(nb) + 0.5) * int(round(sr * A.HOP_S))
+    try:
+        for chunk in src.chunks():
+            s0 = src.pos - len(chunk[0])
+            idx = np.arange(s0, s0 + len(chunk[0]))
+            outs = {v: np.zeros(len(idx)) for v in versions}
+            for i, x in enumerate(chunk):
+                gi = np.interp(idx, ctrl_x, g_ctrl[i])
+                li = 10 ** (np.interp(idx, blk_x, lev[i]) / 20)
+                outs["before"] += x
+                outs["after_automix"] += gi * x
+                outs["after"] += gi * li * x
+            for v in versions:
+                wr[v].write(outs[v].astype(np.float32))
+                okb[v].push(outs[v])
+                peak[v] = max(peak[v], float(np.max(np.abs(outs[v]))) if len(outs[v]) else 0.0)
+            log(f"progress render {min(1.0, src.pos / max(n, 1)):.2f}")
+    finally:
+        for f in wr.values():
+            f.close()
+    # ---- pass 3: loudness-match (same rule as render.loudness_match) and write the listening files
+    target_l = -18.0
+    pow_out = {v: okb[v].result()[:nb] * 2 for v in versions}   # mono written as dual-mono stereo: 2 channels
+    gains = {v: 10 ** ((target_l - A._integrated_from_p(pow_out[v])) / 20) if np.isfinite(A._integrated_from_p(pow_out[v])) else 1.0 for v in versions}
+    common = min(1.0, 10 ** (-1.0 / 20) / max(max(peak[v] * gains[v] for v in versions), 1e-12))
+    render = {"target_LUFS": target_l, "common_peak_trim_dB": round(20 * np.log10(common), 2),
+              "gains_dB": {v: round(float(20 * np.log10(gains[v] * common)), 2) for v in versions}, "files": {}}
+    for v in versions:
+        g = gains[v] * common
+        with sf.SoundFile(str(tmp[v])) as fin, sf.SoundFile(str(adir / f"{v}.wav"), "w", sr, 2, "PCM_24") as fout:
+            for blk in fin.blocks(blocksize=CHUNK, dtype="float64"):
+                fout.write(np.column_stack([blk * g, blk * g]))
+        tmp[v].unlink()
+        render["files"][v] = f"{v}.wav"
+    p_before, p_am = okb["before"].result()[:nb], okb["after_automix"].result()[:nb]
 
     nobody = ~floor.any(axis=0)
     nobody[:30] = False
-    def blk_db(x):
-        pb = F.block_power(x, sr)[:nb]
+    def blk_db(pb):
         return round(float(10 * np.log10(np.mean(pb[nobody]) + 1e-20)), 1) if nobody.any() else float("nan")
     holder = np.where(floor.any(axis=0), np.argmax(np.where(floor, share_blk, -999), axis=0), -1)
     h = holder[holder >= 0]
@@ -174,10 +353,10 @@ def run_speech(workspace: Path, name: str, cfg: dict, out_dir: Path, seed=None, 
                         "fader) rather than relying on Intelligence")
             actions.append(validate(ControlAction("speechLevel", {"mic": k}, lev_db, specialist="speech",
                                                   reason={"text": txt, "saturated": sat}, confidence=0.8), perm))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    render = R.write_listening_set(out_dir / "audio", {"before": before, "after_automix": after_am, "after": after}, sr, seed=seed)
     res = {"name": name, "duration_s": round(n / sr, 1), "target_LUFS": target, "mics": mics, "warnings": warns,
-           "idle_noise_before_db": blk_db(before), "idle_noise_after_db": blk_db(after_am), "handovers": handovers,
+           "idle_noise_before_db": blk_db(p_before), "idle_noise_after_db": blk_db(p_am), "handovers": handovers,
+           "schema": RESULT_SCHEMA, "algorithm_version": ALGORITHM_VERSION, "mic_names": names,
+           "calibration": _calibration(names, p_pre, floor),
            "render": render, "actions": [a.summary() for a in actions]}
     figs = []
     try:
@@ -199,6 +378,11 @@ def run_speech(workspace: Path, name: str, cfg: dict, out_dir: Path, seed=None, 
             figs.append("speech.png")
     except Exception as e:  # plots are optional
         warns.append(f"plot failed: {e}")
+    t = np.arange(nb) * A.HOP_S
+    cols = [t] + [share_blk[i] for i in range(len(names))] + [floor[i].astype(int) for i in range(len(names))] + \
+           [lev[i] for i in range(len(names))] + [np.nan_to_num(F.short_term(p_pre[i]), nan=-120.0, neginf=-120.0) for i in range(len(names))]
+    hdr = ["time_s"] + [f"share_db:{k}" for k in names] + [f"floor:{k}" for k in names] + [f"leveller_db:{k}" for k in names] + [f"loudness_lufs:{k}" for k in names]
+    np.savetxt(out_dir / "speech_blocks.csv", np.column_stack(cols), delimiter=",", header=",".join(hdr), comments="", fmt="%.3f")
     (out_dir / "analysis.json").write_text(json.dumps(res, indent=1, default=float))
     write_jsonl(actions, out_dir / "decisions.jsonl")
     from .report import speech_report

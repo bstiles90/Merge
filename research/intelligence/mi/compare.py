@@ -20,6 +20,7 @@ from . import audio_io as io
 from . import controller as C
 from . import features as F
 from . import render as R
+from . import ALGORITHM_VERSION, RESULT_SCHEMA
 from .actions import ControlAction, permissions_from_config, validate, write_jsonl
 from .layout import GROUP_LABEL, load_mix
 from .operator import MusicSpecialist, ProgramSpecialist, arbitrate
@@ -84,8 +85,20 @@ def score_injections(hist, groups, injections, nb, hist_clean=None, bounds=(-4.0
             "scored_against": "undisturbed run" if hist_clean is not None else "zero"}
 
 
+def baseline_mask(spec, nb, total_s):
+    """Approved baseline: [start, end], a list of such regions, or "all"."""
+    if spec == "all" or spec is None:
+        spec = [[0, total_s]] if spec == "all" else [[0, 60]]
+    regions = [spec] if spec and not isinstance(spec[0], (list, tuple)) else list(spec)
+    m = np.zeros(nb, bool)
+    for a, b in regions:
+        m[int(float(a) / A.HOP_S):int(float(b) / A.HOP_S)] = True
+    return m, [[float(a), float(b)] for a, b in regions]
+
+
 def compare(workspace: Path, mix_name: str, profile: dict, cfg: dict, out_dir: Path, inject_spec=None, beta=None,
-            evidence_s=None, rate=None, render=True, render_experimental=False, seed=None, plots=True, log=print):
+            evidence_s=None, rate=None, render=True, render_experimental=False, seed=None, plots=True, log=print,
+            render_groups=False, blind=True):
     pkg = load_mix(workspace / "mixes" / mix_name)
     sr = io.PROJECT_SR
     signals, warns = load_group_signals(pkg.stems, sr)
@@ -93,10 +106,11 @@ def compare(workspace: Path, mix_name: str, profile: dict, cfg: dict, out_dir: P
         raise ValueError(f"mix '{mix_name}': no stems recognised in {pkg.folder}/stems")
     n = min(s.shape[1] for s in signals.values())
     signals = {g: s[:, :n] for g, s in signals.items()}
-    groups = [g for g in profile["groups"] if g in signals]
+    excluded = set((cfg.get("intelligence") or {}).get("exclude_groups", []))
+    groups = [g for g in profile["groups"] if g in signals and g not in excluded]
     unmanaged = [g for g in signals if g not in groups]
     if unmanaged:
-        warns.append(f"groups not in the profile are passed through untouched: {unmanaged}")
+        warns.append(f"groups passed through untouched (not in the profile, or excluded from Intelligence): {unmanaged}")
     checks = {"duration_s": round(n / sr, 1), "groups": groups, "unmapped_files": [p.name for p in pkg.stems.unmapped]}
     if pkg.mix is not None:
         mx = io.read(pkg.mix, sr)
@@ -126,11 +140,8 @@ def compare(workspace: Path, mix_name: str, profile: dict, cfg: dict, out_dir: P
     work = inject(signals, injections, sr) if injections else signals
     ga = A.analyse_groups({g: work[g] for g in groups}, sr, activity_overrides=act_over) if injections else ga_clean
 
-    bw = pkg.meta.get("baseline", [0, 60])
-    if bw == "all":
-        bw = [0, n / sr]
-    bmask = np.zeros(ga.nb, bool)
-    bmask[int(bw[0] / A.HOP_S):int(bw[1] / A.HOP_S)] = True
+    bmask, regions = baseline_mask(pkg.meta.get("baseline", [0, 60]), ga.nb, n / sr)
+    bw = regions[0]  # tone / dynamics anchor: the first approved region
     targets = C.build_targets(groups, profile["balance"], ga_clean, bmask, P.beta)
 
     music = MusicSpecialist(profile, P, perm)
@@ -168,7 +179,9 @@ def compare(workspace: Path, mix_name: str, profile: dict, cfg: dict, out_dir: P
     out_dir.mkdir(parents=True, exist_ok=True)
     result = {
         "mix": mix_name, "profile": profile.get("name"), "checks": checks, "warnings": warns,
-        "controller": {k: v for k, v in P.__dict__.items()}, "baseline_window_s": bw, "injections": injections,
+        "schema": RESULT_SCHEMA, "algorithm_version": ALGORITHM_VERSION,
+        "controller": {k: v for k, v in P.__dict__.items()}, "baseline_window_s": bw, "baseline_regions_s": regions,
+        "excluded_groups": sorted(excluded), "permissions": perm, "injections": injections,
         "groups": ga.to_summary(), "pairs": pairs,
         "static_offsets_dB": {g: round(float(static_o[i]), 2) for i, g in enumerate(groups)},
         "offset_summary": C.summarise_offsets(hist, groups), "events": events,
@@ -178,6 +191,11 @@ def compare(workspace: Path, mix_name: str, profile: dict, cfg: dict, out_dir: P
     if injections:
         hist_clean, _ = C.run(ga_clean, targets, P)
         result["injection_score"] = score_injections(hist, groups, injections, ga.nb, hist_clean, (P.min_db, P.max_db))
+    tcol = np.arange(ga.nb) * A.HOP_S
+    np.savetxt(out_dir / "activity.csv", np.column_stack([tcol] + [ga.active[g].astype(int) for g in groups] + [ga.density]),
+               delimiter=",", header="time_s," + ",".join(groups) + ",n_active", comments="", fmt="%.3f")
+    np.savetxt(out_dir / "loudness.csv", np.column_stack([tcol] + [np.nan_to_num(ga.st[g], nan=-120.0, neginf=-120.0) for g in groups]),
+               delimiter=",", header="time_s," + ",".join(groups), comments="", fmt="%.2f")
     np.savetxt(out_dir / "offsets.csv", np.column_stack([np.arange(ga.nb) * A.HOP_S, hist.T]), delimiter=",",
                header="time_s," + ",".join(groups), comments="", fmt="%.3f")
     if render:
@@ -193,7 +211,12 @@ def compare(workspace: Path, mix_name: str, profile: dict, cfg: dict, out_dir: P
             versions["after_experimental_eq"] = exp
             result["experimental_render"] = {"applied": applied, "note": "generic bell EQ standing in for the strip's own "
                                              "EQ plugin; not a validated capability"}
-        result["render"] = R.write_listening_set(out_dir / "audio", versions, sr, seed=seed)
+        gsets = None
+        if render_groups:
+            gsets = {"before": {g: work[g] for g in list(groups) + unmanaged},
+                     "after": {**{g: work[g] * R.block_gain_to_samples(hist[i], work[g].shape[1], sr) for i, g in enumerate(groups)},
+                               **{g: work[g] for g in unmanaged}}}
+        result["render"] = R.write_listening_set(out_dir / "audio", versions, sr, seed=seed, group_sets=gsets, blind=blind)
     (out_dir / "analysis.json").write_text(json.dumps(result, indent=1, default=float))
     write_jsonl(actions, out_dir / "decisions.jsonl")
     from .report import compare_report

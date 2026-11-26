@@ -144,7 +144,7 @@ def compare_report(result, actions, ga, hist, out_dir: Path, plots=True):
               "so level differences cannot bias the comparison.", "",
               "- `audio/before.wav`: the mix as supplied" + (" **with the injected disturbances**" if result["injections"] else ""),
               "- `audio/after.wav`: the same, with only the validated balance offsets applied",
-              f"- {r.get('blind', '')}"]
+              f"- {r.get('blind') or 'Blind A/B tests: in Merge Intelligence Lab (Listening Room)'}"]
         if "after_experimental_eq.wav" in r["files"].values():
             L += ["- `audio/after_experimental_eq.wav`: plus experimental EQ recommendations (generic bell EQ, **not validated**)"]
         L.append("")
@@ -237,7 +237,7 @@ def speech_report(res: dict, out_dir: Path, figs=()):
         L += ["## Input checks", ""] + [f"- {w}" for w in res["warnings"]] + [""]
     L += ["## Listening", "", "- `audio/before.wav`: all mics open at unity (what you'd hear without an automixer)",
           "- `audio/after_automix.wav`: gain sharing only", "- `audio/after.wav`: gain sharing + speech leveller",
-          f"- {res['render'].get('blind', '')}", "", "## Microphones", ""]
+          "- Blind A/B tests: in Merge Intelligence Lab's Listening Room", "", "## Microphones", ""]
     L.append(_table(res["mics"], [("Mic", lambda r: r["name"]), ("Weight", lambda r: f"{r['weight_db']:+.1f} dB"),
                                   ("Holds the floor", lambda r: f"{r['floor_s']:.0f} s"), ("Median share while talking", lambda r: f"{r['share_talking_db']:+.1f} dB"),
                                   ("Median share otherwise", lambda r: f"{r['share_idle_db']:+.1f} dB"),
