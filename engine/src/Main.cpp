@@ -1,3 +1,4 @@
+#include "Edition.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "Engine.h"
 #include "ConsoleWindow.h"
@@ -8,7 +9,7 @@ namespace merge { int runSelfTest (const juce::StringArray& args); }
 class MergeEngineApp : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return "Merge"; }
+    const juce::String getApplicationName() override { return MERGE_APP_NAME; }
     const juce::String getApplicationVersion() override { return MERGE_ENGINE_VERSION; }
     bool moreThanOneInstanceAllowed() override { return true; }
 
@@ -66,7 +67,7 @@ public:
             quit();
             return;
         }
-        std::cout << "Merge " << MERGE_ENGINE_VERSION << " — " << engine->statusText() << std::endl;
+        std::cout << MERGE_APP_NAME " " << MERGE_ENGINE_VERSION << " — " << engine->statusText() << std::endl;
         if (! args.contains ("--headless"))
         {
             const int ui = args.indexOf ("--ui-url"); // development: load the console from the Vite dev server

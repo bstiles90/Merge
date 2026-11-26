@@ -1,0 +1,159 @@
+name: Merge Intelligence Beta
+
+# A separate app from Merge: "Merge Intelligence Beta" (own name, bundle id, settings folder and
+# default port), built from the same console and engine with -DMERGE_INTELLIGENCE_EDITION=ON.
+# It installs next to Merge and never touches Merge's settings, plugin list or current show.
+# Published as the rolling pre-release "intelligence-beta" (never marked Latest, never replaces
+# the Merge "beta" or stable releases). Research only: not for services.
+
+on:
+  push:
+    branches: ['**']
+    paths: ['engine/**', 'src/**', 'index.html', 'package.json', 'package-lock.json', 'vite.config.ts',
+            'research/intelligence/mi/**', '.github/workflows/intelligence-beta.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-2022]
+    runs-on: ${{ matrix.os }}
+    env:
+      APP_NAME: Merge Intelligence Beta
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Build console UI
+        shell: bash
+        run: |
+          export MERGE_VERSION="Intelligence Beta ${GITHUB_SHA:0:7}"
+          npm ci
+          npm test
+          npm run build
+
+      - name: WebView2 SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: nuget install Microsoft.Web.WebView2 -Version 1.0.1901.177 -OutputDirectory C:\webview2
+
+      - name: Configure
+        shell: bash
+        run: |
+          EXTRA=""
+          if [ "$RUNNER_OS" = "Windows" ]; then EXTRA="-DJUCE_WEBVIEW2_PACKAGE_LOCATION=C:/webview2"; fi
+          cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release -DMERGE_INTELLIGENCE_EDITION=ON $EXTRA
+
+      - name: Build
+        run: cmake --build engine/build --config Release --parallel 4
+
+      - name: Self-test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          "engine/build/MergeEngine_artefacts/Release/$APP_NAME.app/Contents/MacOS/$APP_NAME" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
+
+      - name: Self-test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          "engine/build/MergeEngine_artefacts/Release/$APP_NAME.exe" --selftest --plugin "$PWD/engine/build/testplugin/MergeTestGain_artefacts/Release/VST3/Merge Test Gain.vst3"
+
+      # Launch the real app: the console must connect and load a VST3, using its own data folder
+      # (Library/Merge Intelligence Beta), never Merge's (Library/Merge).
+      - name: App launch + plugin load check (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP="engine/build/MergeEngine_artefacts/Release/$APP_NAME.app"
+          BIN="$APP/Contents/MacOS/$APP_NAME"
+          test -f "$APP/Contents/Resources/ui/index.html"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Contents/Info.plist")" = "audio.merge.intelligence-beta"
+          PLUGIN_ID=$("$BIN" --print-plugin-ids | grep "Merge Test Gain" | cut -f1 | head -1)
+          test -n "$PLUGIN_ID"
+          DATA="$HOME/Library/$APP_NAME"
+          mkdir -p "$DATA"
+          python3 engine/ci/make_dock_test_show.py "$PLUGIN_ID" "$DATA/current-show.merge.json"
+          "$BIN" > app.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 30); do grep -q "UI client connected" app.log && break; sleep 1; done
+          for i in $(seq 1 60); do grep -q "\[insert\] ready Merge" app.log && break; sleep 1; done
+          sleep 2
+          kill $PID || true
+          cat app.log
+          grep -q "UI client connected" app.log
+          grep -q "\[insert\] ready Merge Test Gain" app.log
+          # the production app's folder must not have been created or used
+          test ! -e "$HOME/Library/Merge/running.marker"
+          test ! -e "$HOME/Library/Merge/plugins.xml"
+
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p dmg dist
+          ditto "engine/build/MergeEngine_artefacts/Release/$APP_NAME.app" "dmg/$APP_NAME.app"
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "$APP_NAME" -srcfolder dmg -ov -format UDZO "dist/Merge-Intelligence-Beta-macOS.dmg"
+          hdiutil attach -nobrowse -mountpoint /tmp/midmg "dist/Merge-Intelligence-Beta-macOS.dmg"
+          codesign --verify --deep --strict --verbose=2 "/tmp/midmg/$APP_NAME.app"
+          hdiutil detach /tmp/midmg
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS'
+        with:
+          name: intelligence-macOS
+          path: dist/
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: intelligence-Windows
+          path: engine/build/MergeEngine_artefacts/Release
+
+  release:
+    concurrency:
+      group: release-intelligence-beta
+      cancel-in-progress: false
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Prepare release files
+        run: |
+          mkdir -p dist
+          cp artifacts/intelligence-macOS/Merge-Intelligence-Beta-macOS.dmg dist/
+          (cd artifacts/intelligence-Windows && zip -qr ../../dist/Merge-Intelligence-Beta-Windows.zip .)
+          ls -l dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          SHORT=$(echo "$GITHUB_SHA" | cut -c1-7)
+          cat > notes.md <<NOTES
+          **Merge Intelligence Beta** — research build of \`$GITHUB_REF_NAME\` at $SHORT. **Not for services.**
+
+          A separate app from Merge: it installs next to it, keeps its own settings, plugin list and
+          current show (Library/Merge Intelligence Beta), and opens the same saved shows (Documents/Merge Shows).
+          Self-tests passed on macOS and Windows, and the Mac app launched, connected and loaded a plugin.
+
+          **Install on a Mac:** open **Merge-Intelligence-Beta-macOS.dmg**, drag **Merge Intelligence Beta**
+          onto Applications, open it, then System Settings → Privacy & Security → **Open Anyway** (once per build).
+
+          *Not signed by Apple. Pre-release: never marked Latest; Merge's own beta and stable releases are unaffected.*
+          NOTES
+          for attempt in 1 2 3 4 5; do
+            gh release delete intelligence-beta --yes --cleanup-tag || true
+            gh release create intelligence-beta dist/* --target "$GITHUB_SHA" --title "Merge Intelligence Beta ($SHORT)" --notes-file notes.md --prerelease --latest=false && exit 0
+            echo "publish attempt $attempt failed; retrying in $((attempt * 15)) s"
+            sleep $((attempt * 15))
+          done
+          exit 1

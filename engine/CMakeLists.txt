@@ -5,6 +5,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(MERGE_BUILD_TEST_PLUGIN "Build the MergeTestGain VST3 used by the self-tests" ON)
+# Merge Intelligence Beta: the same console as a separate app (own name, bundle id, settings
+# folder and default port) for research-only Intelligence testing. Off = the production Merge app.
+option(MERGE_INTELLIGENCE_EDITION "Build Merge Intelligence Beta instead of Merge" OFF)
+if(MERGE_INTELLIGENCE_EDITION)
+  set(MERGE_PRODUCT_NAME "Merge Intelligence Beta")
+  set(MERGE_BUNDLE_ID "audio.merge.intelligence-beta")
+  set(MERGE_MIC_TEXT "Merge Intelligence Beta needs access to your audio interface inputs.")
+  set(MERGE_EDITION_DEFS "MERGE_APP_NAME=\"Merge Intelligence Beta\"" "MERGE_DATA_FOLDER=\"Merge Intelligence Beta\""
+                         MERGE_DEFAULT_PORT=18640 MERGE_INTELLIGENCE=1)
+else()
+  set(MERGE_PRODUCT_NAME "Merge")
+  set(MERGE_BUNDLE_ID "${MERGE_BUNDLE_ID}")
+  set(MERGE_EDITION_DEFS)
+endif()
 set(MERGE_ASIO_SDK_DIR "" CACHE PATH "Path to the Steinberg ASIO SDK (Windows only, enables ASIO)")
 
 include(FetchContent)
@@ -22,13 +36,13 @@ endif()
 juce_add_gui_app(MergeEngine
   ${MERGE_WEBVIEW2_ARGS}
   NEEDS_WEB_BROWSER TRUE
-  PRODUCT_NAME "Merge"
+  PRODUCT_NAME "${MERGE_PRODUCT_NAME}"
   COMPANY_NAME "Merge"
   BUNDLE_ID "audio.merge.engine"
   VERSION ${PROJECT_VERSION}
   # Audio-interface inputs on macOS need the microphone permission
   MICROPHONE_PERMISSION_ENABLED TRUE
-  MICROPHONE_PERMISSION_TEXT "Merge Engine needs access to your audio interface inputs."
+  MICROPHONE_PERMISSION_TEXT "${MERGE_MIC_TEXT}"
   # Hosting third-party plugins (incl. iLok/PACE, Waves, NI, UA protected ones) from a signed,
   # notarized app: allow loading code signed by other vendors, and the JIT / executable-memory
   # exceptions some copy protection needs. The App Sandbox must stay off (iLok service, USB keys).
@@ -67,7 +81,8 @@ target_compile_definitions(MergeEngine PRIVATE
   JUCE_MODAL_LOOPS_PERMITTED=1
   JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:MergeEngine,JUCE_PRODUCT_NAME>"
   JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:MergeEngine,JUCE_VERSION>"
-  MERGE_ENGINE_VERSION="${PROJECT_VERSION}")
+  MERGE_ENGINE_VERSION="${PROJECT_VERSION}"
+  ${MERGE_EDITION_DEFS})
 
 if(WIN32 AND MERGE_ASIO_SDK_DIR)
   target_include_directories(MergeEngine PRIVATE "${MERGE_ASIO_SDK_DIR}/common")

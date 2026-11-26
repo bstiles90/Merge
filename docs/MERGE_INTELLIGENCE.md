@@ -16,6 +16,7 @@
 | [Test plan](MERGE_INTELLIGENCE_TEST_PLAN.md) | experiments, validation, mode progression |
 | [Intelligence Lab](MERGE_INTELLIGENCE_LAB.md) | standalone research app: references, profiles, listening, feedback, export |
 | [Validation plan](MERGE_INTELLIGENCE_VALIDATION_PLAN.md) | reference vs intervention material, truth-known upstream perturbations, DAW-beta entry gates |
+| [Engine staircase](MERGE_INTELLIGENCE_ENGINE_STAIRCASE.md) | the three stages in Merge (adjustable audio → service transitions → live one pass), their gates, and the separate Merge Intelligence Beta app |
 
 > The human engineer defines the sound. Merge Intelligence operates the mixer to achieve and maintain it.
 

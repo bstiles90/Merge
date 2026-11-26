@@ -1,3 +1,4 @@
+#include "Edition.h"
 #include "Engine.h"
 #include <iostream>
 
@@ -47,7 +48,7 @@ Engine::Engine()
         send (deviceInfo(), id);
         send (obj ({ { "type", "plugins" }, { "list", plugins.describePlugins() }, { "scanning", plugins.isScanning() } }), id);
     };
-    settingsFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/audio-device.xml");
+    settingsFile = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile (MERGE_DATA_FOLDER "/audio-device.xml");
 }
 
 Engine::~Engine()
@@ -68,7 +69,7 @@ bool Engine::start (const Options& opt)
 {
     // crash detection: the marker is removed on a clean quit, so finding it means the last run
     // ended unexpectedly (most likely a plugin): the console then offers to bypass every plugin
-    runMarker = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge/running.marker");
+    runMarker = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile (MERGE_DATA_FOLDER "/running.marker");
     crashedLastRun = runMarker.existsAsFile();
     runMarker.getParentDirectory().createDirectory();
     runMarker.replaceWithText (juce::Time::getCurrentTime().toISO8601 (true));
@@ -325,7 +326,7 @@ juce::File Engine::showFolder() const
     which the embedded web view can't do itself. */
 void Engine::handleShowMessage (int clientId, const juce::String& type, const juce::var& msg)
 {
-    const auto appData = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge");
+    const auto appData = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile (MERGE_DATA_FOLDER);
     appData.createDirectory();
     const auto autosave = appData.getChildFile ("current-show.merge.json");
 

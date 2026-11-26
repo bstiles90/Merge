@@ -1,3 +1,4 @@
+#include "Edition.h"
 #include "ConsoleWindow.h"
 #include "Engine.h"
 #include <iostream>
@@ -68,7 +69,7 @@ static juce::WebBrowserComponent::Resource htmlResource (const juce::String& htm
 }
 
 ConsoleWindow::ConsoleWindow (Engine& e, const juce::String& devUrl)
-    : DocumentWindow ("Merge", juce::Colour (0xff111316), DocumentWindow::allButtons), engine (e), uiDir (findUiDirectory())
+    : DocumentWindow (MERGE_APP_NAME, juce::Colour (0xff111316), DocumentWindow::allButtons), engine (e), uiDir (findUiDirectory())
 {
     setUsingNativeTitleBar (true);
     setResizable (true, true);
@@ -79,7 +80,7 @@ ConsoleWindow::ConsoleWindow (Engine& e, const juce::String& devUrl)
                        .withBackend (juce::WebBrowserComponent::Options::Backend::webview2)
                        .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2 {}
                                                     .withUserDataFolder (juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                                                                             .getChildFile ("Merge/WebView2")))
+                                                                             .getChildFile (MERGE_DATA_FOLDER "/WebView2")))
                        .withKeepPageLoadedWhenBrowserIsHidden()
                        // required for the resource provider on Linux (JUCE registers the juce:// scheme with it)
                        .withNativeIntegrationEnabled()
@@ -170,7 +171,7 @@ juce::PropertiesFile& ConsoleWindow::settings()
     {
         juce::PropertiesFile::Options o;
         o.applicationName = "window";
-        o.folderName = "Merge";
+        o.folderName = MERGE_DATA_FOLDER;
         o.filenameSuffix = ".settings";
         o.osxLibrarySubFolder = "Application Support";
         props = std::make_unique<juce::PropertiesFile> (o);
@@ -187,7 +188,7 @@ void ConsoleWindow::timerCallback()
 {
     // title shows the audio device at a glance (e.g. "Merge — CoreAudio: BlackHole 16ch · 48 kHz / 256")
     const auto line = engine.statusText().fromFirstOccurrenceOf ("\n", false, false);
-    const auto title = "Merge — " + line;
+    const auto title = juce::String (MERGE_APP_NAME) + " — " + line;
     if (getName() != title) setName (title);
 }
 

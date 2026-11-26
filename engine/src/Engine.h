@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_audio_devices/juce_audio_devices.h>
+#include "Edition.h"
 #include "Mixer.h"
 #include <map>
 #include <deque>
@@ -30,7 +31,7 @@ class Engine : private juce::AudioIODeviceCallback,
 public:
     struct Options
     {
-        int port = 18620;
+        int port = MERGE_DEFAULT_PORT;
         bool virtualDevice = false;
     };
 

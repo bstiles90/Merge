@@ -5,6 +5,11 @@
 prerequisites plan (N2, N6, N7) and the first real-audio findings
 ([REAL_AUDIO_FINDINGS](MERGE_INTELLIGENCE_REAL_AUDIO_FINDINGS.md)).
 
+> **Superseded in part (November 2026):** intervention testing moves into Merge itself, with the
+> engineer's own plugins. The Lab chain simulator (P1–P2) and the sim-to-real gate are dropped.
+> Gates A–C keep their numbers and are measured in Merge. See the
+> [engine staircase](MERGE_INTELLIGENCE_ENGINE_STAIRCASE.md).
+
 ## 0. Recommendation
 
 1. **Split the material by purpose.** Keep professional masters and separated stems for **reference

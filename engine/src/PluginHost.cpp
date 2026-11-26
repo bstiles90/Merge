@@ -1,3 +1,4 @@
+#include "Edition.h"
 #include "PluginHost.h"
 #include <iostream>
 
@@ -170,7 +171,7 @@ static juce::PropertiesFile& windowPositions()
     static juce::PropertiesFile props ([] {
         juce::PropertiesFile::Options o;
         o.applicationName = "plugin-windows";
-        o.folderName = "Merge";
+        o.folderName = MERGE_DATA_FOLDER;
         o.filenameSuffix = ".settings";
         o.osxLibrarySubFolder = "Application Support";
         return o;
@@ -292,7 +293,7 @@ juce::var obj (std::initializer_list<std::pair<const char*, juce::var>> kv)
 PluginHost::PluginHost()
 {
     formats.addDefaultFormats();
-    dataDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Merge");
+    dataDir = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile (MERGE_DATA_FOLDER);
     dataDir.createDirectory();
     listFile = dataDir.getChildFile ("plugins.xml");
     if (auto xml = juce::parseXML (listFile)) known.recreateFromXml (*xml);
