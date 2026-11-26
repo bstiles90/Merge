@@ -59,7 +59,7 @@ The engine renders that plan and keeps rendering the last one if the UI goes awa
 
 | type | fields |
 |---|---|
-| `hello` | `engine, version` |
+| `hello` | `engine, version, crashed` (the last run ended unexpectedly), `crashedPlugin? {kind: "render"\|"load", slotId, name}` (the plugin Merge was inside when it crashed: the console switches that slot off) |
 | `device` | `virtual, deviceType, inputDevice, outputDevice, sampleRate, bufferSize, latencyMs, inputs[], outputs[], sampleRates[], bufferSizes[], types[{name, inputs[], outputs[]}]` |
 | `meters` (30 Hz) | `ch[[peak, 0]×32], bus[[l,r]×8], main[l,r], mon[l,r], loud[momentary, shortTerm, integrated] (LUFS or null), pdc` (samples), `tp[l, r]` (program true peak, linear, 4× oversampled, max since last message) |
 | `plugins` | `list[{id, name, vendor, format, category, version, file}], scanning, blacklisted[]` |

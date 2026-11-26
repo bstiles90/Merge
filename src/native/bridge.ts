@@ -8,6 +8,7 @@ import { buildMixPlan } from '../core/plan';
 import { setNativePlugins, type PluginFormat } from '../core/plugins';
 import { parseShow, serializeShow, stateOnly, useConsole } from '../core/store';
 import { importLogic } from '../core/logicImport';
+import { crashNotice, setSlotOffline, type CrashedPlugin } from '../core/pluginOff';
 import { loadPresets, setPresetStorage } from '../core/stripPresets';
 import { assignMultitrack, takesToClips, type AudioFileInfo } from '../core/multitrack';
 import { services } from '../core/services';
@@ -73,6 +74,8 @@ interface NativeState {
   notice?: string;
   /** the engine quit unexpectedly last time (most likely a plugin): offer to bypass plugins */
   crashed?: boolean;
+  /** the plugin blamed for that crash, until it's found in the show and switched off */
+  crashedPlugin?: CrashedPlugin;
   /** sequential plugin loading in progress */
   pluginLoad?: { done: number; total: number; name: string; strip: string };
   /** plugin GUI currently docked in the Merge window */
@@ -299,10 +302,39 @@ function mapFormat(f: string): PluginFormat {
   return f === 'vst3' ? 'vst3' : f === 'audiounit' || f === 'au' ? 'au' : 'vst3';
 }
 
+/**
+ * The plugin that crashed Merge last time, switched off in `show` (before it's loaded, so the
+ * engine never loads it). Clears the pending crash once found.
+ */
+function withCrashedPluginOff<S extends ConsoleState>(show: S): S {
+  const p = useNative.getState().crashedPlugin;
+  if (!p) return show;
+  const { state, strip } = setSlotOffline(show, p.slotId, true);
+  if (strip === null) return show;
+  uiLog(`switched off ${p.name} on ${strip}: it crashed Merge last time`);
+  useNative.setState({ crashedPlugin: undefined, crashed: false, notice: crashNotice(p, strip) });
+  return state;
+}
+
+/** Apply a pending crashed plugin to the open show; `final`: if it isn't there, fall back to the bypass-all offer. */
+function applyCrashedPlugin(final: boolean) {
+  const p = useNative.getState().crashedPlugin;
+  if (!p) return;
+  const cur = useConsole.getState();
+  const next = withCrashedPluginOff(cur);
+  if (next !== cur) cur.update(() => ({ channels: next.channels, buses: next.buses, main: next.main }));
+  else if (final) useNative.setState({ crashedPlugin: undefined, crashed: true });
+}
+
 function onMessage(m: any) {
   switch (m.type) {
     case 'hello':
-      useNative.setState({ version: m.version, ...(m.crashed ? { crashed: true } : {}) });
+      useNative.setState({ version: m.version });
+      if (m.crashedPlugin?.slotId) {
+        useNative.setState({ crashedPlugin: m.crashedPlugin });
+        // a show that's already open (reconnect): switch it off now; otherwise when the show loads
+        if (autosaveReady || !EMBEDDED) applyCrashedPlugin(true);
+      } else if (m.crashed) useNative.setState({ crashed: true });
       break;
     case 'device':
       useNative.setState({ device: m });
@@ -388,7 +420,7 @@ function onMessage(m: any) {
       if (!autosaveReady) {
         if (m.text) {
           try {
-            useConsole.getState().loadShow(parseShow(m.text));
+            useConsole.getState().loadShow(withCrashedPluginOff(parseShow(m.text)));
             uiLog(`restored show "${useConsole.getState().showName}"`);
           } catch (err) {
             console.error('Could not restore the last show', err);
@@ -396,6 +428,7 @@ function onMessage(m: any) {
           }
         } else uiLog('no saved show found: starting with the default show');
         autosaveReady = true;
+        applyCrashedPlugin(true);
       }
       break;
     case 'insert.docked':

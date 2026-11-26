@@ -5,6 +5,7 @@ import { newId } from '../core/defaults';
 import { PluginPicker } from './PluginPicker';
 import { linkInfo } from '../core/links';
 import { useConsole } from '../core/store';
+import { setSlotOffline } from '../core/pluginOff';
 import type { Bus, Channel, InsertSlot, Send, StripRef } from '../core/types';
 import { applyTapValue, sendTap, tapChoices, tapCode, tapValue } from '../core/sends';
 import { Fader, Knob, Meter, MeterScale, PeakReadout, Toggle, parsePan } from './controls';
@@ -232,16 +233,16 @@ function RackSection({ inserts, onSelect, onAdd, onBypass, onReplace }: {
           return (
             <div
               key={i}
-              className={'rack-slot' + (ins ? ' used' : '') + (addable ? ' add' : '') + (ins?.bypass ? ' byp' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}
+              className={'rack-slot' + (ins ? ' used' : '') + (addable ? ' add' : '') + (ins?.bypass ? ' byp' : '') + (ins?.offline ? ' offline' : '') + (n?.editorOpen ? ' open' : '') + (n?.error ? ' err' : '')}
               title={
                 ins
-                  ? `${name}${ins.bypass ? ' (bypassed)' : ''}${n?.error ? ` — ${n.error}` : ''} — click: change or remove · double-click: ${isWin ? 'window' : 'settings'}`
+                  ? ins.offline ? `${name} is switched off (not loaded, settings kept) — click to turn it on` : `${name}${ins.bypass ? ' (bypassed)' : ''}${n?.error ? ` — ${n.error}` : ''} — click: change or remove · double-click: ${isWin ? 'window' : 'settings'}`
                   : addable ? 'Click to add a plugin' : ''
               }
               {...(ins
                 ? clicks(
                     (() => { const at = el(ins.id); return () => setPicker({ at: at(), slot: ins }); })(),
-                    () => openWindow(ins),
+                    () => !ins.offline && openWindow(ins),
                   )
                 : {
                     onClick: (e: React.MouseEvent) => {
@@ -263,6 +264,7 @@ function RackSection({ inserts, onSelect, onAdd, onBypass, onReplace }: {
                   }}
                 />
               )}
+              {ins?.offline && <span className="rs-off">OFF</span>}
               {ins ? name : addable ? '+' : ''}
               {ins?.recallSafe && <span className="rs-lock" title="Recall safe">🔒</span>}
             </div>
@@ -273,6 +275,8 @@ function RackSection({ inserts, onSelect, onAdd, onBypass, onReplace }: {
           anchor={picker.at}
           title={picker.slot ? 'Plugin' : undefined}
           current={picker.slot?.pluginId}
+          offline={picker.slot?.offline}
+          onOffline={picker.slot && nativeOn ? () => { const sl = picker.slot!; setPicker(null); setInsertOffline(sl.id, !sl.offline); } : undefined}
           onClose={() => setPicker(null)}
           onOpen={picker.slot ? () => { const sl = picker.slot!; setPicker(null); openWindow(sl); } : undefined}
           onNone={picker.slot && onReplace ? () => { const id = picker.slot!.id; setPicker(null); onReplace(id, null); } : undefined}
@@ -286,6 +290,14 @@ function RackSection({ inserts, onSelect, onAdd, onBypass, onReplace }: {
       )}
     </div>
   );
+}
+
+/** Switch a plugin slot off (unloaded, settings kept) or back on, wherever it is. */
+export function setInsertOffline(slotId: string, offline: boolean) {
+  useConsole.getState().update((st) => {
+    const { state } = setSlotOffline(st, slotId, offline);
+    return { channels: state.channels, buses: state.buses, main: state.main };
+  });
 }
 
 /** Add a plugin to the end of a rack (and open its window once it has loaded). */

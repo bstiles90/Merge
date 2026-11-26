@@ -32,6 +32,8 @@ export interface InsertSlot {
   state?: string;
   /** scene recall leaves this plugin (and its settings) as it is */
   recallSafe?: boolean;
+  /** switched off: kept in the show with its settings, but not loaded (e.g. it crashed Merge) */
+  offline?: boolean;
 }
 
 /** What a strip's recall safe can protect (LV1-style), down to individual plugin slots. */
