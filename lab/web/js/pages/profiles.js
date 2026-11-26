@@ -12,18 +12,22 @@ export async function render(root, [pid], app) {
     h('button.primary', { onclick: () => createDialog(app, {}, load) }, '+ New profile')), body);
   async function load() {
     const { items } = await api.get('/api/profiles');
+    const stale = items.filter((p) => p.stale?.length);
     if (!items.length) return clear(body, panel('Profiles', empty('No profiles yet', 'Import at least one reference, then build a profile from it. Three or more references give a more reliable profile.',
       h('button.primary', { onclick: () => createDialog(app, {}, load) }, 'Build a profile'))));
-    clear(body, h('div.panel.flat', h('div.pb', h('table',
+    clear(body, stale.length ? h('div.notice.warn', `${stale.length} profile(s) no longer reflect the current analysis or stem roles. Rebuilding creates a new version; the old one is kept.`,
+      h('button', { style: { marginLeft: '8px' }, onclick: async () => { for (const p of stale) await rebuild(p.id, false); toast(`Rebuilding ${stale.length} profile(s)…`); } }, 'Rebuild all')) : null,
+      h('div.panel.flat', h('div.pb', h('table',
       h('tr', h('th', 'Profile'), h('th', 'Status'), h('th', 'References'), h('th', 'Contains'), h('th', 'Created'), h('th', 'Algorithms'), h('th', '')),
       items.map((p) => h('tr.click', { onclick: () => p.status === 'complete' && app.go(`profiles/${p.id}`) },
-        h('td', h('b', p.name), p.parent_id ? h('div.faint.small', 'derived from an earlier profile') : null),
+        h('td', h('b', p.name), p.parent_id ? h('div.faint.small', 'derived from an earlier profile') : null,
+          p.stale?.length ? h('div.small', { style: { color: 'var(--warn)' } }, p.stale.join('; ')) : null),
         h('td', statusBadge(p.status), p.error ? h('div.small', { style: { color: 'var(--danger)' } }, p.error.split('\n')[0]) : null),
         h('td.num', p.reference_ids.length, p.composition ? h('div.faint.small', `${p.composition.with_stems} with stems · ${p.composition.master_only} master-only`) : null),
         h('td.small', p.composition && !p.composition.source_level ? badge('programme only', 'info') : [p.composition?.program_analysed ? badge('programme', 'info') : null, ' ',
           (p.groups || []).length ? badge('source balance', 'implemented') : null], (p.groups || []).length ? h('div.faint', (p.groups || []).map(groupName).join(', ')) : null),
         h('td.dim', fmtDate(p.created)), h('td.small.dim', p.algorithm_version || ''),
-        h('td', h('span.faint', '›'))))))));
+        h('td', p.stale?.length ? h('button.small', { onclick: (e) => { e.stopPropagation(); rebuild(p.id); } }, 'Rebuild') : h('span.faint', '›'))))))));
   }
   window.addEventListener('lab-job', load);
   await load();
@@ -80,6 +84,30 @@ export async function createDialog(app, { from, name } = {}, onDone) {
   } }] });
 }
 
+function reliabilityPanel(profile) {
+  const rows = Object.entries(profile.balance).map(([k, v]) => ({ k, v, r: v.reliability }));
+  const has = rows.some((x) => x.r && x.r.nRefs);
+  const full = (v) => { const b = v.byDensity || {}; const n = b.all?.n || 0; return n ? Math.round(100 * (b.full?.n || 0) / n) : null; };
+  return panel('How firm are these targets?', [
+    h('p.dim.small', has ? 'Per pair: the spread of the references’ own medians, and how far the target would move with a different set of songs (bootstrap over references, 80 % interval). Wide intervals mean the songs disagree: more references, or a different grouping, are needed before trusting that target.'
+      : 'This profile predates reliability statistics (algorithm 0.5). Rebuild it to see per-pair intervals. Shown: between-reference SD (population) and the share of blocks classed “full”.'),
+    h('table', h('tr', h('th', 'Pair'), h('th', 'Target'), has ? h('th', '80 % interval') : null, h('th', 'Ref. medians'), h('th', 'SD'), h('th', '“full”')),
+      rows.map(({ k, v, r }) => h('tr', h('td', pairLabel(k)), h('td.num', fmtLU(v.byDensity?.all?.median)),
+        has ? h('td.num', { style: { color: r?.targetCI80_width > 3 ? 'var(--warn)' : '' } }, r?.targetCI80 ? `${r.targetCI80[0]} … ${r.targetCI80[1]}` : '–') : null,
+        h('td.num.small', r?.refRange_LU ? `${r.refRange_LU[0]} … ${r.refRange_LU[1]}` : '–'),
+        h('td.num', (r?.betweenRefSD ?? v.betweenRefSD) ?? '–'), h('td.num.dim', full(v) == null ? '–' : `${full(v)} %`)))),
+    h('p.faint.small', 'The older “confidence” number was a heuristic (reference count and spread); it is kept in the file for compatibility but no longer shown.')]);
+}
+
+async function rebuild(pid, go = true) {
+  try {
+    const r = await api.post(`/api/profiles/${pid}/rebuild`, {});
+    toast('Rebuilding as a new version — the original profile is kept.');
+    if (go) waitJob(r.job).then(() => window.lab.go(`profiles/${r.profile_id}`)).catch(showError);
+    return r;
+  } catch (e) { showError(e); }
+}
+
 async function detail(root, pid, app) {
   const { meta, profile, report } = await api.get(`/api/profiles/${pid}`);
   const tabs = h('div.seg');
@@ -87,12 +115,16 @@ async function detail(root, pid, app) {
   root.append(pageHead(meta.name, `Built ${fmtDate(meta.finished || meta.created)} from ${meta.reference_ids.length} reference(s) · algorithms ${meta.algorithm_version || '?'}`,
     h('button.ghost', { onclick: () => app.go('profiles') }, '‹ All profiles'),
     h('button', { onclick: async () => { const n = await promptBox('Rename profile', 'Name', meta.name); if (n) { await api.post(`/api/profiles/${pid}/rename`, { name: n }); app.route(); } } }, 'Rename'),
-    h('button', { onclick: () => createDialog(app, { from: { ...meta } }, () => app.go('profiles')) }, 'Duplicate / regenerate…'),
+    h('button.primary', { title: 'Same references and weights, current stem roles and algorithm. The original is kept.', onclick: () => rebuild(pid) }, 'Rebuild'),
+    h('button', { onclick: () => createDialog(app, { from: { ...meta } }, () => app.go('profiles')) }, 'Duplicate / change references…'),
     h('button', { onclick: () => app.go(`export/profile/${pid}`) }, 'Export…'),
     h('button.ghost', { onclick: async () => {
       if (!await confirmBox('Delete profile', 'Delete this profile? Experiments that used it keep their own snapshot of it.', 'Delete', true)) return;
       try { await api.post(`/api/profiles/${pid}/delete`, {}); app.go('profiles'); } catch (e) { showError(e); }
-    } }, 'Delete')), tabs, h('div', { style: { height: '12px' } }), body);
+    } }, 'Delete')),
+    (profile.groups || []).includes('keys') && !(profile.groups || []).includes('synths') && (!meta.algorithm_version || meta.algorithm_version < '0.5')
+      ? h('div.notice.warn', 'Built before Keys and Synths were separate groups: “Keys” in this profile means keys, synths and other together. Review stem roles in the Reference Library, then Rebuild.') : '',
+    tabs, h('div', { style: { height: '12px' } }), body);
   const hasSource = (profile.groups || []).length > 0, hasProgram = !!profile.program_profile;
   const T = { ...(hasProgram ? { program: 'Program' } : {}), balance: 'Source balance', tone: 'Source tone', dynamics: 'Source dynamics', refs: 'References & limitations', report: 'Report' };
   let cur = hasSource ? 'balance' : 'program';
@@ -121,9 +153,9 @@ async function detail(root, pid, app) {
       });
       const all = rows.flatMap((r) => [r.p10, r.p90]).filter((x) => x != null);
       const lo = Math.floor(Math.min(-6, ...all) / 3) * 3, hi = Math.ceil(Math.max(6, ...all) / 3) * 3;
-      return h('div.grid.g-side', panel('Pairwise balance targets', [
+      return h('div.grid', { style: { gridTemplateColumns: 'minmax(0,1fr) 340px', gap: '14px' } }, h('div', panel('Pairwise balance targets', [
         h('p.dim.small', 'For each pair of sources playing together: how much louder the first is than the second (short-term loudness, LU). Box = middle half of the time, line = 10–90 %, blue tick = median target.'),
-        rangeChart(rows, { lo, hi })]),
+        rangeChart(rows, { lo, hi })]), reliabilityPanel(profile)),
         panel('How this is used', h('div.small.dim.stack',
           h('p', 'During analysis, the operator measures the same pairwise differences in your mix while both sources are active and nudges group faders toward a blend of your own baseline and these targets (reference influence β).'),
           h('p', 'These relationships are unaffected by mastering loudness, so commercial masters can be compared with your stems.'),

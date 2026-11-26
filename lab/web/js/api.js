@@ -5,7 +5,7 @@ let TOKEN = null;
   if (m) {
     TOKEN = m[1];
     try { sessionStorage.setItem('mil-token', TOKEN); } catch (e) {}
-    history.replaceState(null, '', location.pathname + '#/');
+    history.replaceState(null, '', location.pathname + (/audiocheck=auto/.test(location.hash) ? '#/audiocheck/auto' : /uicheck=auto/.test(location.hash) ? '#/uicheck' : '#/'));
   } else {
     try { TOKEN = sessionStorage.getItem('mil-token'); } catch (e) {}
   }
@@ -78,3 +78,10 @@ export const desktop = {
   async openFolder() { return bridge() ? await bridge().open_folder() : null; },
   async saveFile(name) { return bridge() ? await bridge().save_file(name) : null; },
 };
+
+// ---------------------------------------------------------------- report UI errors to the Lab (diagnostics export)
+export function clientLog(kind, message, extra = {}) {
+  try { call('POST', '/api/client-log', { kind, message: String(message).slice(0, 2000), userAgent: navigator.userAgent, ...extra }).catch(() => {}); } catch (e) {}
+}
+window.addEventListener('error', (e) => clientLog('error', e.message, { detail: `${e.filename}:${e.lineno}` }));
+window.addEventListener('unhandledrejection', (e) => clientLog('rejection', e.reason && e.reason.message ? e.reason.message : String(e.reason)));

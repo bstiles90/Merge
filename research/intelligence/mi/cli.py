@@ -160,7 +160,8 @@ def cmd_study(a):
     from . import studies
     ws = Path(a.workspace)
     fn = {"activity": studies.activity_study, "beta": studies.beta_study, "response": studies.response_study,
-          "generalization": studies.generalization_study, "processing": studies.processing_study}[a.study]
+          "generalization": studies.generalization_study, "processing": studies.processing_study,
+          "density": studies.density_study}[a.study]
     out = ws / "results" / "studies" / a.study
     out.mkdir(parents=True, exist_ok=True)
     res = fn(ws, a, out)
@@ -222,7 +223,7 @@ def main(argv=None):
     s.add_argument("workspace"); s.add_argument("--name"); s.add_argument("--seed", type=int); s.add_argument("--tag")
     s.set_defaults(fn=cmd_all)
     s = sub.add_parser("study", help="parameter investigations")
-    s.add_argument("study", choices=["activity", "beta", "response", "generalization", "processing"])
+    s.add_argument("study", choices=["activity", "beta", "response", "generalization", "processing", "density"])
     s.add_argument("workspace"); s.add_argument("--mix", help="mix name (default: first under mixes/)")
     s.add_argument("--profile"); s.add_argument("--inject", help="disturbances for the response study")
     s.set_defaults(fn=cmd_study)

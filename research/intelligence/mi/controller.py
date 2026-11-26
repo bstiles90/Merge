@@ -34,7 +34,7 @@ class ControllerParams:
     lam: float = 0.05               # L1 weight
     min_pair_blocks: int = 50
     min_coverage: float = 0.5       # a group is only judged when active for >= this share of the evidence window
-    priority: dict = field(default_factory=lambda: {"vocals": 3.0, "keys": 0.7})
+    priority: dict = field(default_factory=lambda: {"vocals": 3.0, "keys": 0.7, "synths": 0.7})
 
     def prio(self, g):
         return self.priority.get(g, 1.0)

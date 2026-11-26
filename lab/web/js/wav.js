@@ -53,7 +53,7 @@ export async function wavFrames(ctx, info, f0, n, signal) {
   if (!r.ok) throw new Error(`Audio not available (${r.status})`);
   const bytes = await r.arrayBuffer();
   const frames = Math.floor(bytes.byteLength / info.blockAlign);
-  const ab = ctx.createBuffer(info.channels, Math.max(1, frames), info.sampleRate);
+  const ab = makeBuffer(ctx, info.channels, Math.max(1, frames), info.sampleRate);
   const dv = new DataView(bytes), ch = info.channels, bps = info.bits / 8;
   const outs = []; for (let c = 0; c < ch; c++) outs.push(ab.getChannelData(c));
   if (info.tag === 3) {
@@ -71,4 +71,43 @@ export async function wavFrames(ctx, info, f0, n, signal) {
     for (let i = 0, p = 0; i < frames; i++) for (let c = 0; c < ch; c++, p += bps) outs[c][i] = dv.getInt32(p, true) / 2147483648;
   }
   return ab;
+}
+
+// An AudioBuffer without needing a running AudioContext (WebKit only lets a context start from a click).
+export function makeBuffer(ctx, channels, length, sampleRate) {
+  try { return new AudioBuffer({ numberOfChannels: channels, length, sampleRate }); } catch (e) { /* older WebKit */ }
+  return (ctx || sharedContext()).createBuffer(channels, length, sampleRate);
+}
+
+// ---------------------------------------------------------------- one shared AudioContext for the whole window
+let CTX = null;
+export function sharedContext() {
+  if (!CTX) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) throw new Error('This window has no Web Audio support');
+    CTX = new AC();
+  }
+  return CTX;
+}
+// WebKit (the macOS app window) only starts audio inside a user gesture. Unlock on the first click or
+// key press anywhere: create/resume the context and play one silent frame.
+function unlock() {
+  try {
+    const c = sharedContext();
+    if (c.state !== 'running') c.resume().catch(() => {});
+    const b = c.createBuffer(1, 1, c.sampleRate || 44100);
+    const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination); s.start(0);
+  } catch (e) { /* reported when playback is attempted */ }
+}
+['pointerdown', 'keydown', 'touchend'].forEach((ev) => window.addEventListener(ev, unlock, { capture: true, passive: true }));
+
+export async function ensureRunning(timeoutMs = 1500) {
+  const c = sharedContext();
+  if (c.state === 'running') return true;
+  try { await Promise.race([c.resume(), new Promise((r) => setTimeout(r, timeoutMs))]); } catch (e) { /* fall through */ }
+  if (c.state === 'running') return true;
+  // some WebKit versions report 'interrupted' or stay 'suspended' until the clock moves
+  const t0 = c.currentTime;
+  await new Promise((r) => setTimeout(r, 250));
+  return c.currentTime > t0;
 }

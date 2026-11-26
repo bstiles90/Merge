@@ -307,3 +307,48 @@ def test_finding_verdicts_are_validated(env):
     with pytest.raises(ValueError):
         FB.upsert(edir, "findings", {"finding_id": "metric:x", "verdict": "apply_eq"}, {"id": "pg-x"})
     assert len(FB.load(edir)["findings"]) == 1
+
+
+# ------------------------------------------------------------------ 0.5.0: stem roles without reimport, rebuild
+def test_regroup_and_rebuild_preserve_the_original_profile(server, tmp_path):
+    st, call, files = server
+    synth = _tone(tmp_path / "Synths.wav", f=330)
+    stems = [{"path": str(files[g]), "group": g} for g in ("vocals", "drums", "bass", "keys")] + [{"path": str(synth), "group": "keys"}]
+    item = call("POST", "/api/library/references/add", {"item": {"title": "Song"}, "stems": stems})["item"]
+    p = call("POST", "/api/profiles/create", {"name": "v1", "reference_ids": [item["id"]]})
+    assert _wait(st, p["job"]).status == "done"
+    sug = call("GET", "/api/library/references/role-suggestions")["items"]
+    assert [(s["file"], s["current"], s["suggested"]) for s in sug] == [("Synths.wav", "keys", "synths")]
+    call("POST", "/api/library/references/regroup", {"changes": [{"ref_id": s["ref_id"], "file_id": s["file_id"], "group": s["suggested"]} for s in sug]})
+    prof_list = call("GET", "/api/profiles")["items"]
+    assert any("stem roles" in w for w in next(x for x in prof_list if x["id"] == p["profile_id"])["stale"])
+    r = call("POST", f"/api/profiles/{p['profile_id']}/rebuild", {})
+    assert _wait(st, r["job"]).status == "done"
+    new = call("GET", f"/api/profiles/{r['profile_id']}")
+    old = call("GET", f"/api/profiles/{p['profile_id']}")
+    assert "synths" in new["profile"]["groups"] and "synths" not in old["profile"]["groups"]
+    assert new["meta"]["parent_id"] == p["profile_id"]
+    assert any(v.get("reliability") for v in new["profile"]["balance"].values())
+
+
+# ------------------------------------------------------------------ 0.5.1: bounded, incremental reconstruction check
+def test_reconstruction_check_is_bounded_and_reports_progress(tmp_path):
+    from mil.tasks import _recon
+    sr, rng = 48000, np.random.default_rng(5)
+    stems = []
+    total = None
+    for i in range(3):
+        x = 0.1 * rng.standard_normal((sr * 60, 2))
+        p = tmp_path / f"s{i}.wav"
+        sf.write(p, x, sr, subtype="FLOAT")
+        stems.append(str(p))
+        total = x if total is None else total + x
+    noise = 0.01 * rng.standard_normal(total.shape)
+    sf.write(tmp_path / "m.wav", total + noise, sr, subtype="FLOAT")
+    calls = []
+    recon, align = _recon(str(tmp_path / "m.wav"), stems, lambda st, fr, tx="": calls.append((fr, tx)), n_excerpts=6, excerpt_s=5)
+    expect = 10 * np.log10(np.sum(noise ** 2) / np.sum((total + noise) ** 2))
+    assert abs(recon - expect) < 0.5 and align == 0.0
+    excerpts = [c for c in calls if c[1].startswith("excerpt")]
+    assert len(excerpts) == 6 and all(0.9 <= f < 1.0 for f, _ in excerpts)
+    assert [f for f, _ in excerpts] == sorted(f for f, _ in excerpts)

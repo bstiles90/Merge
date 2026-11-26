@@ -83,6 +83,14 @@ on the left to see it against the rest:
 Use it to spot outliers (a reference much brighter or more limited than the others) and lower its
 weight or untick *Use in new profiles*.
 
+### Six groups, and changing roles later
+
+Stems belong to one of six groups: **Vocals, Drums, Bass, Guitars, Keys** (piano, organ, Rhodes) and **Synths**
+(synths, pads, atmospheres, strings, tracks, "other"). Roles are suggested from file names. To correct them later
+without reimporting, use **Roles…** on a reference, or **Review roles…** when the Lab suggests changes for several
+stems (for example after upgrading from a version that had a single "Keys & Other" group). Your audio is never
+touched. Existing profiles keep their results: **Rebuild** them (section 5) to use the new roles.
+
 ### 4c. Attach stems later
 
 When you have stems for a reference, click **Attach stems…** on its row, add the stems, confirm the
@@ -120,6 +128,11 @@ profile**. A profile can mix master-only references and references with stems:
   the Program view and cannot be used in the Music Lab (balance control needs stems).
 
 For programme ranges, ten or more references are a good aim; for source balance, three or more.
+
+**Rebuild** (on a profile, or *Rebuild all* in the list) makes a new version from the same references and weights,
+using the current stem roles and analysis. The profile list tells you when this is worth doing. The previous version is
+always kept. Under *Source balance*, **How firm are these targets?** shows each reference's own value and how far
+the target would move with a different set of songs; a wide interval means the songs disagree.
 Open a profile to see:
 
 - **Balance** — for every pair of groups playing together, how much louder one is than the other
@@ -231,6 +244,10 @@ feedback. When a new Lab version arrives, rerun earlier experiments and compare.
 itself never sends anything anywhere.
 
 ## 13. Housekeeping
+
+- **No sound?** *Settings → Test audio output* plays short tones through each playback method and tells you which
+  works. If only the standard method works, the Listening Room still plays (in time, but not sample-aligned, without
+  group audition) and says so. Export diagnostics afterwards so the problem can be fixed.
 
 - **Settings → Disk usage** shows what uses space; **Backup** zips the workspace (audio optional).
 - **Settings → Export diagnostics** if something goes wrong (no audio, paths removed).

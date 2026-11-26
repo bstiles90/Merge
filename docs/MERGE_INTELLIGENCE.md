@@ -64,6 +64,10 @@ Program Sound Profile (spectral balance, loudness, dynamics, transients, stereo,
 time-varying behaviour), stems attachable later, mixed profiles, and stereo broadcast comparison as
 *diagnostic evidence only* (LAB doc §9, research doc §11 "Programme analysis").
 
+Algorithm 0.5.0 follows the first real-audio export ([findings](MERGE_INTELLIGENCE_REAL_AUDIO_FINDINGS.md)):
+six source groups (Keys and Synths separate), song-equal reference weighting, measured target reliability in place of
+the confidence heuristic, an arrangement-density study (classifier unchanged pending evidence), and playback fixes.
+
 Roadmap position: the Lab is where real-audio evidence (Test plan §12–13) is gathered. No capability is
 promoted beyond *synthetically validated* until that evidence and the engineer's sign-off exist.
 

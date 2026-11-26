@@ -30,6 +30,7 @@ ACTIVITY_DEFAULTS = {
     "bass": {"rel_lu": -30.0, "abs_lufs": -60.0, "margin_lu": 8.0, "on_s": 0.3, "off_s": 2.0},
     "guitars": {"rel_lu": -30.0, "abs_lufs": -60.0, "margin_lu": 8.0, "on_s": 0.3, "off_s": 1.5},
     "keys": {"rel_lu": -30.0, "abs_lufs": -60.0, "margin_lu": 8.0, "on_s": 0.3, "off_s": 2.0},
+    "synths": {"rel_lu": -30.0, "abs_lufs": -60.0, "margin_lu": 8.0, "on_s": 0.3, "off_s": 2.0},
     "speech": {"rel_lu": -20.0, "abs_lufs": -55.0, "margin_lu": 10.0, "on_s": 0.2, "off_s": 1.0},
     "default": {"rel_lu": -28.0, "abs_lufs": -60.0, "margin_lu": 8.0, "on_s": 0.3, "off_s": 1.5},
 }
@@ -256,3 +257,43 @@ def density_class(n_active: np.ndarray, n_groups: int) -> np.ndarray:
     """sparse / medium / full by fraction of groups active."""
     frac = n_active / max(n_groups, 1)
     return np.where(frac <= 0.4, "sparse", np.where(frac >= 0.8, "full", "medium"))
+
+
+# --------------------------------------------------------------------------- density research (0.5.0)
+DENSITY_MEASURES = {
+    "count": "Active groups (current classifier input)",
+    "count_no_bed": "Active groups, excluding 'sustained beds' (groups active >= 95 % of the song)",
+    "n_effective": "Loudness-weighted effective number of the OTHER active groups: (sum p)^2 / sum p^2",
+    "prominent": "OTHER active groups within 12 LU of the loudest of them (short-term)",
+    "intensity": "Short-term loudness of the OTHER groups combined, relative to their own integrated loudness (section energy)",
+}
+
+
+def density_measures(ga: "GroupAnalysis", exclude=(), bed_fraction: float = 0.95, prominence_lu: float = 12.0) -> dict:
+    """Alternative per-block descriptions of arrangement density, for research (density study).
+
+    `exclude`: the pair being studied. Loudness-based measures use only the other groups, otherwise a
+    measure would partly contain the pair's own balance (circular). The operator still uses
+    `density_class(count)`; nothing here changes its behaviour."""
+    G = list(ga.groups)
+    act = np.array([ga.active[g] for g in G])                      # groups x blocks
+    beds = [g for g, a in zip(G, act) if a.mean() >= bed_fraction]
+    oth = [i for i, g in enumerate(G) if g not in exclude]
+    keep = np.array([g not in beds for g in G])
+    out = {"count": act.sum(0).astype(float), "count_no_bed": act[keep].sum(0).astype(float), "beds": beds,
+           "active_fraction": {g: round(float(a.mean()), 3) for g, a in zip(G, act)}}
+    if oth:
+        st = np.array([ga.st[G[i]] for i in oth])
+        ao = act[oth]
+        p = np.where(ao & np.isfinite(st), 10 ** (np.nan_to_num(st, nan=-200) / 10), 0.0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            out["n_effective"] = np.where(p.sum(0) > 0, p.sum(0) ** 2 / np.maximum((p ** 2).sum(0), 1e-30), 0.0)
+        stm = np.where(ao, np.nan_to_num(st, nan=-200), -200)
+        loud = stm.max(0)
+        out["prominent"] = (((stm >= loud - prominence_lu) & ao).sum(0)).astype(float)
+        pb = sum(ga.p[G[i]] for i in oth)
+        out["intensity"] = F.lufs_from_ms(F.windowed(pb, 30)) - _integrated_from_p(pb)
+    else:
+        n = len(ga.density)
+        out.update({"n_effective": np.zeros(n), "prominent": np.zeros(n), "intensity": np.zeros(n)})
+    return out

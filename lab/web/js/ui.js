@@ -52,8 +52,8 @@ export function fmtDate(s) {
   const d = new Date(s);
   return isNaN(d) ? s : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-export const GROUPS = ['vocals', 'drums', 'bass', 'guitars', 'keys'];
-export const GROUP_NAMES = { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitars: 'Guitars', keys: 'Keys & other', other: 'Other' };
+export const GROUPS = ['vocals', 'drums', 'bass', 'guitars', 'keys', 'synths'];
+export const GROUP_NAMES = { vocals: 'Vocals', drums: 'Drums', bass: 'Bass', guitars: 'Guitars', keys: 'Keys', synths: 'Synths', other: 'Other' };
 export const groupName = (g) => GROUP_NAMES[g] || g;
 export const groupColor = (g) => getComputedStyle(document.documentElement).getPropertyValue(`--g-${g}`).trim() || '#8fa3b5';
 export const VERSION_NAMES = {

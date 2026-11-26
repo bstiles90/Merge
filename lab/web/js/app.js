@@ -1,5 +1,5 @@
 // Shell: navigation, routing, workspace chip, job tray.
-import { api, onJobs, pollJobs } from './api.js';
+import { api, onJobs, pollJobs, clientLog } from './api.js';
 import { h, clear, toast, showError, setDropHandler, badge } from './ui.js';
 
 const NAV = [
@@ -19,7 +19,7 @@ const PAGES = {
   listen: () => import('./pages/listen.js'), studies: () => import('./pages/studies.js'),
   history: () => import('./pages/history.js'), feedback: () => import('./pages/feedback.js'),
   export: () => import('./pages/export.js'), settings: () => import('./pages/settings.js'),
-  planned: () => import('./pages/planned.js'), broadcast: () => import('./pages/broadcast.js'),
+  planned: () => import('./pages/planned.js'), audiocheck: () => import('./pages/audiocheck.js'), uicheck: () => import('./pages/uicheck.js'), broadcast: () => import('./pages/broadcast.js'),
 };
 
 export const expRoute = (e) => (e.type === 'study' ? `studies/${e.id}` : e.type === 'program' ? `broadcast/${e.id}` : `listen/${e.id}`);
@@ -80,7 +80,7 @@ async function route() {
   const path = location.hash.replace(/^#\/?/, '') || '';
   let [page, ...rest] = path.split('/');
   const s = app.state;
-  if (!s.workspace && page !== 'planned') page = 'welcome';
+  if (!s.workspace && !['planned', 'audiocheck', 'uicheck'].includes(page)) page = 'welcome';
   if (!page) page = 'dashboard';
   if (!PAGES[page]) page = 'dashboard';
   renderChrome();
@@ -94,7 +94,10 @@ async function route() {
     cleanup = (await mod.render(main, rest.map(decodeURIComponent), app)) || null;
   } catch (e) {
     showError(e);
-    clear(main, h('div.empty', h('div.t', 'This page could not be shown'), h('p', e.message)));
+    const where = String(e && e.stack || '').split('\n').slice(0, 3).join('\n');
+    clientLog('page-error', e && e.message, { detail: `${page}: ${where}` });
+    clear(main, h('div.empty', h('div.t', 'This page could not be shown'), h('p', e.message),
+      h('pre.small.faint', { style: { whiteSpace: 'pre-wrap', textAlign: 'left' } }, where)));
   }
 }
 app.route = route;

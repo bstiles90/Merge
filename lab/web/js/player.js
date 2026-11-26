@@ -4,8 +4,13 @@
 // AudioContext time from the same offset, so they run in lockstep. Switching versions only
 // changes gains (short crossfade): playback never restarts and the position never jumps.
 // Long recordings are loaded in windows of WINDOW_S around the playhead.
+//
+// The window shares one AudioContext (wav.js), unlocked on the first click: WebKit, the macOS app's
+// web view, only lets audio start from a user gesture. If Web Audio still cannot start, the player
+// falls back to HTML <audio> elements (switching then stays in time to within a few milliseconds
+// but is no longer sample-aligned) and says so.
 
-import { wavHeader, wavFrames } from './wav.js';
+import { wavHeader, wavFrames, sharedContext, ensureRunning } from './wav.js';
 
 const WINDOW_S = 8 * 60;      // beyond this, load windows instead of the whole file
 const FULL_LIMIT_S = 12 * 60;
@@ -13,7 +18,7 @@ const FULL_LIMIT_S = 12 * 60;
 export class Player {
   constructor() {
     this.ctx = null; this.master = null;
-    this.tracks = {};          // key -> {info, buf, gain, src}
+    this.tracks = {};          // key -> {info, buf, gain, src, url}
     this.order = [];
     this.active = null;
     this.groups = {};          // group -> {version -> track key}
@@ -23,14 +28,15 @@ export class Player {
     this.duration = 0; this.win = [0, 0];
     this.crossfade = 0.008; this.volumeDb = 0;
     this.listeners = new Set(); this.loading = false; this.trims = {};
+    this.mode = 'webaudio';    // or 'media' (fallback)
+    this.media = {};           // key -> HTMLAudioElement (fallback mode)
     this._raf = null;
   }
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  emit(ev) { this.listeners.forEach((f) => f(ev, this)); }
+  emit(ev, detail) { this.listeners.forEach((f) => f(ev, this, detail)); }
   ensureCtx() {
     if (!this.ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AC({ latencyHint: 'playback' });
+      this.ctx = sharedContext();
       this.master = this.ctx.createGain();
       this.master.connect(this.ctx.destination);
       this.setVolume(this.volumeDb);
@@ -41,9 +47,9 @@ export class Player {
   // versions: [{key, url, trimDb?}]   groups: {group: {version: url}}
   async load(versions, groups = {}) {
     this.stop(); this.dispose();
-    this.ensureCtx();
     this.loading = true; this.emit('loading');
     try {
+      this.ensureCtx();
       const all = [...versions.map((v) => ({ ...v, kind: 'mix' }))];
       for (const [g, byV] of Object.entries(groups)) for (const [v, url] of Object.entries(byV)) all.push({ key: `g:${g}:${v}`, url, kind: 'group', group: g, version: v });
       const infos = await Promise.all(all.map((t) => wavHeader(t.url)));
@@ -55,20 +61,25 @@ export class Player {
       });
       this.duration = Math.max(...infos.filter((x, i) => all[i].kind === 'mix').map((x) => x.duration));
       this.active = this.active && this.tracks[this.active] ? this.active : this.order[0];
-      await this._loadWindow(0);
+      if (this.mode === 'webaudio') await this._loadWindow(0);
+    } catch (e) {
+      this.emit('error', `Audio could not be loaded: ${e.message}`);
+      throw e;
     } finally { this.loading = false; this.emit('loaded'); }
     this._applyGains(true);
   }
   dispose() {
+    this._stopMedia(true);
     for (const t of Object.values(this.tracks)) { try { t.gain.disconnect(); } catch (e) {} }
     this.tracks = {}; this.order = []; this.groups = {}; this.trims = {};
   }
+  close() { this.stop(); this.dispose(); try { this.master && this.master.disconnect(); } catch (e) {} this.master = null; this.ctx = null; }
   get long() { return this.duration > FULL_LIMIT_S; }
 
   async _loadWindow(t) {
     const start = this.long ? Math.max(0, Math.min(t - 5, this.duration - WINDOW_S)) : 0;
     const len = this.long ? WINDOW_S : this.duration + 1;
-    if (this.win[1] > this.win[0] && start >= this.win[0] - 1e-6 && t + 3 < this.win[1] && Object.values(this.tracks).every((x) => x.buf)) return;
+    if (this.win[1] > this.win[0] && start >= this.win[0] - 1e-6 && t + 3 < this.win[1] && Object.values(this.tracks).every((x) => x.buf || (x.kind === 'group' && !this.groupMode))) return;
     this.loading = true; this.emit('loading');
     const keys = Object.keys(this.tracks).filter((k) => this.tracks[k].kind === 'mix' || this.groupMode);
     const bufs = await Promise.all(keys.map((k) => {
@@ -82,6 +93,10 @@ export class Player {
   }
 
   currentTime() {
+    if (this.mode === 'media') {
+      const el = this.media[this.active];
+      return el ? el.currentTime : this.t0;
+    }
     if (!this.playing) return this.t0;
     let t = this.t0 + (this.ctx.currentTime - this.ctxStart);
     if (this.loop && t >= this.loop.b) t = this.loop.a + ((t - this.loop.a) % (this.loop.b - this.loop.a));
@@ -90,10 +105,15 @@ export class Player {
 
   async play(from) {
     if (!this.order.length) return;
-    this.ensureCtx();
-    if (this.ctx.state === 'suspended') await this.ctx.resume();
     let t = from ?? this.currentTime();
     if (t >= this.duration - 0.05) t = this.loop ? this.loop.a : 0;
+    if (this.mode === 'webaudio') {
+      this.ensureCtx();
+      if (!(await ensureRunning())) {
+        this._useMedia(`Web Audio did not start in this window (state: ${this.ctx.state}).`);
+      }
+    }
+    if (this.mode === 'media') return this._playMedia(t);
     this._stopSources();
     await this._loadWindow(t);
     const when = this.ctx.currentTime + 0.06;
@@ -113,12 +133,23 @@ export class Player {
     this.emit('play');
     this._tick();
   }
-  pause() { if (!this.playing) return; this.t0 = this.currentTime(); this._stopSources(); this.playing = false; this.emit('pause'); }
-  stop() { this._stopSources(); this.playing = false; this.t0 = this.loop ? this.loop.a : 0; this.emit('stop'); }
+  pause() {
+    if (!this.playing) return;
+    this.t0 = this.currentTime();
+    if (this.mode === 'media') Object.values(this.media).forEach((el) => el.pause()); else this._stopSources();
+    this.playing = false; this.emit('pause');
+  }
+  stop() {
+    if (this.mode === 'media') Object.values(this.media).forEach((el) => el.pause()); else this._stopSources();
+    this.playing = false; this.t0 = this.loop ? this.loop.a : 0;
+    if (this.mode === 'media') Object.values(this.media).forEach((el) => { el.currentTime = this.t0; });
+    this.emit('stop');
+  }
   toggle() { this.playing ? this.pause() : this.play(); }
   seek(t) {
     t = Math.max(0, Math.min(t, this.duration));
-    if (this.playing) this.play(t); else { this.t0 = t; this.emit('seek'); }
+    if (this.playing) this.play(t);
+    else { this.t0 = t; if (this.mode === 'media') Object.values(this.media).forEach((el) => { el.currentTime = t; }); this.emit('seek'); }
   }
   setLoop(a, b) {
     this.loop = a == null || b == null || b - a < 0.2 ? null : { a, b };
@@ -133,19 +164,65 @@ export class Player {
     const step = () => {
       if (!this.playing) return;
       const t = this.currentTime();
+      if (this.mode === 'media' && this.loop && t >= this.loop.b) { this._playMedia(this.loop.a); return; }
       if (!this.loop && t >= this.duration - 0.02) { this.stop(); return; }
-      if (this.long && !this.loop && t > this.win[1] - 2 && this.win[1] < this.duration) { this.play(t); return; }
+      if (this.mode === 'webaudio' && this.long && !this.loop && t > this.win[1] - 2 && this.win[1] < this.duration) { this.play(t); return; }
       this.emit('time');
       this._raf = requestAnimationFrame(step);
     };
     this._raf = requestAnimationFrame(step);
   }
 
+  // ---------------------------------------------------------------- fallback: HTML <audio> elements
+  _useMedia(reason) {
+    this.mode = 'media';
+    this._stopSources();
+    this.groupMode = false;
+    this.emit('fallback', `${reason} Using standard audio playback instead: switching stays in time but is not sample-aligned, and group audition is off.`);
+  }
+  _ensureMedia() {
+    for (const k of this.order) {
+      if (this.media[k]) continue;
+      const el = new Audio();
+      el.preload = 'auto'; el.src = this.tracks[k].url;
+      el.addEventListener('error', () => this.emit('error', `The audio file could not be played (${el.error ? el.error.code : '?'}).`));
+      this.media[k] = el;
+    }
+  }
+  async _playMedia(t) {
+    this._ensureMedia();
+    const els = Object.entries(this.media);
+    for (const [, el] of els) { el.pause(); try { el.currentTime = t; } catch (e) {} }
+    this._applyMediaVolumes();
+    try {
+      await Promise.all(els.map(([, el]) => el.play()));
+    } catch (e) {
+      this.emit('error', `Playback was refused by the window: ${e.message}. Click Play again; if it keeps failing, use Settings → Test audio output.`);
+      return;
+    }
+    this.t0 = t; this.playing = true; this.emit('play'); this._tick();
+  }
+  _stopMedia(remove) {
+    for (const el of Object.values(this.media)) { try { el.pause(); if (remove) el.removeAttribute('src'); } catch (e) {} }
+    if (remove) this.media = {};
+  }
+  _applyMediaVolumes() {
+    const v = this.volumeDb <= -60 ? 0 : Math.min(1, Math.pow(10, this.volumeDb / 20));
+    for (const [k, el] of Object.entries(this.media)) {
+      const trim = Math.min(1, Math.pow(10, (this.trims[k] || 0) / 20));
+      el.volume = k === this.active ? v * trim : 0;
+      el.muted = k !== this.active;
+    }
+  }
+
   setActive(key) {
     if (!this.tracks[key] || this.tracks[key].kind !== 'mix') return;
-    this.active = key; this._applyGains(false); this.emit('active');
+    this.active = key;
+    if (this.mode === 'media') this._applyMediaVolumes(); else this._applyGains(false);
+    this.emit('active');
   }
   async setGroupMode(on) {
+    if (this.mode === 'media') { this.emit('error', 'Group audition needs Web Audio, which is not available in this window.'); return; }
     this.groupMode = on && Object.keys(this.groups).length > 0;
     if (this.groupMode && Object.values(this.tracks).some((t) => t.kind === 'group' && !t.buf)) {
       const t = this.currentTime(), was = this.playing;
@@ -159,6 +236,7 @@ export class Player {
   toggleMute(g) { this.mute.has(g) ? this.mute.delete(g) : this.mute.add(g); this._applyGains(false); this.emit('groups'); }
   setVolume(db) {
     this.volumeDb = db;
+    if (this.mode === 'media') return this._applyMediaVolumes();
     if (this.master) this.master.gain.setTargetAtTime(db <= -60 ? 0 : Math.pow(10, db / 20), this.ctx.currentTime, 0.01);
   }
   _target(k) {
@@ -172,7 +250,7 @@ export class Player {
     return 1;
   }
   _applyGains(instant) {
-    if (!this.ctx) return;
+    if (!this.ctx || this.mode !== 'webaudio') return;
     const now = this.ctx.currentTime;
     for (const k of Object.keys(this.tracks)) {
       const g = this.tracks[k].gain.gain, v = this._target(k);

@@ -15,7 +15,7 @@
   --shadow-control: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 1px 1px rgba(0, 0, 0, 0.35);
   --shadow-popup: 0 12px 36px rgba(0, 0, 0, 0.55);
   /* source-group colours (desaturated, console-like) */
-  --g-vocals: #4ba8ff; --g-drums: #e3a33a; --g-bass: #a77bf0; --g-guitars: #46c46f; --g-keys: #e5767a; --g-other: #8fa3b5;
+  --g-vocals: #4ba8ff; --g-drums: #e3a33a; --g-bass: #a77bf0; --g-guitars: #46c46f; --g-keys: #e5767a; --g-synths: #d4a5f5; --g-other: #8fa3b5;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--surface-app); color: var(--text-primary); font: 450 13px/1.45 var(--font-ui); }

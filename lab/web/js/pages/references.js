@@ -1,7 +1,7 @@
 // Reference Library: recordings whose sound you want Merge to learn from. Start with stereo
 // masters alone (programme analysis); attach stems later for source-level intelligence.
 import { api, waitJob, currentJobs } from '../api.js';
-import { h, clear, pageHead, panel, badge, empty, fmtTime, groupName, confirmBox, showError, toast, modal, fmtDate, field, select,
+import { h, clear, pageHead, panel, badge, empty, fmtTime, groupName, confirmBox, showError, toast, modal, fmtDate, field, select, GROUPS,
   pickAudio, pickFolder, setDropHandler, seg } from '../ui.js';
 import { openImporter, editDetails, relinkFile } from '../importer.js';
 import { quickPlayer } from '../quickplay.js';
@@ -16,10 +16,11 @@ export async function render(root, [tab, selId], app) {
   root.append(pageHead('Reference Library', 'Recordings with the sound you want. Stereo masters alone are enough to start: each is analysed for spectrum, loudness, dynamics, transients and stereo image. Attach stems later to add source-level balance.',
     h('button', { onclick: () => openImporter('reference', { onDone: load }) }, '+ Import with stems'),
     h('button.primary', { onclick: () => batchImport(load) }, '+ Import masters')), tabs, h('div', { style: { height: '12px' } }), body);
-  let items = [], overview = null, sel = selId || null;
+  let items = [], overview = null, sel = selId || null, suggestions = [];
 
   async function load() {
-    [items, overview] = await Promise.all([api.get('/api/library/references').then((r) => r.items), api.get('/api/references/program-overview')]);
+    [items, overview, suggestions] = await Promise.all([api.get('/api/library/references').then((r) => r.items), api.get('/api/references/program-overview'),
+      api.get('/api/library/references/role-suggestions').then((r) => r.items)]);
     draw();
   }
   function draw() {
@@ -36,6 +37,8 @@ export async function render(root, [tab, selId], app) {
     const stale = overview.references.filter((r) => r.stale).length;
     const missing = items.filter((r) => r.master && !overview.references.find((o) => o.id === r.id)?.analysed).length;
     return h('div',
+      suggestions.length ? h('div.notice', `${suggestions.length} stem(s) look like they belong to a different group with the current six-group layout (for example Synths filed under the old Keys & Other). `,
+        h('button', { style: { marginLeft: '8px' }, onclick: reviewRoles }, 'Review roles…')) : null,
       stale || missing ? h('div.notice.warn', `${missing ? `${missing} master(s) not analysed yet. ` : ''}${stale ? `${stale} analysed with an older algorithm version. ` : ''}`,
         h('button', { style: { marginLeft: '8px' }, disabled: running, onclick: () => analyse(null, !!stale) }, running ? 'Analysing…' : 'Analyse now')) : null,
       h('div.panel.flat', h('div.pb', h('table',
@@ -66,6 +69,7 @@ export async function render(root, [tab, selId], app) {
         it.master ? h('button.ghost', { title: 'Play the master', onclick: () => quickPlayer(it.title, { path: it.master.path }) }, '▶') : null,
         o?.analysed ? h('button.ghost', { title: 'Compare with the other references', onclick: () => { sel = it.id; TAB = 'overview'; draw(); } }, 'Overview') : null,
         h('button.ghost', { title: groups.length ? 'Replace the stems' : 'Add stems for source-level analysis', onclick: () => openImporter('reference', { attachTo: it, onDone: load }) }, groups.length ? 'Stems…' : 'Attach stems…'),
+        groups.length ? h('button.ghost', { title: 'Change which group each stem belongs to (no reimport)', onclick: () => editRoles(it) }, 'Roles…') : null,
         h('button.ghost', { onclick: () => showItem(it) }, 'Details'),
         h('button.ghost', { onclick: () => editDetails('reference', it, load) }, 'Edit'),
         h('button.ghost', { onclick: () => remove(it) }, 'Remove'))));
@@ -84,6 +88,34 @@ export async function render(root, [tab, selId], app) {
     return h('div', { style: { display: 'grid', gridTemplateColumns: '260px minmax(0, 1fr)', gap: '14px', alignItems: 'start' } }, list,
       h('div', h('div.notice', 'The aggregate covers every analysed reference marked “use in new profiles”. A Sound Profile freezes these statistics when it is built; this view always reflects the current library.'),
         programView({ profile: overview.aggregate, refs: analysed.filter((r) => r.include !== false), selected: cur, selectedLabel: cur.title, onSelect: (id) => { sel = id; draw(); } })));
+  }
+
+  // ---------------------------------------------------------------- stem roles (no reimport)
+  function rolesNote() { return h('p.dim.small', 'Changing roles never touches your audio. Existing Sound Profiles keep their results; rebuild them (Sound Profiles → Rebuild) to use the new roles.'); }
+  async function applyRoles(changes) {
+    if (!changes.length) return;
+    await api.post('/api/library/references/regroup', { changes });
+    toast(`${changes.length} stem role(s) changed. Rebuild your profiles to use them.`);
+    await load();
+  }
+  function editRoles(it) {
+    const st = {};
+    (it.stems || []).forEach((e) => { st[e.file.id] = e.group; });
+    modal({ title: `Stem roles — ${it.title}`, wide: true, body: h('div.stack', rolesNote(),
+      h('table', h('tr', h('th', 'Stem file'), h('th', 'Group')), (it.stems || []).map((e) => h('tr', h('td', e.file.name),
+        h('td', select(GROUPS.map((g) => [g, groupName(g)]), e.group, (v) => { st[e.file.id] = v; })))))),
+    actions: [{ label: 'Cancel' }, { label: 'Save roles', primary: true, run: () => applyRoles((it.stems || []).filter((e) => st[e.file.id] !== e.group)
+      .map((e) => ({ ref_id: it.id, file_id: e.file.id, group: st[e.file.id] }))) }] });
+  }
+  function reviewRoles() {
+    const pick = new Set(suggestions.map((_, i) => i));
+    modal({ title: 'Review stem roles', wide: true, body: h('div.stack',
+      h('p', 'Since this version, Keys (piano, organ, Rhodes) and Synths (synths, pads, atmospheres, strings, “other”) are separate groups. These stems were matched to a different group from their file names. Untick any that are wrong.'),
+      rolesNote(),
+      h('table', h('tr', h('th', ''), h('th', 'Reference'), h('th', 'Stem file'), h('th', 'Now'), h('th', 'Suggested')),
+        suggestions.map((s, i) => h('tr', h('td', h('input', { type: 'checkbox', checked: true, onchange: (e) => (e.target.checked ? pick.add(i) : pick.delete(i)) })),
+          h('td', s.reference), h('td', s.file), h('td', groupName(s.current)), h('td', h('b', groupName(s.suggested))))))),
+    actions: [{ label: 'Cancel' }, { label: 'Apply selected', primary: true, run: () => applyRoles(suggestions.filter((_, i) => pick.has(i)).map((s) => ({ ref_id: s.ref_id, file_id: s.file_id, group: s.suggested }))) }] });
   }
 
   // ---------------------------------------------------------------- actions

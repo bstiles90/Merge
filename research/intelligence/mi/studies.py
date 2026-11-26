@@ -237,6 +237,87 @@ def generalization_study(ws, a, out):
     return {"rows": rows}
 
 
+# --------------------------------------------------------------------- arrangement density (0.5.0)
+def _explained(d, x, k=3):
+    """Share of the variance of pair differences d explained by k quantile classes of x (within one song)."""
+    ok = np.isfinite(d) & np.isfinite(x)
+    d, x = d[ok], x[ok]
+    if len(d) < 60 or np.ptp(x) == 0:
+        return None
+    edges = np.unique(np.quantile(x, np.linspace(0, 1, k + 1)[1:-1]))
+    cls = np.digitize(x, edges)
+    tot = float(np.var(d))
+    if tot == 0:
+        return None
+    within = sum(float(np.var(d[cls == c])) * (cls == c).sum() for c in np.unique(cls)) / len(d)
+    return 1.0 - within / tot
+
+
+def density_study(ws, a, out):
+    """Is 'how many groups are active' a useful context for balance targets on these references?
+
+    For every reference and every co-active pair, the within-song variance of the pair's loudness
+    difference is split by tercile classes of each density measure (loudness-based measures describe
+    only the other groups, so they cannot contain the pair's own balance). The share explained says how
+    much knowing that measure tells you about the expected balance. Higher = more informative.
+    Measures are compared on the same blocks, so the comparison is fair whatever their scale."""
+    cfg = load_config(ws)
+    refs = [r for r in find_references(ws) if not r.meta.get("exclude")]
+    if not refs:
+        raise SystemExit("needs at least 1 reference with stems")
+    keys = list(A.DENSITY_MEASURES)
+    per_measure = {k: [] for k in keys}
+    pair_rows, ref_rows = {}, []
+    for r in refs:
+        meta, ga = analyse_reference(r, cfg.get("activity"))
+        dm = A.density_measures(ga)
+        cls = A.density_class(ga.density, len(ga.groups))
+        ref_rows.append({"reference": meta.get("title", r.name), "groups": len(ga.groups), "beds": dm["beds"],
+                         "active": dm["active_fraction"], "current": {c: round(float((cls == c).mean()), 3) for c in ("sparse", "medium", "full")}})
+        G = list(ga.groups)
+        for i, x in enumerate(G):
+            for y in G[i + 1:]:
+                act = ga.active[x] & ga.active[y] & np.isfinite(ga.st[x]) & np.isfinite(ga.st[y])
+                act[:30] = False
+                if act.sum() < 60:
+                    continue
+                d = (ga.st[x] - ga.st[y])[act]
+                dmp = A.density_measures(ga, exclude=(x, y))
+                row = pair_rows.setdefault(f"{x}|{y}", {k: [] for k in keys} | {"full_share": []})
+                row["full_share"].append(float((cls[act] == "full").mean()))
+                for k in keys:
+                    e = _explained(d, dmp[k][act])
+                    if e is not None:
+                        row[k].append(e)
+                        per_measure[k].append(e)
+    rows = []
+    for pk, v in pair_rows.items():
+        rows.append({"pair": pk, "full_share": round(float(np.mean(v["full_share"])), 3),
+                     **{k: (round(float(np.mean(v[k])), 3) if v[k] else None) for k in keys}})
+    summary = {k: (round(float(np.median(v)), 3) if v else None) for k, v in per_measure.items()}
+    best = max((k for k in keys if summary[k] is not None), key=lambda k: summary[k], default=None)
+    lines = ["How informative is each description of arrangement density about the expected balance between two sources?",
+             "Value = share of a pair's within-song variance explained by tercile classes of the measure (median over pairs and songs).", "",
+             _table([{"m": k, "d": A.DENSITY_MEASURES[k], "v": summary[k]} for k in keys],
+                    [("Measure", lambda r: r["m"]), ("Definition", lambda r: r["d"]), ("Variance explained", lambda r: "–" if r["v"] is None else f"{100 * r['v']:.1f} %")]),
+             "", "## Current classifier: share of co-active blocks classed 'full'", "",
+             _table(sorted(rows, key=lambda r: r["pair"]), [("Pair", lambda r: _lbl(r["pair"].split("|")[0]) + " / " + _lbl(r["pair"].split("|")[1])),
+                                                            ("'full'", lambda r: f"{100 * r['full_share']:.0f} %"),
+                                                            *[(k, (lambda kk: (lambda r: "–" if r[kk] is None else f"{100 * r[kk]:.0f} %"))(k)) for k in keys]]),
+             "", "## Sustained beds and activity per reference", "",
+             _table(ref_rows, [("Reference", lambda r: r["reference"]), ("Sustained (>= 95 % active)", lambda r: ", ".join(_lbl(g) for g in r["beds"]) or "none"),
+                               ("Active fraction", lambda r: ", ".join(f"{_lbl(g)} {100 * v:.0f} %" for g, v in r["active"].items())),
+                               ("Current sparse/medium/full", lambda r: " / ".join(f"{100 * v:.0f} %" for v in r["current"].values()))]),
+             "", (f"Most informative on these references: **{best}** ({100 * summary[best]:.1f} % of within-song variance)."
+                  if best and summary[best] >= 0.05 else
+                  "None of the measures explains a meaningful share (>= 5 %) of within-song balance variation on these references: "
+                  "arrangement density, however described, is weak context here."),
+             "This is evidence for a design decision, not an automatic change: the operator keeps its current classifier until "
+             "the engineer reviews this on several song sets."]
+    _write(out, "arrangement density", lines)
+    return {"summary": summary, "best": best, "rows": rows, "references": ref_rows}
+
+
 # --------------------------------------------------------------------- processing vs performance
 def _transfer_curve(x, y, bin_lu=2.0):
     """Median output loudness per input-loudness bin (the processing's level transfer)."""

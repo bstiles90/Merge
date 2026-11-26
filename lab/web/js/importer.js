@@ -32,7 +32,10 @@ export function openImporter(kind, { item, onDone, attachTo } = {}) {
     : { name: '', notes: '' });
   const copyMode = { copy: ws.settings.import_mode === 'copy' };
   const body = h('div');
-  const m = modal({ title: attachTo ? `Attach stems to “${attachTo.title || 'reference'}”` : K.title, body, wide: true, onClose: () => setDropHandler(null) });
+  let checkJob = null;   // the running check, cancelled if the wizard is closed
+  const cancelCheck = () => { if (checkJob) { api.post(`/api/jobs/${checkJob}/cancel`).catch(() => {}); checkJob = null; } };
+  const m = modal({ title: attachTo ? `Attach stems to “${attachTo.title || 'reference'}”` : K.title, body, wide: true,
+    onClose: () => { setDropHandler(null); cancelCheck(); } });
   const foot = m.el.querySelector('.mf') || m.el.appendChild(h('div.mf'));
 
   async function addPaths(paths) {
@@ -123,12 +126,29 @@ export function openImporter(kind, { item, onDone, attachTo } = {}) {
     const payload = { kind, master: master ? master.path : (attachTo?.master?.path || null), files: used.filter((f) => f !== master).map((f) => ({ path: f.path, group: f.role.replace('raw:', '') })) };
     if (kind === 'mix') payload.files = payload.files.filter((f, i) => !used.filter((x) => x !== master)[i].role.startsWith('raw:'));
     const box = body.querySelector('#check');
+    const t0 = Date.now();
+    let lastKey = '', lastChange = Date.now();
     try {
       const r = await api.post('/api/validate', payload);
-      const j = await waitJob(r.job, (j) => { const b = body.querySelector('#check'); if (b) clear(b, h('p.dim', `${j.stage || 'Checking'} ${j.text || ''} — ${Math.round((j.fraction || 0) * 100)} %`)); });
+      checkJob = r.job;
+      const j = await waitJob(r.job, (j) => {
+        const key = `${j.stage}|${j.text}|${j.fraction}`;
+        if (key !== lastKey) { lastKey = key; lastChange = Date.now(); }
+        const quiet = Math.round((Date.now() - lastChange) / 1000);
+        const b = body.querySelector('#check');
+        if (b) clear(b, h('div.stack',
+          h('div.row', h('p.dim', { style: { margin: 0 } }, `${j.stage || 'Checking'} ${j.text || ''} — ${Math.round((j.fraction || 0) * 100)} % · ${Math.round((Date.now() - t0) / 1000)} s`),
+            h('div', { style: { flex: 1 } }), h('button', { onclick: cancelCheck }, 'Cancel check')),
+          quiet >= 20 ? h('p.small', { style: { color: 'var(--warn)' } }, `No progress for ${quiet} s. Large files on an external drive, network share or cloud-synced folder can be slow to read; you can cancel and retry.`) : null));
+      });
       validation = j.result;
-    } catch (e) { showError(e); validation = { status: 'error', findings: [{ level: 'error', text: e.message }], files: [] }; }
-    busy = false; draw();
+    } catch (e) {
+      validation = e.message === 'Cancelled' ? null : { status: 'error', findings: [{ level: 'error', text: e.message }], files: [] };
+      if (e.message === 'Cancelled') { toast('Check cancelled'); step = 1; } else showError(e);
+    }
+    checkJob = null;
+    busy = false;
+    if (m.el.isConnected) draw();
   }
   function stepCheck() {
     if (!validation) return h('div', h('p.dim', 'The files are being checked: format, length, peaks, clipping, loudness, and whether the stems add up to the master.'), h('div#check'));
